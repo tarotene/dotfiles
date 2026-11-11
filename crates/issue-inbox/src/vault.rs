@@ -406,8 +406,19 @@ pub fn sweep(g: &Locked, today: &str, dry_run: bool) -> io::Result<Vec<Lapsed>> 
 
 // ---------------------------------------------------------------- 状態を変える
 
-/// 題名(と、あれば repo)で 1 枚を選び、状態を変える。`url` は fixed なら `pr`、issued なら
-/// `issue` に書く。frontmatter だけを書き換え、本文はそのまま残す。成功すればノートの相対パス。
+/// ノートを選ぶ指定が、題名でなく、ノートの相対パス(`--list-open --json` の `note`。`inbox/<名前>.md`)か。
+/// ノート名は題名と衝突時の短いハッシュで一意になる(`note_name`)ので、パスで指せば 1 枚に決まり、
+/// 長い題名の完全一致や、先頭一致の補助が要らない。
+pub fn is_note_path(selector: &str) -> bool {
+    selector
+        .strip_prefix(INBOX_DIR)
+        .and_then(|rest| rest.strip_prefix('/'))
+        .is_some_and(|name| name.ends_with(".md") && !name.contains('/'))
+}
+
+/// 題名(か、ノートの相対パス。[`is_note_path`])と、あれば repo で 1 枚を選び、状態を変える。`url` は
+/// fixed なら `pr`、issued なら `issue` に書く。frontmatter だけを書き換え、本文はそのまま残す。
+/// 成功すればノートの相対パス。
 pub fn set_status(
     g: &Locked,
     title: &str,
@@ -459,7 +470,13 @@ pub fn set_status_with_reason(
     let mut hits: Vec<(String, Note)> = all_notes(g)
         .map_err(|e| e.to_string())?
         .into_iter()
-        .filter(|(_, n)| n.get("title") == Some(title))
+        .filter(|(path, n)| {
+            if is_note_path(title) {
+                path == title
+            } else {
+                n.get("title") == Some(title)
+            }
+        })
         .filter(|(_, n)| repo.is_none_or(|r| n.get("repo") == Some(r)))
         .collect();
     match hits.len() {
@@ -636,6 +653,48 @@ mod tests {
         assert_eq!(after.get("issue"), Some("https://example.test/issues/2"));
         assert!(set_status(&g, "T", None, "weird", "").is_err());
         assert!(set_status(&g, "missing", None, "fixed", "").is_err());
+    }
+
+    #[test]
+    fn set_status_selects_a_note_by_its_relative_path() {
+        let (_d, v) = vault();
+        let g = v.lock().unwrap();
+        add_item(&g, &item("T", "a", "2026-10-01"), "x").unwrap();
+        let mut other = item("T", "b", "2026-10-01");
+        other.repo = "o/other".into();
+        add_item(&g, &other, "x").unwrap();
+        // 題名は 2 枚で同じ。パスで指せば 1 枚に決まる。
+        let listed = list_open(&g, None).unwrap();
+        assert_eq!(listed.len(), 2);
+        let target = listed
+            .iter()
+            .find(|n| n.repo == "o/other")
+            .unwrap()
+            .note
+            .clone();
+        assert!(is_note_path(&target), "{target}");
+        let done = set_status(&g, &target, None, "dropped", "").unwrap();
+        assert_eq!(done, target);
+        let left = list_open(&g, None).unwrap();
+        assert_eq!(left.len(), 1);
+        assert_ne!(left[0].repo, "o/other");
+        // 存在しないパスは、題名として探さずに失敗する。
+        assert!(set_status(&g, "inbox/none.md", None, "dropped", "").is_err());
+    }
+
+    #[test]
+    fn only_a_single_inbox_file_name_is_a_note_path() {
+        assert!(is_note_path("inbox/x ~abcd1234.md"));
+        for s in [
+            "inbox/",
+            "inbox/a/b.md",
+            "other/x.md",
+            "x.md",
+            "inbox/x.txt",
+            "T",
+        ] {
+            assert!(!is_note_path(s), "{s}");
+        }
     }
 
     #[test]

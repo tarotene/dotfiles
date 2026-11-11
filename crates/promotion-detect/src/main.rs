@@ -18,6 +18,7 @@
 //!   PROMOTION_DETECT_GH_BIN       既定 "gh"
 //!   PROMOTION_DETECT_INBOX_BIN    既定 "$HOME/.claude/hooks/issue-inbox"
 //!   PROMOTION_DETECT_CLAUDE_DIR   既定 "$HOME/.claude"
+//!   PROMOTION_DETECT_CODEX_DIR    既定 "$HOME/.codex"(codex-plan-gate の skip ファイルの置き場)
 //!   PROMOTION_DETECT_STATE_DIR    既定 "${XDG_STATE_HOME:-$HOME/.local/state}/claude"
 //!   PROMOTION_DETECT_INBOX_PATH   既定 "<state_dir>/wrapup/<repo_slug>.jsonl"
 //!   PROMOTION_DETECT_WORKLOG_BIN  既定 "$HOME/.local/bin/worklog"(vault を宣言している機体だけが呼ぶ)
@@ -25,22 +26,88 @@
 //!   PROMOTION_DETECT_HERDR_BIN    既定 "herdr"(台帳の日次の通知が途絶えたときの通知)
 //!   PROMOTION_DETECT_NOW          既定は現在時刻。unix 秒(台帳の生存の記録と確認の時刻。テストでの差し替えに使う)
 
+use agent_session::escape::{self, Hatch};
 use serde::Deserialize;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
-/// pr-gate.sh 以外はすべて `$HOME/.claude/<name>/skip` の形(gh-edit-allow
-/// と同じ)。gate 名はここでの `<name>` をそのまま使う。
-const SKIP_FILES: &[&str] = &[
-    "plan-precedent-gate/skip",
-    "plan-scope-gate/skip",
-    "plan-fresh-gate/skip",
-    "pr-gate/skip",
-    "gh-edit-allow/skip",
-    "new-tool-guard/skip",
-    "stack-base-guard/skip",
-    "plan-reviews/skip",
+/// skip ファイルの置き場の基準。置き場は各機能が所有する(`docs/agents/tooling-conventions.md`)ので、
+/// 機能ごとに違う。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum SkipBase {
+    /// `$HOME/.claude/<dir>/skip`(多くの gate)。
+    ClaudeHome,
+    /// `${XDG_STATE_HOME:-$HOME/.local/state}/claude/<dir>/skip`(sandbox の書き込み許可の中。new-tool-guard)。
+    ClaudeState,
+    /// `$HOME/.codex/<dir>/skip`(codex-plan-gate)。
+    CodexHome,
+}
+
+/// skip ファイルを持つ逃げ道の一覧。`(逃げ道, 置き場の基準, ディレクトリ名)`。逃げ道は
+/// `agent_session::escape` の表の定数で指す(名前を手で書かない)。表で skip ファイルを持つ項目と一致させる
+/// (試験が見る。追加漏れで、古い skip の滞留を見つける道具が、その逃げ道に盲目になるのを防ぐ)。
+/// ディレクトリ名は gate 名として報告に出る。
+const SKIP_FILES: &[(&Hatch, SkipBase, &str)] = &[
+    (
+        &escape::PLAN_PRECEDENT_GATE,
+        SkipBase::ClaudeHome,
+        "plan-precedent-gate",
+    ),
+    (
+        &escape::PLAN_SCOPE_GATE,
+        SkipBase::ClaudeHome,
+        "plan-scope-gate",
+    ),
+    (
+        &escape::PLAN_FRESH_GATE,
+        SkipBase::ClaudeHome,
+        "plan-fresh-gate",
+    ),
+    (&escape::PR_GATE, SkipBase::ClaudeHome, "pr-gate"),
+    (
+        &escape::GH_EDIT_ALLOW,
+        SkipBase::ClaudeHome,
+        "gh-edit-allow",
+    ),
+    (
+        &escape::NEW_TOOL_GUARD,
+        SkipBase::ClaudeState,
+        "new-tool-guard",
+    ),
+    (
+        &escape::STACK_BASE_GUARD,
+        SkipBase::ClaudeHome,
+        "stack-base-guard",
+    ),
+    (
+        &escape::COPILOT_PLAN_REVIEW,
+        SkipBase::ClaudeHome,
+        "plan-reviews",
+    ),
+    (
+        &escape::CODEX_PLAN_GATE,
+        SkipBase::CodexHome,
+        "codex-plan-gate",
+    ),
+    (&escape::PLAN_VIEW, SkipBase::ClaudeHome, "plan-views"),
 ];
+
+/// 基準ごとの置き場。
+struct SkipDirs<'a> {
+    claude_home: &'a Path,
+    claude_state: &'a Path,
+    codex_home: Option<&'a Path>,
+}
+
+impl SkipDirs<'_> {
+    fn base(&self, base: SkipBase) -> Option<&Path> {
+        match base {
+            SkipBase::ClaudeHome => Some(self.claude_home),
+            SkipBase::ClaudeState => Some(self.claude_state),
+            SkipBase::CodexHome => self.codex_home,
+        }
+    }
+}
 
 fn main() {
     let dry_run = std::env::args().any(|a| a == "--dry-run");
@@ -97,7 +164,14 @@ fn main() {
     }
 
     // --- 降格: skip ファイルの滞留 ---
-    let skip_ages = scan_skip_ages(&claude_dir, SystemTime::now());
+    let codex_dir = process_env::var_nonempty_path("PROMOTION_DETECT_CODEX_DIR")
+        .or_else(|| home.as_ref().map(|h| h.join(".codex")));
+    let skip_dirs = SkipDirs {
+        claude_home: &claude_dir,
+        claude_state: &state_dir,
+        codex_home: codex_dir.as_deref(),
+    };
+    let skip_ages = scan_skip_ages(&skip_dirs, SystemTime::now());
     for c in promotion_detect::detect_stale_skips(&skip_ages, promotion_detect::SKIP_STALE_DAYS) {
         candidates.push((
             promotion_detect::stale_skip_title(&c),
@@ -605,15 +679,14 @@ fn scan_skill_blocks(skills_dir: &Path) -> std::collections::HashMap<String, Vec
     out
 }
 
-fn scan_skip_ages(claude_dir: &Path, now: SystemTime) -> Vec<(String, u64)> {
+fn scan_skip_ages(dirs: &SkipDirs<'_>, now: SystemTime) -> Vec<(String, u64)> {
     SKIP_FILES
         .iter()
-        .filter_map(|rel| {
-            let path = claude_dir.join(rel);
+        .filter_map(|(_, base, dir)| {
+            let path = dirs.base(*base)?.join(dir).join(escape::SKIP_FILE);
             let modified = std::fs::metadata(&path).ok()?.modified().ok()?;
             let age = now.duration_since(modified).ok()?.as_secs();
-            let gate = rel.trim_end_matches("/skip").to_string();
-            Some((gate, age))
+            Some(((*dir).to_string(), age))
         })
         .collect()
 }
@@ -675,5 +748,69 @@ mod tests {
         let rows = read_cmd_hashes(&path);
         assert_eq!(rows.len(), 2);
         assert_eq!(rows[1].hash, "bbbbbbbbbbbbbbbb");
+    }
+
+    /// 逃げ道の表(`escape::ALL`)で skip ファイルを持つ項目と、この一覧が一致する。追加漏れがあると、
+    /// 古い skip の滞留を見つける道具が、その逃げ道に盲目になる(2026-11-09 に 2 件の欠落が見つかった)。
+    #[test]
+    fn skip_files_cover_every_escape_hatch_with_a_skip_file() {
+        let mut want: Vec<&str> = agent_session::escape::ALL
+            .iter()
+            .filter(|h| h.skip_file)
+            .map(|h| h.stem)
+            .collect();
+        let mut have: Vec<&str> = SKIP_FILES.iter().map(|(h, _, _)| h.stem).collect();
+        want.sort_unstable();
+        have.sort_unstable();
+        assert_eq!(have, want);
+        let mut dirs: Vec<&str> = SKIP_FILES.iter().map(|(_, _, d)| *d).collect();
+        dirs.sort_unstable();
+        dirs.dedup();
+        assert_eq!(dirs.len(), SKIP_FILES.len(), "ディレクトリ名が重複している");
+    }
+
+    /// 置き場の基準ごとに、skip ファイルを見つける(new-tool-guard は状態の置き場、codex-plan-gate は
+    /// Codex の home)。置き場を取り違えると、その 1 件が永久に見つからない。
+    #[test]
+    fn skip_ages_are_read_from_each_gates_own_base() {
+        let root = tempfile::tempdir().unwrap();
+        let (claude, state, codex) = (
+            root.path().join("claude"),
+            root.path().join("state"),
+            root.path().join("codex"),
+        );
+        for (base, dir) in [
+            (&claude, "pr-gate"),
+            (&claude, "plan-views"),
+            (&state, "new-tool-guard"),
+            (&codex, "codex-plan-gate"),
+        ] {
+            std::fs::create_dir_all(base.join(dir)).unwrap();
+            std::fs::write(base.join(dir).join(escape::SKIP_FILE), "").unwrap();
+        }
+        // 取り違えた置き場の skip は見つけない。
+        std::fs::create_dir_all(claude.join("new-tool-guard")).unwrap();
+        std::fs::write(claude.join("new-tool-guard").join(escape::SKIP_FILE), "").unwrap();
+        let dirs = SkipDirs {
+            claude_home: &claude,
+            claude_state: &state,
+            codex_home: Some(&codex),
+        };
+        let now = SystemTime::now() + std::time::Duration::from_secs(60);
+        let mut found: Vec<String> = scan_skip_ages(&dirs, now)
+            .into_iter()
+            .map(|(gate, _)| gate)
+            .collect();
+        found.sort();
+        assert_eq!(
+            found,
+            ["codex-plan-gate", "new-tool-guard", "plan-views", "pr-gate"]
+        );
+        // Codex の home が解決できないときは、その 1 件だけ見ない。
+        let no_codex = SkipDirs {
+            codex_home: None,
+            ..dirs
+        };
+        assert_eq!(scan_skip_ages(&no_codex, now).len(), 3);
     }
 }

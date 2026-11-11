@@ -20,8 +20,11 @@ detect`)は、その「安定の兆候」を人間の想起に頼らず機械的
    プレースホルダ(`<...>`)を含むブロックは対象外。
    各レコードの `shape`(コマンドの形の閉じた語。ADR-1276)は、この検出では使わない
    (`session-retrospective` がセッション内の痕跡に使う)。
-3. **降格(見直し候補・滞留)**: 既知の gate の skip ファイル
-   (`~/.claude/<gate>/skip`)が30日以上存在し続けているもの。
+3. **降格(見直し候補・滞留)**: 既知の gate の skip ファイルが30日以上存在し続けているもの。
+   置き場は gate ごとに違う(多くは `~/.claude/<gate>/skip`、`new-tool-guard` は
+   `${XDG_STATE_HOME:-~/.local/state}/claude/new-tool-guard/skip`、`codex-plan-gate` は
+   `~/.codex/codex-plan-gate/skip`)。一覧は `crates/promotion-detect/src/main.rs` の `SKIP_FILES` で、
+   逃げ道の表(`agent_session::escape::ALL`)で skip ファイルを持つ項目と一致することを試験が見る。
 4. **降格(見直し候補・多発)**: `~/.local/state/claude/gate-events.jsonl`
    (新規 Rust gate の deny/skip イベント、`agent_session::gate_event` が記録)
    で、ある gate の skip 回数が3件以上のもの。

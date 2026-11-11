@@ -159,3 +159,21 @@ jq -c 'select(.mechanism | startswith("none:"))' ~/.local/state/claude/wrapup/re
 - `cargo test -p issue-inbox -p session-retrospective -p wrapup-stop-gate`(語彙の読み込み・行の検証・手順書の生成・事例集の鮮度・公開する事例の形式)。
 - `session-retrospective --retro-casebook` の出力が `docs/agents/codify-signals.md` の生成部と一致する。
 - `nix flake check`(`flake.nix` が語彙 JSON を crane の入力に通す)。
+
+## Amendment 2026-11-10: 兆候 `tool-semantics`、`unclassified` の数え方、リポジトリ内の探索の範囲
+
+- `unclassified` の件数が下限(5 件)に届いたときの通知が、裁定の済んだ気づきも数えていたため、裁定しても同じ通知が毎日
+  出続けた。`unclassified` は採用・却下の較正の対象ではないので、状態が `open` のものだけを数える。他の兆候の採用・却下の
+  集計(D6)は変えない。
+- 日次の検出が出した 7 件のうち 3 件(参照の上書き、`nix shell … && init` が新しいシェルの外で走る、flake が git に追跡
+  されていないファイルを見ない)は、back-test で「足さない」とした「シェルの書き方の落とし穴」の塊と同じ種類だった。
+  同じ塊が再び出たので、兆候 `tool-semantics`(既定の段 `tool`)を足した。
+- `existing-suffices` による却下 5 件は、同じ事象(uv の置き場に書けなかった件。修正先は `home/modules/runtimes.nix`)で、
+  retro の探索範囲(`pipeline-map` / `crates` / `skills`)の外に修正先があった。リポジトリ内の探索に `home-modules`
+  (sandbox・service・権限の宣言)と `inbox`(同題の気づきのノート)を足した。`searched` の検証が、この 2 つも要求する。
+
+### 執行点
+
+- `config/agents/codify-signals/vocabulary.json`
+- `crates/promotion-detect/src/lib.rs`
+- `crates/session-retrospective/src/lib.rs`

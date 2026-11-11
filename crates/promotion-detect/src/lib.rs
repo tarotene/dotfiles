@@ -373,6 +373,9 @@ pub fn calibrate(notes: &[SignalNote], vocab: &Vocabulary) -> Vec<(String, Strin
             .filter(|n| n.signal == sig.id && n.first_seen.as_str() >= sig.since.as_str())
             .collect();
         if sig.id == "unclassified" {
+            // 採用・却下の較正の対象ではないので、裁定の済んだ(fixed・issued・dropped)ものと、
+            // 失効した(lapsed)ものを数えない。数えると、裁定しても同じ通知が毎日出続ける。
+            let mine: Vec<&SignalNote> = mine.into_iter().filter(|n| n.status == "open").collect();
             if mine.len() >= cal.unclassified_min as usize {
                 out.push((
                     "語彙に足す兆候の候補: どれにも入らない気づきが溜まっています(ADR-1276)".to_string(),
@@ -873,6 +876,23 @@ mod tests {
         let found = calibrate(&many(5, "unclassified", "open", ""), vocab);
         assert_eq!(found.len(), 1);
         assert!(found[0].0.contains("語彙に足す"), "{found:?}");
+    }
+
+    #[test]
+    fn unclassified_counts_only_notes_still_waiting_for_a_ruling() {
+        let vocab = Vocabulary::get();
+        // 5 件でも、裁定が済んだ・失効したものは数えない(open は 2 件)。
+        let mut notes = many(2, "unclassified", "open", "");
+        notes.extend(many(1, "unclassified", "fixed", ""));
+        notes.extend(many(1, "unclassified", "issued", ""));
+        notes.extend(many(1, "unclassified", "dropped", ""));
+        notes.extend(many(1, "unclassified", "lapsed", ""));
+        assert!(calibrate(&notes, vocab).is_empty());
+        // open が下限(5)に届けば出て、件数は open の数。
+        notes.extend(many(3, "unclassified", "open", ""));
+        let found = calibrate(&notes, vocab);
+        assert_eq!(found.len(), 1);
+        assert!(found[0].1.contains("5 件"), "{found:?}");
     }
 
     #[test]

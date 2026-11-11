@@ -110,6 +110,13 @@
       "examples": []
     },
     {
+      "id": "tool-semantics",
+      "default": "tool",
+      "since": "2026-11-10",
+      "look_for": "道具の暗黙の挙動(参照の上書き・新しいシェルでの実行・git が追跡しないファイルを見ない)で、エラーも無く違う結果になった。正しい呼び方を 1 本の入口にする",
+      "examples": []
+    },
+    {
       "id": "unclassified",
       "default": "prose",
       "since": "2026-10-30",
@@ -119,7 +126,7 @@
   ],
   "existing": {
     "verdicts": ["採用", "拡張", "自前"],
-    "in_repo_scope": ["pipeline-map", "crates", "skills"],
+    "in_repo_scope": ["pipeline-map", "crates", "skills", "home-modules", "inbox"],
     "external_scope": ["nixpkgs", "upstream"]
   },
   "shapes": [
