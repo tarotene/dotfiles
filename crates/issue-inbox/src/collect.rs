@@ -15,7 +15,7 @@
 use serde_json::{json, Value};
 
 /// 裁定ページの入力の版(`items.schema.json` の `format_version` の `const`)。試験が、読み戻して一致を見る。
-pub const FORMAT_VERSION: u64 = 5;
+pub const FORMAT_VERSION: u64 = 6;
 
 /// 収集から外すラベル(外部の事情で止まっている Issue。`/my-cleanup` §1)。
 pub const EXCLUDED_LABEL: &str = "blocked-by-upstream";
