@@ -243,15 +243,29 @@
       # in home/identities/personal/spotify-player.nix, because that override is the one
       # that forces a from-source build. Drop the entry once stable ships
       # spotify-player >= 0.25.0 (#861).
+      #
+      # The removal conditions are data, not only prose: `unstableUntil` maps
+      # each package taken from unstable to the first stable version that
+      # makes the entry unnecessary, and `checks.<system>.unstable-overlay-removal`
+      # fails once the pinned stable channel ships it. The flake-update PR that
+      # moves stable is then the one that turns red, so the entry is dropped
+      # there instead of waiting in an Issue (ADR-1529, the TODO-or-die idea of
+      # searls/todo_or_die applied at evaluation time).
+      unstableUntil = {
+        mise = "2026.7.5"; # #823
+        spotify-player = "0.25.0"; # #861
+      };
       herdrOverlay =
         system:
-        (_final: _prev: {
-          herdr = nixpkgs-unstable.legacyPackages.${system}.herdr.overrideAttrs (old: {
-            patches = (old.patches or [ ]) ++ [ ./patches/herdr-worktree-names.patch ];
-          });
-          mise = nixpkgs-unstable.legacyPackages.${system}.mise;
-          spotify-player = nixpkgs-unstable.legacyPackages.${system}.spotify-player;
-        });
+        (
+          _final: _prev:
+          {
+            herdr = nixpkgs-unstable.legacyPackages.${system}.herdr.overrideAttrs (old: {
+              patches = (old.patches or [ ]) ++ [ ./patches/herdr-worktree-names.patch ];
+            });
+          }
+          // lib.mapAttrs (name: _: nixpkgs-unstable.legacyPackages.${system}.${name}) unstableUntil
+        );
 
       # The Rust hook/CLI workspace (Cargo.toml, crates/*; ADR-0024 / #391),
       # exposed as `pkgs.dotfiles-tools` so home modules can point a hook
@@ -528,6 +542,26 @@
           # closure に入り、CI の `Build vega` が build する。名前で出すのは、手元で単体の
           # build を回せるようにするため。
           ja-polish-llm = pkgsFor.${system}.ja-polish-llm;
+          # overlay の撤去条件(上の `unstableUntil`)。固定した stable の版が条件を満たしたら落ちる。
+          # flake の更新の PR がここで赤くなるので、その PR で overlay の項目を畳む(ADR-1529 の段4)。
+          unstable-overlay-removal =
+            let
+              stable = nixpkgs.legacyPackages.${system};
+              caughtUp = lib.filterAttrs (name: min: lib.versionAtLeast stable.${name}.version min) unstableUntil;
+              lines = lib.mapAttrsToList (
+                name: min: "${name}: stable は ${stable.${name}.version}(条件 >= ${min})"
+              ) caughtUp;
+            in
+            pkgsFor.${system}.runCommand "unstable-overlay-removal" { } (
+              if caughtUp == { } then
+                "touch $out"
+              else
+                ''
+                  echo "unstable-overlay-removal: stable が追いついた。flake.nix の unstableUntil と overlay から外す:" >&2
+                  echo ${lib.escapeShellArg (lib.concatStringsSep "\n" lines)} >&2
+                  exit 1
+                ''
+            );
         }
         // lib.optionalAttrs (system == linuxSystem) {
           # LiveSync CLI の build(leveldown などのネイティブ依存を含む)。`installCheckPhase` が
