@@ -89,7 +89,11 @@ let
         [ -d "$vault" ] || die "vault directory does not exist: $vault"
         [ -n "''${XDG_RUNTIME_DIR:-}" ] || die "XDG_RUNTIME_DIR is not set (the settings must live on tmpfs)"
         work=$(mktemp -d "$XDG_RUNTIME_DIR/obsidian-livesync-init.XXXXXX")
-        trap 'rm -rf "$work"' EXIT
+        # 秘密を書いた設定の置き場を、終了時に必ず消す。パスは trap を置く時点で埋め込む: EXIT の trap は
+        # init を抜けたあとに走り、local の work はもう無い(set -u で `work: unbound variable` になり、
+        # 消えずに残った。2026-11-11 の初回の init で実測)。
+        # shellcheck disable=SC2064
+        trap "rm -rf -- $(printf '%q' "$work")" EXIT
 
         # 途中で失敗した init が、古い印を残して daemon を通さないように、先に消す。
         rm -f "$mark"
