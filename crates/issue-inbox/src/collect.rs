@@ -155,6 +155,88 @@ fn finding_slug(f: &Finding) -> String {
     vault_note::short_hash(&format!("{}\0{}", f.repo, f.title))
 }
 
+/// 在庫の分類(`--classify`)の処分の語彙(閉じている)と、裁定ページの `task` の選択肢(`options.json`)への写し。
+///
+/// | 処分 | `automatable` | `rec_option` | 意味 |
+/// |---|---|---|---|
+/// | `implement` | `true` | `do-agent` | おまかせ(エージェントが進め、本人の操作が要る段で止める) |
+/// | `implement` | `false` | `do-me` | 自分でやる(本人の作業) |
+/// | `drop` | (不要) | `drop` | やらない |
+/// | `later` | (不要) | `later` | あとで(何も記録しない) |
+/// | `other` | (不要) | `other` | 記入欄で指示する(どれにも当てはまらない) |
+///
+/// `implement` は、自動化の可否(`automatable`)が写しの分かれ目なので必須にする。語彙の外の処分は、黙って
+/// `other` に落とさず、誤りとして返す(手で書いた分類の書き違いが、推奨の誤りとして黙って残らない)。
+const DISPOSITIONS: [&str; 4] = ["implement", "drop", "later", "other"];
+
+/// 在庫の分類を、`--rec` と同じ形(項目の id → `{rec_option, rec, why, when}`)にする。
+///
+/// 入力は、項目の id(Issue は `i<番号>`、気づきは `f<短い名前>`)から
+/// `{disposition, automatable?, bundle?, why?, when?}` への写し。`bundle` は、まとめて 1 段に積む束の名前で、
+/// `rec` の文に添える(裁定ページで、同じ束の項目が同じ推奨で並ぶのが読める)。
+pub fn recs_from_classification(cls: &Value) -> Result<Value, String> {
+    let map = cls
+        .as_object()
+        .ok_or("分類が、項目の id から分類への写し(オブジェクト)でない")?;
+    let mut out = serde_json::Map::new();
+    for (id, c) in map {
+        let obj = c
+            .as_object()
+            .ok_or(format!("{id}: 分類がオブジェクトでない"))?;
+        let disposition = obj
+            .get("disposition")
+            .and_then(Value::as_str)
+            .ok_or(format!("{id}: disposition が無い"))?;
+        if !DISPOSITIONS.contains(&disposition) {
+            return Err(format!(
+                "{id}: disposition `{disposition}` は語彙の外({})",
+                DISPOSITIONS.join("・")
+            ));
+        }
+        let (rec_option, mut rec) = match disposition {
+            "implement" => match obj.get("automatable").and_then(Value::as_bool) {
+                Some(true) => ("do-agent", "おまかせで進める".to_string()),
+                Some(false) => ("do-me", "自分でやる".to_string()),
+                None => {
+                    return Err(format!(
+                        "{id}: implement には automatable(true か false)が要る"
+                    ))
+                }
+            },
+            "drop" => ("drop", "やらない".to_string()),
+            "later" => ("later", "あとで".to_string()),
+            _ => ("other", "その他(記入欄で指示する)".to_string()),
+        };
+        if let Some(bundle) = obj
+            .get("bundle")
+            .and_then(Value::as_str)
+            .filter(|b| !b.is_empty())
+        {
+            rec.push_str(&format!("(束: {bundle})"));
+        }
+        let mut r = json!({"rec_option": rec_option, "rec": rec});
+        // 空の欄は書かない(`items_json` が、根拠は項目の既定の文に、時期は「未定」にする)。
+        for k in ["why", "when"] {
+            if let Some(v) = obj.get(k).and_then(Value::as_str).filter(|v| !v.is_empty()) {
+                r[k] = json!(v);
+            }
+        }
+        out.insert(id.clone(), r);
+    }
+    Ok(Value::Object(out))
+}
+
+/// 2 つの推奨の写しを重ねる。同じ id は `over`(手で直した `--rec`)が `base`(分類から作った推奨)に勝つ。
+pub fn overlay_recs(base: Value, over: &Value) -> Value {
+    let mut merged = base.as_object().cloned().unwrap_or_default();
+    if let Some(o) = over.as_object() {
+        for (id, r) in o {
+            merged.insert(id.clone(), r.clone());
+        }
+    }
+    Value::Object(merged)
+}
+
 /// `items.json`(裁定ページの入力)。母集団の Issue と気づきを、種類 `task` の項目にする。
 /// `recs` は、項目の id(Issue は `i<番号>`、気づきは `f<短い名前>`)から
 /// `{rec_option, rec, why, when}` への写し(推奨と根拠は判断なので、呼び出し側が渡す)。
@@ -336,6 +418,79 @@ mod tests {
         assert_eq!(i5["rec"], "着手する");
         assert_eq!(i5["why"], "理由");
         assert_eq!(i5["when"], "今回");
+    }
+
+    #[test]
+    fn classification_maps_each_disposition_to_a_task_option() {
+        let cls = json!({
+            "i5": {"disposition": "implement", "automatable": true, "bundle": "束A", "why": "局所", "when": "今回"},
+            "i6": {"disposition": "implement", "automatable": false},
+            "i7": {"disposition": "drop", "why": "もう起きない"},
+            "i8": {"disposition": "later"},
+            "f1": {"disposition": "other", "when": ""},
+        });
+        let r = recs_from_classification(&cls).unwrap();
+        assert_eq!(r["i5"]["rec_option"], "do-agent");
+        assert_eq!(r["i5"]["rec"], "おまかせで進める(束: 束A)");
+        assert_eq!(r["i5"]["why"], "局所");
+        assert_eq!(r["i5"]["when"], "今回");
+        assert_eq!(r["i6"]["rec_option"], "do-me");
+        assert_eq!(r["i6"]["rec"], "自分でやる");
+        assert_eq!(r["i7"]["rec_option"], "drop");
+        assert_eq!(r["i8"]["rec_option"], "later");
+        assert_eq!(r["f1"]["rec_option"], "other");
+        // 空の欄は書かない(`items_json` の既定に任せる)。
+        assert!(r["i6"].get("why").is_none() && r["f1"].get("when").is_none());
+    }
+
+    /// 写し先の `rec_option` が、すべて `options.json` の `task` の選択肢に実在する(選択肢の id を変えたのに、
+    /// ここを直し忘れて、ページが知らない id を推奨に指さない)。
+    #[test]
+    fn every_mapped_rec_option_exists_in_the_task_options() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(
+            "../../config/agents/skills/inbox-adjudication/reference/verdict-page/options.json",
+        );
+        let options: Value = serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
+        let ids: Vec<&str> = options["kinds"]["task"]["options"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|o| o["id"].as_str())
+            .collect();
+        let cls = json!({
+            "a": {"disposition": "implement", "automatable": true},
+            "b": {"disposition": "implement", "automatable": false},
+            "c": {"disposition": "drop"},
+            "d": {"disposition": "later"},
+            "e": {"disposition": "other"},
+        });
+        let r = recs_from_classification(&cls).unwrap();
+        for (id, rec) in r.as_object().unwrap() {
+            let opt = rec["rec_option"].as_str().unwrap();
+            assert!(
+                ids.contains(&opt),
+                "{id}: {opt} が task の選択肢に無い: {ids:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn classification_rejects_a_word_outside_the_vocabulary_instead_of_guessing() {
+        let e = |v: Value| recs_from_classification(&v).unwrap_err();
+        assert!(e(json!({"i5": {"disposition": "do-it"}})).contains("語彙の外"));
+        assert!(e(json!({"i5": {"disposition": "implement"}})).contains("automatable"));
+        assert!(e(json!({"i5": {"automatable": true}})).contains("disposition が無い"));
+        assert!(e(json!({"i5": "implement"})).contains("オブジェクトでない"));
+        assert!(e(json!(["i5"])).contains("オブジェクト"));
+    }
+
+    #[test]
+    fn a_hand_written_rec_wins_over_the_classification_for_the_same_id() {
+        let base = json!({"i5": {"rec_option": "do-agent", "rec": "a"}, "i6": {"rec_option": "drop", "rec": "d"}});
+        let over = json!({"i5": {"rec_option": "do-me", "rec": "手で直した"}});
+        let m = overlay_recs(base, &over);
+        assert_eq!(m["i5"]["rec_option"], "do-me");
+        assert_eq!(m["i6"]["rec_option"], "drop");
     }
 
     /// 入力の版が、`items.schema.json` の `const` と一致する(ページ形式を上げたのに、ここを直し忘れない)。

@@ -167,3 +167,92 @@ fn the_items_input_is_built_from_the_saved_files_and_the_page_builder_accepts_it
     assert!(b.status.success(), "{}", String::from_utf8_lossy(&b.stderr));
     assert!(fs::read_to_string(page).unwrap().contains("テストの回"));
 }
+
+#[test]
+fn a_classification_becomes_the_recommendations_and_a_hand_written_rec_wins_per_id() {
+    let e = Env::new();
+    e.issues(ISSUES);
+    let d = dir(&e);
+    assert!(e.run(&["--collect", &d, "--repo", "o/r"]).status.success());
+    fs::write(
+        e.p("cls.json"),
+        r#"{"i5": {"disposition": "implement", "automatable": true, "bundle": "束A", "why": "局所"}}"#,
+    )
+    .unwrap();
+    let cls = e.p("cls.json");
+    let items_of = |e: &Env| -> serde_json::Value {
+        serde_json::from_str(&fs::read_to_string(e.p("snap/items.json")).unwrap()).unwrap()
+    };
+    let i5 = |items: &serde_json::Value| {
+        items["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|i| i["id"] == "i5")
+            .unwrap()
+            .clone()
+    };
+
+    // 分類だけ: 語彙の閉じた表から推奨ができる。
+    let r = e.run(&[
+        "--adjudication-items",
+        &d,
+        "--classify",
+        cls.to_str().unwrap(),
+    ]);
+    assert!(r.status.success(), "{}", String::from_utf8_lossy(&r.stderr));
+    let item = i5(&items_of(&e));
+    assert_eq!(item["rec_option"], "do-agent");
+    assert_eq!(item["rec"], "おまかせで進める(束: 束A)");
+    assert_eq!(item["why"], "局所");
+
+    // 同じ id に手で書いた --rec があれば、そちらが勝つ。
+    fs::write(
+        e.p("rec.json"),
+        r#"{"i5": {"rec_option": "later", "rec": "手で直した", "why": "あとで見る", "when": "来週"}}"#,
+    )
+    .unwrap();
+    let r = e.run(&[
+        "--adjudication-items",
+        &d,
+        "--classify",
+        cls.to_str().unwrap(),
+        "--rec",
+        e.p("rec.json").to_str().unwrap(),
+    ]);
+    assert!(r.status.success(), "{}", String::from_utf8_lossy(&r.stderr));
+    let item = i5(&items_of(&e));
+    assert_eq!(item["rec_option"], "later");
+    assert_eq!(item["rec"], "手で直した");
+
+    // 既存のページの生成器が、この入力を受け入れる。
+    let build = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../config/agents/skills/inbox-adjudication/reference/verdict-page/build.sh");
+    let b = Command::new("bash")
+        .arg(&build)
+        .arg("--data")
+        .arg(e.p("snap/items.json"))
+        .arg("--out")
+        .arg(e.p("page.html"))
+        .output()
+        .unwrap();
+    assert!(b.status.success(), "{}", String::from_utf8_lossy(&b.stderr));
+}
+
+#[test]
+fn a_classification_word_outside_the_vocabulary_is_an_error_and_writes_no_items() {
+    let e = Env::new();
+    e.issues(ISSUES);
+    let d = dir(&e);
+    assert!(e.run(&["--collect", &d, "--repo", "o/r"]).status.success());
+    fs::write(e.p("cls.json"), r#"{"i5": {"disposition": "do-it"}}"#).unwrap();
+    let r = e.run(&[
+        "--adjudication-items",
+        &d,
+        "--classify",
+        e.p("cls.json").to_str().unwrap(),
+    ]);
+    assert_eq!(r.status.code(), Some(1));
+    assert!(String::from_utf8_lossy(&r.stderr).contains("語彙の外"));
+    assert!(!e.p("snap/items.json").exists());
+}

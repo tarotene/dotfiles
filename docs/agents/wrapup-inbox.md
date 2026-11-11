@@ -132,8 +132,14 @@ SessionEnd で何かを起票させる案は、ドキュメント上の制約で
   保存する。`gh issue list` が `--limit` と同数を返したら、limit を倍にして取り直す。
   `--collect-diff <dir> [--repo R]` は、取り直して、保存した結果との差分だけを出す(`+` 増えた、`-` 消えた、`~` 更新日時が変わった、
   気づきは再発の回数の変化)。差分が無ければ `no changes`(終了コード 0)、あれば差分の行(1)、取得の失敗は 2。保存した結果は
-  書き換えない。`--adjudication-items <dir> [--rec <file>] [--label L]` は、保存した 2 つの JSON から、裁定ページの入力
-  (`<dir>/items.json`。`reference/verdict-page/` の `build.sh --data` に渡す)を作る。推奨・根拠は `--rec` で渡す。
+  書き換えない。`--adjudication-items <dir> [--classify <file>] [--rec <file>] [--label L]` は、保存した 2 つの JSON から、
+  裁定ページの入力(`<dir>/items.json`。`reference/verdict-page/` の `build.sh --data` に渡す)を作る。推奨・根拠は、
+  `--classify`(在庫の分類。項目の id → `{disposition, automatable?, bundle?, why?, when?}`)か、`--rec`(項目の id →
+  `{rec_option, rec, why, when}` を直接)で渡す。`--classify` の処分は閉じた語彙で、`implement`(`automatable: true` は
+  `do-agent`、`false` は `do-me`)・`drop`・`later`・`other` が、裁定ページの `task` の選択肢(`options.json`)の id に
+  写る(`crates/issue-inbox/src/collect.rs` の `recs_from_classification`)。語彙の外の処分と、`automatable` の無い
+  `implement` は、`other` に黙って落とさず誤りにする(終了コード 1、`items.json` は書かない)。両方を渡すと、同じ id では
+  `--rec` が勝つ(分類から作った推奨を、項目ごとに手で直せる)。
 - `--sweep [--dry-run] [--as-of YYYY-MM-DD]` — `open` のまま最後の行から 14 日以上たった気づきを、全 repo について
   `lapsed` にする(ADR-1381)。日次の `promotion-detect` が同じ関数を呼ぶ。`--dry-run` は書かずに対象を数える。
   `--as-of` は見積り用で `--dry-run` とだけ使える。冪等(`lapsed` は `open` でないので二重に書かない)。

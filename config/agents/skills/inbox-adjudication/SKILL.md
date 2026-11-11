@@ -238,9 +238,11 @@ description: 溜まったメールの受信箱をまとめて処理する手順�
 ## 裁定ページを組む(手順 3 の判断の表)
 
 その回の項目の表を JSON(`reference/verdict-page/items.schema.json` の形)にし、
-(`/my-cleanup` の裁定では、保存した収集の結果から、`~/.claude/hooks/issue-inbox --adjudication-items <収集のディレクトリ> [--rec <rec.json>] [--label L]`
-が `items.json` を作る。推奨と根拠は判断なので、項目の id(Issue は `i<番号>`、気づきは `f<短い名前>`)から
-`{rec_option, rec, why, when}` への写しを `--rec` で渡す。渡さない項目は、推奨の印が付かず、`rec` は「未起草」になる。#1421)
+(`/my-cleanup` の裁定では、保存した収集の結果から、`~/.claude/hooks/issue-inbox --adjudication-items <収集のディレクトリ> [--classify <cls.json>] [--rec <rec.json>] [--label L]`
+が `items.json` を作る。推奨と根拠は判断なので、項目の id(Issue は `i<番号>`、気づきは `f<短い名前>`)から、在庫の分類
+`{disposition, automatable?, bundle?, why?, when?}`(`--classify`。処分は `implement`・`drop`・`later`・`other` の閉じた語彙で、
+`implement` は `automatable` が `true` なら `do-agent`、`false` なら `do-me` に写る)か、`{rec_option, rec, why, when}`
+(`--rec`)を渡す。同じ id は `--rec` が勝つ。渡さない項目は、推奨の印が付かず、`rec` は「未起草」になる。#1421)
 `bash reference/verdict-page/build.sh --data <items.json> --out <page.html>` で HTML を組んで、同じ URL に
 再公開する。再公開では `capabilities` を省略し、`db` の過去の裁定を引き継ぐ。`build.sh` は入力を検証してから
 テンプレートに差し込む。保存先の形(`verdicts.schema.json`)を変えるときの決まり(読む側を同じ変更で直す、
