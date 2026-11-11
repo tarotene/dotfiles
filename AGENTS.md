@@ -35,9 +35,10 @@ Linux GUI packages in the desktop module and identity-scoped ones like
 
 Note on `herdr`, `mise` and `spotify-player`: not yet in the pinned stable nixpkgs
 channel at the version we need. They come from one `nixpkgs-unstable` overlay in
-`flake.nix` (ADR-0001 Amendment, #42, #823, #861); `flake.nix` states each entry's
-removal condition (`mise` >= 2026.7.5, `spotify-player` >= 0.25.0) — drop an entry once
-stable catches up. `herdr` also carries a permanent local patch
+`flake.nix` (ADR-0001 Amendment, #42, #823, #861); `flake.nix` declares each entry's
+removal condition as data (`unstableUntil`), and `checks.<system>.unstable-overlay-removal`
+fails once the pinned stable channel catches up — drop the entry in the flake-update PR
+that turns red (ADR-1529). `herdr` also carries a permanent local patch
 (`patches/herdr-worktree-names.patch`, decided in #449). Unlike `nixgl`, this overlay
 does not need `inputs.nixpkgs.follows`: these packages are only ever `exec`'d, never
 `dlopen`'d into another package's process, so a second glibc in their closure is
