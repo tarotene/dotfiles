@@ -737,8 +737,9 @@ correction: session and app scopes nice 0, `nix-daemon` in the packaged `batch`
 profile (nice 19, `sched=idle`, I/O idle).
 
 The system-manager declaration in `system/linux.nix` now uses this same source
-(ADR-1228). It is evaluated separately from `hms`; it has not yet been applied.
-Until migration to system-manager, use the existing installer below.
+(ADR-1228). It is evaluated separately from `hms`. Until a host is moved to
+system-manager (the next section has the procedure), use the existing installer
+below on that host.
 
 Apply (root; a host without `/usr/share/system76-scheduler` skips it):
 
@@ -773,6 +774,114 @@ whole effect; a foreground/background split would need a COSMIC-side caller.
 
 Things this does not settle: `.service` apps autostarted by the session
 (`app-*@autostart.service`) stay at the packaged `session-services` nice 9.
+
+## System layer: applying the system-manager and nix-darwin declarations (ADR-1228)
+
+ADR-1228 declares the system layer in `system/linux.nix` (system-manager,
+`systemConfigs.vega` / `systemConfigs.arcturus`) and `system/darwin.nix`
+(nix-darwin, `darwinConfigurations.altair`). CI only evaluates and builds them;
+applying is a root operation on each machine, kept apart from `hms`. One host
+at a time, run from this repository's checkout on that host (`~/.ghr/...`,
+`git pull --ff-only` first). The commands use `--inputs-from .`, so the tool is
+the revision this flake pins, not a floating `github:` ref. Sources: the pinned
+upstream trees (system-manager `8c7a4b84`: `docs/site/how-to/rollback.md`,
+`docs/site/reference/cli.md`, `nix/modules/etc.nix` `replaceExisting`;
+nix-darwin `d31953cf`: `pkgs/nix-tools/darwin-rebuild.sh` lines 149-150,
+`modules/system/etc.nix` lines 82-90), read 2026-11-11.
+
+### vega and arcturus (system-manager)
+
+What it manages: only `/etc/system76-scheduler/process-scheduler/desktop-priority.kdl`
+(`replaceExisting = true`). Before the first apply, that path is a regular file
+written by `install-packages.sh`. system-manager moves it to
+`desktop-priority.kdl.system-manager-backup` and puts its own link in place;
+`deactivate`, or removing the entry from the declaration, restores the backup.
+
+1. Before: build the configuration without root, and record the current state.
+
+   ```bash
+   nix build .#systemConfigs."$(hostname)" --no-link
+   cmp config/system76-scheduler/desktop-priority.kdl /etc/system76-scheduler/process-scheduler/desktop-priority.kdl && echo same
+   ls -l /etc/system76-scheduler/process-scheduler/
+   ```
+
+2. Apply (asks for the sudo password):
+
+   ```bash
+   nix run --inputs-from . system-manager -- switch --flake ".#$(hostname)" --sudo
+   sudo systemctl try-restart com.system76.Scheduler.service
+   ```
+
+   The restart is the same reason as in the section above: a reload does not
+   re-assign processes that already have an assignment. The file's content is
+   unchanged by the move, so the priorities do not change.
+
+3. Check: the path is now managed, the backup exists, the content still
+   matches the source, and the daemon runs.
+
+   ```bash
+   ls -l /etc/system76-scheduler/process-scheduler/desktop-priority.kdl*
+   cmp config/system76-scheduler/desktop-priority.kdl /etc/system76-scheduler/process-scheduler/desktop-priority.kdl && echo same
+   systemctl is-active com.system76.Scheduler.service
+   ps -eo pid,ni,cls,comm,cgroup | grep -E 'cosmic-session|cosmic-comp|alacritty|nix-daemon'
+   ```
+
+4. Roll back, either to the previous generation or out of system-manager
+   entirely (the second restores the `.system-manager-backup` file):
+
+   ```bash
+   sudo nix-env --profile /nix/var/nix/profiles/system-manager-profiles --rollback
+   nix run --inputs-from . system-manager -- activate --store-path "$(readlink -f /nix/var/nix/profiles/system-manager-profiles)" --sudo
+   # or
+   nix run --inputs-from . system-manager -- deactivate --sudo
+   ```
+
+   The upstream how-to (`docs/site/how-to/rollback.md`) writes `activate --sudo`
+   alone, but in the pinned revision `activate` is a hidden subcommand whose
+   `--store-path` is required (`crates/system-manager/src/main.rs` lines
+   255-264), so the profile's target is passed explicitly. Not yet run on a
+   machine; if it fails, `deactivate` is the fallback.
+
+After the move, do not run the drop-in step of `install-packages.sh` on that
+host: its `sudo install -D …desktop-priority.kdl` would replace the managed
+link with a regular file. The apt part of the script stays in use (ADR-1228:
+apt and the installer remain until the migration is done).
+
+### altair (nix-darwin)
+
+What it manages: Homebrew only. `homebrew.extraConfig` reads the literal
+`packages/declarative/Brewfile`, with `cleanup = "none"`, no auto-update and no
+upgrade, so activation runs `brew bundle` for what is already declared and
+removes nothing. `/etc/periodic.conf.local` (the `/tmp` retention) is not in
+this declaration; `install-packages-darwin.sh` keeps installing it.
+
+1. Before: build without activating.
+
+   ```bash
+   nix build .#darwinConfigurations.altair.system --no-link
+   ```
+
+2. Apply. `darwin-rebuild` refuses `switch`, `activate` and `rollback` unless it
+   runs as root:
+
+   ```bash
+   sudo nix run --inputs-from . nix-darwin#darwin-rebuild -- switch --flake .#altair
+   ```
+
+   If it stops with "Unexpected files in /etc, aborting activation", it lists
+   the files it would overwrite. Check that nothing in them is needed, rename
+   each to `<file>.before-nix-darwin`, and run the command again.
+
+3. Check: `darwin-rebuild --list-generations` shows the new generation, and
+   `brew bundle check --file=packages/declarative/Brewfile` reports that the
+   Brewfile's dependencies are satisfied.
+
+4. Roll back: `sudo darwin-rebuild --rollback` (after the first switch,
+   `darwin-rebuild` is on the PATH).
+
+Record each host's result (the commands' output and the check above) as a line
+in that host's verification ledger (`verify-ledger: <host>`, ADR-1529), not as a
+new Issue.
 
 ## Freeze trace (vega): atop's raw recording
 
