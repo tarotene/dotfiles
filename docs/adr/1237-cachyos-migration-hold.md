@@ -80,3 +80,7 @@ user service として回す。自前の timer で `/proc/pressure/*` を記録�
 - 範囲外: nix 閉包の x86-64-v3 ソースビルドと自前のバイナリキャッシュは、この構想とは別の検討項目で、起票していない。
 - 執行点の訂正: `home/modules/atop-trace.nix` は `home/hosts/vega/atop-trace.nix` に移った(`pipeline-map.toml` の `atop-trace`
   ノードの `entity`)。上の「執行点」の節を直した。
+
+### 執行点
+
+- `docs/operations.md`
