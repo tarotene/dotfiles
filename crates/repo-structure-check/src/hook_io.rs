@@ -50,6 +50,10 @@ pub const ENVELOPE_EXCEPTIONS: &[(&str, &str)] = &[
 /// 標準入力を直接読んでよい bin のソースと、その理由。
 pub const STDIN_EXCEPTIONS: &[(&str, &str)] = &[
     (
+        "crates/browser-settings/src/main.rs",
+        "hook ではない手動の CLI。`login` が、人がログインを済ませて Enter を押すまで待つために、端末から 1 行読む",
+    ),
+    (
         "crates/adr-number/src/main.rs",
         "プロジェクト dir が環境変数で分かるときは標準入力を読まない。最安の早期 exit を壊さないため、遅延して読む",
     ),

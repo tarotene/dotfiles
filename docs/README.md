@@ -156,6 +156,7 @@ What runs automatically, when, and on which stack: see the [pipeline map](pipeli
 - [`agents/agent-tooling-authoring.md`](agents/agent-tooling-authoring.md) — agent-tooling-authoring スキル
 - [`agents/attribution-guard.md`](agents/attribution-guard.md) — attribution-guard — AI 生成テキストに attribution を強制する PreToolUse hook
 - [`agents/browser-login-handoff.md`](agents/browser-login-handoff.md) — browser-login-handoff — ブラウザ未ログイン時のハンドオフ手順を型化した理由
+- [`agents/browser-settings.md`](agents/browser-settings.md) — browser-settings — サービスの設定画面の 1 項目を、読み取り・貼り付け・読み戻しする
 - [`agents/calendar-handshake.md`](agents/calendar-handshake.md) — calendar-handshake — 個人と勤務先のカレンダーの握手に使う印の語彙
 - [`agents/ci-consumers.md`](agents/ci-consumers.md) — ci-consumers — 編集するパスを入力にしている CI の検査を、編集の前に引く
 - [`agents/ci-wait-guard.md`](agents/ci-wait-guard.md) — ci-wait-guard — CI の待ち方を実行前に止め、`pr-checks-wait` へ案内する

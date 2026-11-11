@@ -292,6 +292,9 @@
             pname = "dotfiles-tools";
             version = "0.1.0";
             strictDeps = true;
+            # headless_chrome's dependency auto_generate_cdp (browser-settings, #1420) runs rustfmt in its
+            # build script to format the generated CDP bindings; the sandbox has no rustfmt otherwise.
+            nativeBuildInputs = [ pkgs.rustfmt ];
             # Tests run in CI through `nix develop` (ci.yml's rust job), not in the
             # build sandbox: they read the rest of the repo tree (docs/, config/)
             # and shell out to git and bash.
