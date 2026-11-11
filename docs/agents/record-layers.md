@@ -91,5 +91,17 @@ cargo test -p record-layer
 
 ## 範囲外
 
-他のリポジトリへの宣言ファイルの配布、Git に残った L3 の移行、`crates/model-catalog/catalog.toml`(手書きと GENERATED ブロックの混在)の分割、
-L4 の生成図(`docs/assets/pipeline-map/`)の置き場の決定は、それぞれ別の作業で扱う(ADR の D5・D7)。
+次の 4 件は、それぞれ別の作業で扱う(ADR の D2・D5・D7)。着手するときに 1 件ずつ Issue に切る。しないと決めたものは、その理由を
+Issue に残す(残りの作業の正本はこの節。追跡していた #1357 は、ここへ移して閉じた)。
+
+1. **`crates/model-catalog/catalog.toml` の分割。** 手書きの部分(`# BEGIN GENERATED (model-catalog fetch-aa)` の行より前)と、
+   GENERATED ブロック(`# BEGIN GENERATED` 〜 `# END GENERATED`)が 1 ファイルに混在している。手書きの部分は L1、生成の部分は L4 として、
+   別々のファイルに分ける。分割するまでは、`crates/**` の一部として L1 と宣言している(当面の宣言であって、層を判断したものではない)。
+2. **L4 の生成図(`docs/assets/pipeline-map/**`)の置き場の決定。** 今は Git に残したまま L4 と宣言しており、Write では作れない
+   (`cargo run -p pipeline-map -- render` で作る)。Git の外のどこに置くかを決める。図に依存する検査があるので、置き場を変えるときは、
+   それらも同じ変更で直す。CI の `pipeline-map diagrams are up to date`(`.github/workflows/ci.yml`)が、作り直した図とコミット済みの図の
+   差分を検査している。`cargo test` は、`RUST_EXTRA_INPUTS` 経由でこの図を読む(ADR-872 pipeline-map)。
+3. **他の個人リポジトリへの宣言ファイル(`.config/record-layers.toml`)の配布。** どのリポジトリに、どの層の宣言を置くかは、
+   リポジトリごとに決める。会社・org 共有のリポジトリには置かない。
+4. **Git に残った L3 の移行。** Git が追跡している L3(状態、済んだことの記録、観測の行、台帳の行)を、今ある中身ごと Git の外
+   (Obsidian Vault が第一候補)へ移す。履歴は書き換えない。

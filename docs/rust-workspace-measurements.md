@@ -157,6 +157,27 @@ fat と off で差は出なかった。
 この変更の PR で `Rust workspace` / `Build vega` の package の段を、変更前の
 run(上記)と並べて載せる。darwin(altair)は未計測のまま。
 
+darwin(altair、aarch64)で測るときは、altair の dotfiles の checkout(`hms` が使うもの)を `git pull --ff-only` で
+最新にし、flake の devShell で次を回す。CI の `Build altair` は参考扱いで、秒数の比較には使わない。
+
+```
+nix develop --command bash -c '
+  for lto in true off; do
+    export CARGO_TARGET_DIR=$(mktemp -d) CARGO_PROFILE_RELEASE_LTO=$lto
+    echo "lto=$lto  target=$CARGO_TARGET_DIR"
+    ( time cargo build --release --workspace --locked ) 2>&1 | tail -4
+  done'
+printf '%s' '{"hook_event_name":"PreToolUse","session_id":"s1","tool_name":"Bash","tool_input":{"command":"git status"},"cwd":"/tmp"}' > /tmp/hook-input.json
+nix develop --command bash -c '
+  for t in <lto=true の target> <lto=off の target>; do
+    hyperfine -N --warmup 20 --runs 200 --input /tmp/hook-input.json "$t/release/git-stash-guard"
+  done'
+```
+
+載せる値は、2 つの設定のクリーンビルドの秒数(`real`)と、`git-stash-guard` の起動時間の平均(`Time (mean ± σ)`、
+2 設定ぶん)。測ったら、この節に表として追記し、下の「この結論は x86_64-linux に限る」を更新する(追跡していた #976 は、
+手順をここに移して閉じた。altair の実機での測定は、altair の確認の台帳に置かない任意の作業である)。
+
 ## 判断
 
 どの数値も許容範囲内だった。

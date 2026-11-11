@@ -56,6 +56,27 @@ user service として回す。自前の timer で `/proc/pressure/*` を記録�
 
 ## 執行点
 
-- `home/modules/atop-trace.nix`
+- `home/hosts/vega/atop-trace.nix`
 - `home/hosts/vega.nix`
 - `pipeline-map.toml`
+
+## Amendment(2026-11-11): #249 を閉じ、この ADR を保留の正本にする
+
+#249(CachyOS への移行構想の Issue)は閉じた。保留の現在の合意、再訪の条件①〜③、固まりの判定表は、この ADR が正本である
+(ADR-1529 D1 の置き場 4「保留の裁定・再訪の条件」)。上の「Issue:」行と Consequences の「#249 は open のまま」は、この節で
+置き換える。#249 の本文とコメント(2026-10-26 の分析、2026-10-28 の再検討)は、経緯と出典の記録として読める。
+
+- 残る作業: 条件①の判定は人が行う。atop の記録と `freeze-mark` の印を、PSI の CPU の圧力と突き合わせる作業である。2026-11-11 の
+  時点で、判定の結果は Issue と ADR のどこにも見つからない。固まりが起きて印を付けたら、`docs/operations.md` の「Freeze trace」の
+  手順で該当の区間を読み、結果をこの ADR に追記する。条件のどれかが成立したら、この ADR を改訂して、移行するか見送るかを確定する。
+  移行を採ると決めたら、そのときに新しい Issue を起こす。
+- 未確認のまま残す事項(再訪したときの調査の起点。詳細と出典は #249 の本文):
+  - 会社用 EDR が Arch 系に対応しているか。会社が CachyOS を許容するか。
+  - fcitx5 の daemon を home-manager で持つ構成が、Arch の `fcitx5-qt` と共存できるか。
+  - システム層の apt パッケージに対応する pacman の候補(`base-devel`・`systemd-libs`・`pkgconf`・`arm-none-eabi-gcc`/
+    `arm-none-eabi-newlib`・`gnupg` に含まれる `scdaemon`・`tailscale`・`ufw`)が、ABI と起動の面で使えるか。
+  - bootstrap の CachyOS 対応。今の `bootstrap.sh` は CachyOS を検出すると、何も変えずに止まる。
+  - CI の apt `--dry-run` に相当する、pacman 側の検査。
+- 範囲外: nix 閉包の x86-64-v3 ソースビルドと自前のバイナリキャッシュは、この構想とは別の検討項目で、起票していない。
+- 執行点の訂正: `home/modules/atop-trace.nix` は `home/hosts/vega/atop-trace.nix` に移った(`pipeline-map.toml` の `atop-trace`
+  ノードの `entity`)。上の「執行点」の節を直した。
