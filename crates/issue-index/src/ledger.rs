@@ -6,11 +6,13 @@
 //!
 //! ```text
 //! - [ ] after:#<PR> <machine|human> — <何を確かめるか> — check: `<コマンド>`
+//! - [ ] after:- <machine|human> — <何を確かめるか>
 //! ```
 //!
 //! 着手できるかは、`after:#<PR>` の PR がマージ済みで、その merge commit がこの機体に適用した rev
-//! (`~/.local/state/hms/last-apply.json` の `rev`)の祖先であることで決める。判定は純粋関数で、`gh`・`git` の
-//! 呼び出しは `main.rs` が持つ。
+//! (`~/.local/state/hms/last-apply.json` の `rev`)の祖先であることで決める。待つ PR の無い確認(機器の使い勝手、
+//! 本人の操作だけで済む導入など)は `after:-` と書き、いつでも着手できるものとして扱う。判定は純粋関数で、
+//! `gh`・`git` の呼び出しは `main.rs` が持つ。
 
 /// 台帳の Issue の題の接頭辞。`promotion-detect` の `issue_flow::LEDGER_TITLE_PREFIX` と同じ値。
 pub const LEDGER_TITLE_PREFIX: &str = "verify-ledger:";
@@ -30,8 +32,8 @@ pub enum Kind {
 /// 未了の項目 1 件。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Item {
-    /// `after:#<PR>` の PR 番号。
-    pub pr: u64,
+    /// `after:#<PR>` の PR 番号。`after:-`(待つ PR が無い)なら `None`。
+    pub pr: Option<u64>,
     pub kind: Kind,
     /// 種類のあとの残り(何を確かめるか・check のコマンド)。
     pub rest: String,
@@ -44,7 +46,11 @@ impl Item {
             Kind::Machine => "machine",
             Kind::Human => "human",
         };
-        format!("after:#{} {kind} — {}", self.pr, self.rest)
+        let after = match self.pr {
+            Some(n) => format!("#{n}"),
+            None => "-".to_string(),
+        };
+        format!("after:{after} {kind} — {}", self.rest)
     }
 }
 
@@ -78,7 +84,10 @@ pub fn parse(body: &str) -> Parsed {
 fn parse_item(rest: &str) -> Option<Item> {
     let rest = rest.trim();
     let (after, rest) = rest.split_once(char::is_whitespace)?;
-    let pr: u64 = after.strip_prefix("after:#")?.parse().ok()?;
+    let pr: Option<u64> = match after.strip_prefix("after:")? {
+        "-" => None,
+        n => Some(n.strip_prefix('#')?.parse().ok()?),
+    };
     let rest = rest.trim_start();
     let (kind, rest) = match rest.split_once(char::is_whitespace) {
         Some((k, r)) => (k, r),
@@ -125,6 +134,7 @@ pub enum Readiness {
 }
 
 /// 1 項目の可否。`applied(oid)` は「merge commit がこの機体の適用 rev の祖先か」で、確かめられなければ `None`。
+/// 待つ PR の無い項目(`after:-`)は、[`item_readiness`] がこの関数を呼ばずに「着手できる」にする。
 pub fn readiness(pr: Option<&PrState>, applied: impl Fn(&str) -> Option<bool>) -> Readiness {
     match pr {
         None => Readiness::Unknown,
@@ -134,6 +144,18 @@ pub fn readiness(pr: Option<&PrState>, applied: impl Fn(&str) -> Option<bool>) -
             Some(false) => Readiness::NotApplied,
             None => Readiness::ReadyUnverified,
         },
+    }
+}
+
+/// 項目 1 件の可否。`after:-` は待つものが無いので「着手できる」。`after:#N` は PR の状態(`states`)と適用で決める。
+pub fn item_readiness(
+    item: &Item,
+    states: &std::collections::HashMap<u64, PrState>,
+    applied: impl Fn(&str) -> Option<bool>,
+) -> Readiness {
+    match item.pr {
+        None => Readiness::Ready,
+        Some(n) => readiness(states.get(&n), applied),
     }
 }
 
@@ -161,7 +183,7 @@ pub fn section(number: u64, host: &str, parsed: &Parsed, status: &[Readiness]) -
             .join("\n")
     };
     let numbers = |items: &[&Item]| -> String {
-        let mut prs: Vec<u64> = items.iter().map(|i| i.pr).collect();
+        let mut prs: Vec<u64> = items.iter().filter_map(|i| i.pr).collect();
         prs.sort_unstable();
         prs.dedup();
         prs.iter()
@@ -326,13 +348,13 @@ mod tests {
             p.open,
             vec![
                 Item {
-                    pr: 1404,
+                    pr: Some(1404),
                     kind: Kind::Machine,
                     rest: "pkill -f の deny を読む — check: `pkill-guard --check 'pkill -f x'`"
                         .to_string()
                 },
                 Item {
-                    pr: 1469,
+                    pr: Some(1469),
                     kind: Kind::Human,
                     rest: "Stop の block の表示を見る".to_string()
                 },
@@ -442,6 +464,34 @@ mod tests {
             "{q}"
         );
         assert!(q.contains("p22: pullRequest(number: 22)"), "{q}");
+    }
+
+    #[test]
+    fn after_dash_means_no_pr_to_wait_for() {
+        let p = parse("- [ ] after:- human — カメラの LED が点くのを見る\n- [ ] after:-x machine — 形が違う\n");
+        assert_eq!(
+            p.open,
+            vec![Item {
+                pr: None,
+                kind: Kind::Human,
+                rest: "カメラの LED が点くのを見る".to_string()
+            }]
+        );
+        assert_eq!(p.malformed, vec!["after:-x machine — 形が違う".to_string()]);
+        assert_eq!(
+            p.open[0].line(),
+            "after:- human — カメラの LED が点くのを見る"
+        );
+        let none = std::collections::HashMap::new();
+        assert_eq!(
+            item_readiness(&p.open[0], &none, |_| Some(false)),
+            Readiness::Ready
+        );
+        let s = section(1, "vega", &p, &[Readiness::Ready]).unwrap();
+        assert!(
+            s.contains("着手できる(PR がマージ済みで、この機体に適用済み):\n- after:- human"),
+            "{s}"
+        );
     }
 
     #[test]

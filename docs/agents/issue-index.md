@@ -185,7 +185,8 @@ Issue は、vega・arcturus の分を済ませても altair で止まり(altair 
   を、ほかの問い合わせと並列に呼ぶ。題が `verify-ledger: <host>` に完全に一致するものだけを使う(検索は語に分けて
   当てるので、一致はここで見る)。
 - **項目の形**: `- [ ] after:#<PR> <machine|human> — <何を確かめるか> — check: `<コマンド>``。`- [x]` は済み、
-  形に合わない `- [ ]` の行は「形式外」として件数だけを出す(直す対象)。地の文は数えない。
+  形に合わない `- [ ]` の行は「形式外」として件数だけを出す(直す対象)。地の文は数えない。待つ PR の無い確認
+  (機器の使い勝手、本人の操作だけで済む導入)は `after:-` と書き、いつでも着手できるものとして扱う。
 - **着手の可否**: 項目の PR の状態を 1 回の GraphQL(`p<N>: pullRequest(number: N) { merged mergeCommit { oid } }`)で読む。
   マージ済みなら、merge commit が、hms がこの機体に最後に適用した rev(`$XDG_STATE_HOME/hms/last-apply.json` の
   `rev`)の祖先かを `git merge-base --is-ancestor` で確かめる。祖先なら「着手できる」、祖先でなければ「この機体に
