@@ -178,18 +178,33 @@ PR 作成後に残作業(マージ後の適用・外部サービスでの操作�
    それ以外は項目ごとに後続 Issue を1件起票する**(`handoff` スキル §5
    の「残タスク1件 = 子Issue1件」と同じ発想。実機確認の例外は後述):
 
-   **実機確認は 1 項目 1 Issue にしない(#1506)。** 同じ機体・同じ接続で 1 回の
-   作業で確かめられる実機確認は、その単位の「台帳 Issue」(ベンチ 1 セッション =
-   1 Issue)の本文の close 条件に、箇条書きで足す。
-   1. 台帳を探す: `gh issue list -R <owner/repo> --state open --label handoff:human
-      --assignee @me --json number,title,body` で、同じ機体・同じ接続の確認を束ねた
-      open の Issue があるか読む。
-   2. あれば、新しく起票せず、その Issue の本文の close 条件に項目(手順・完了確認・
-      根拠)を `gh issue edit --body-file` で足す。Issue 本文が正本なので、コメントだけに
-      書かない(`living-description`)。
-   3. 無いときだけ、下の手順で起票し、それを次の確認の台帳にする。
+   **実機確認は 1 項目 1 Issue にしない(#1506、ADR-1529 の置き場 6)。** 同じ機体・同じ接続で
+   1 回の作業で確かめられる実機確認は、その単位の「台帳 Issue」(ベンチ 1 セッション =
+   1 Issue)の本文に、閉じた形の 1 行で足す。機体の台帳は、題を `verify-ledger: <host>`
+   (`<host>` は `~/.config/dotfiles/host` の値)にした常設の Issue で、機体ごとに 1 件だけ持つ。
+   1 行の形は次のとおり(`issue-index` が SessionStart にこの形を読み、その機体で着手できる
+   項目を注入する。`docs/agents/issue-index.md`「確認の台帳」):
+   ```
+   - [ ] after:#<この PR の番号> <machine|human> — <何を確かめるか> — check: `<コマンド>`
+   ```
+   `machine` はコマンドの終了コードと出力で判定できる項目(エージェントがその機体で実行する)、
+   `human` は本人の感覚・操作が要る項目(表示の見た目・LED・音・資格情報の入力・再起動)。
+   `human` の行も、手順と完了確認を行の中か、すぐ下の字下げした行に書く。
+   1. 台帳を探す: `gh issue list -R <owner/repo> --state open --search "verify-ledger in:title"
+      --json number,title,body` で、題が `verify-ledger: <host>` に完全に一致する Issue を読む。
+      ベンチや接続の単位の台帳(機体でない単位)も、同じ接頭辞と形で持つ。
+   2. あれば、新しく起票せず、その Issue の本文に行を `gh issue edit --body-file` で足す。
+      Issue 本文が正本なので、コメントだけに書かない(`living-description`)。3 ホストで確かめる
+      項目は、3 つの台帳にそれぞれ 1 行ずつ足す(ホストをまとめた 1 件にしない。#682・#990 は
+      altair の分だけが残って、40 日 open のままだった)。
+   3. 無いときだけ、題 `verify-ledger: <host>`・ラベル `handoff:human` で起票し、それを
+      その機体の台帳にする。
    4. 実装の Issue の close 条件には、実機確認を入れない(実装は PR のマージで閉じる。
       マージ後に実機確認だけが残る Issue を作らない)。
+   5. 確かめたら、その行を `- [x]` にして、行の末尾に結果(終了コード・出力の要点・日付・機体)を
+      書く。行の削除はしない(済んだ記録として残す)。「変化なし」のコメントは書かない。
+   6. build の検査(`home.checks` の canary など)で確かめられる項目は、台帳に積まず、検査の
+      fixture を足す(機体ごとの確認が要らなくなる)。
    `## 要確認` のポインタは、これまでどおり `- #N — <一言>` だけで、`pr-followup-guard`
    の検査は変わらない。実例は `cases.md`。
 

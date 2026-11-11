@@ -26,8 +26,14 @@ case "$1" in
   pr)
     emit ISSUE_INDEX_STUB_PR_FILE ISSUE_INDEX_STUB_PR_RC ISSUE_INDEX_STUB_PR_ERR '[]'
     ;;
+  issue)
+    emit ISSUE_INDEX_STUB_LEDGER_FILE ISSUE_INDEX_STUB_LEDGER_RC ISSUE_INDEX_STUB_LEDGER_ERR '[]'
+    ;;
   api)
     case "$*" in
+      *pullRequest*)
+        emit ISSUE_INDEX_STUB_PRS_FILE ISSUE_INDEX_STUB_PRS_RC ISSUE_INDEX_STUB_PRS_ERR '{}'
+        ;;
       *graphql*)
         emit ISSUE_INDEX_STUB_WHO_FILE ISSUE_INDEX_STUB_WHO_RC ISSUE_INDEX_STUB_WHO_ERR 'tester'
         ;;
@@ -820,4 +826,138 @@ fn project_from_cwd() {
     let o = run_with_stdin(cmd, &stdin);
     assert_eq!(o.code, 0);
     snap("cwd-scp-remote", &o);
+}
+
+/// 確認の台帳(ADR-1529 の置き場 6): この機体の台帳から、PR がマージ済みで、この機体に適用済みの項目を
+/// 「着手できる」として出す。マージ済みでも適用 rev の祖先でない項目は「未適用」、未マージの PR は「未マージ」の
+/// 待ちに回す。機体の名前と適用の記録は、隔離した XDG の下に置く(実機の marker を読まない)。
+#[test]
+fn verify_ledger_section_follows_merge_and_application() {
+    let fx = Fx::new();
+    let repo = fx.repo("ledger-repo", Some("https://github.com/o/r.git"));
+    git(
+        &repo,
+        &[
+            "-c",
+            "user.name=t",
+            "-c",
+            "user.email=t@example.com",
+            "commit",
+            "-q",
+            "--allow-empty",
+            "-m",
+            "a",
+        ],
+    );
+    let applied = rev_parse(&repo, "HEAD");
+    git(
+        &repo,
+        &[
+            "-c",
+            "user.name=t",
+            "-c",
+            "user.email=t@example.com",
+            "commit",
+            "-q",
+            "--allow-empty",
+            "-m",
+            "b",
+        ],
+    );
+    let later = rev_parse(&repo, "HEAD");
+
+    let config = fx.p("xdg-config");
+    std::fs::create_dir_all(config.join("dotfiles")).unwrap();
+    std::fs::write(config.join("dotfiles/host"), "vega\n").unwrap();
+    let state = fx.p("xdg-state");
+    std::fs::create_dir_all(state.join("hms")).unwrap();
+    std::fs::write(
+        state.join("hms/last-apply.json"),
+        format!(
+            "{{\n  \"mode\": \"default\",\n  \"rev\": \"{applied}\",\n  \"generation\": \"/nix/store/x\",\n  \"applied_at\": 1\n}}\n"
+        ),
+    )
+    .unwrap();
+
+    let body = "\
+- [ ] after:#10 machine — 適用済みの確認 — check: `true`
+- [ ] after:#11 machine — 未適用の確認 — check: `true`
+- [ ] after:#12 human — 未マージの確認
+- [x] after:#9 machine — 済んだ確認
+";
+    let ledgers = fx.json(
+        "ledgers.json",
+        &json!([
+            {"number": 600, "title": "verify-ledger: altair", "body": "- [ ] after:#10 machine — 別の機体 — check: `true`"},
+            {"number": 601, "title": "verify-ledger: vega", "body": body},
+        ]),
+    );
+    let prs = fx.json(
+        "prs.json",
+        &json!({"data": {"repository": {
+            "p10": {"merged": true, "mergeCommit": {"oid": applied}},
+            "p11": {"merged": true, "mergeCommit": {"oid": later}},
+            "p12": {"merged": false, "mergeCommit": null},
+        }}}),
+    );
+    let mine = fx.json(
+        "mine.json",
+        &json!({"total_count":1,"incomplete_results":false,
+            "items":[{"number":601,"title":"verify-ledger: vega","labels":[],"user":{"login":"tester"}}]}),
+    );
+
+    let o = fx.run_stub(
+        &repo,
+        &[
+            (MINE, &mine),
+            ("ISSUE_INDEX_STUB_LEDGER_FILE", &ledgers),
+            ("ISSUE_INDEX_STUB_PRS_FILE", &prs),
+            ("XDG_CONFIG_HOME", &config),
+            ("XDG_STATE_HOME", &state),
+        ],
+    );
+    assert_eq!(o.code, 0);
+    let ctx = o.ctx();
+    assert!(
+        ctx.contains("確認の台帳 #601(verify-ledger: vega。この機体のマージ後の実機確認): 未了 3 項目、済み 1 項目。"),
+        "{ctx}"
+    );
+    assert!(
+        ctx.contains("着手できる(PR がマージ済みで、この機体に適用済み):\n- after:#10 machine — 適用済みの確認"),
+        "{ctx}"
+    );
+    assert!(ctx.contains("この機体に未適用 1 項目(#11。"), "{ctx}");
+    assert!(ctx.contains("PR が未マージ 1 項目(#12)"), "{ctx}");
+    assert!(
+        !ctx.contains("別の機体"),
+        "ほかの機体の台帳は出さない: {ctx}"
+    );
+
+    // 機体の marker が無ければ、台帳の節を出さない。
+    let empty = fx.p("xdg-empty");
+    std::fs::create_dir_all(&empty).unwrap();
+    let o = fx.run_stub(
+        &repo,
+        &[
+            (MINE, &mine),
+            ("ISSUE_INDEX_STUB_LEDGER_FILE", &ledgers),
+            ("ISSUE_INDEX_STUB_PRS_FILE", &prs),
+            ("XDG_CONFIG_HOME", &empty),
+            ("XDG_STATE_HOME", &state),
+        ],
+    );
+    assert!(!o.ctx().contains("確認の台帳"), "{}", o.ctx());
+}
+
+fn rev_parse(dir: &Path, rev: &str) -> String {
+    let o = Command::new("git")
+        .env("GIT_CONFIG_GLOBAL", gitconfig())
+        .env("GIT_CONFIG_NOSYSTEM", "1")
+        .args(["-c", "user.name=t", "-c", "user.email=t@example.com"])
+        .arg("-C")
+        .arg(dir)
+        .args(["rev-parse", rev])
+        .output()
+        .unwrap();
+    String::from_utf8(o.stdout).unwrap().trim().to_string()
 }
