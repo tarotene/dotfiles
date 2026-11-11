@@ -323,6 +323,10 @@ stack 全体が 1 つの Issue に対応する場合も、複数の独立 Issue 
 stack に積まれる場合も、この書き分けは変わらない — PR の依存関係と
 Issue の依存関係は別問題である。
 
+段ごとに Issue を立てない(ADR-0000)。対応する Issue が無い段は `No-Issue:` で出し、
+`Closes` を書くためだけに段の Issue を起票しない。段は stack の PR と計画が持つ。
+セッションの後に残る段だけを、1 件の Issue にまとめる(`tracking-issue` §1)。
+
 **`Closes #N` が実際に Issue を閉じるのは、merge 時に走る
 `close-linked-issues.yml` のおかげである**(#609)。GitHub 自身の closing
 keyword は、default branch を向いた PR でしか働かない。stack の 2 段目以降

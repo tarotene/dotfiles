@@ -1822,6 +1822,7 @@ name = "promotion-detect"
 version = "0.1.0"
 dependencies = [
  "agent-session",
+ "civil-time",
  "command-inspection",
  "due-remind",
  "filetime",

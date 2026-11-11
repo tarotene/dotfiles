@@ -14,7 +14,10 @@
 //! - 降格: gate の skip ファイルが [`SKIP_STALE_DAYS`] 日以上有効なまま、
 //!   または gate-events.jsonl の skip 回数が [`DEMOTION_SKIP_THRESHOLD`]
 //!   件以上 → 見直しを検討。
+//!
+//! ほかに、Issue の流量(置き場の順から外れた起票と、open の件数)を [`issue_flow`] が数える(ADR-0000)。
 
+pub mod issue_flow;
 pub mod ledger_heartbeat;
 
 use std::collections::{HashMap, HashSet};

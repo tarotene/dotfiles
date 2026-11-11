@@ -682,3 +682,91 @@ fn a_checkout_without_a_declaration_is_not_read() {
     let stdout = run_with_ghr(&w);
     assert!(!stdout.contains("記録の層"), "{stdout}");
 }
+
+/// Issue の流量(ADR-0000): 直近の起票と open の全件を別々に問い合わせ、PR の影と台帳の外の実機確認を候補にする。
+/// 偽の `gh` は、`--search created:>=…` を含む呼び出しに直近の起票を、`--state open` に open の全件を、
+/// feedback の問い合わせに空の一覧を返す。呼び出しの引数はログに残す。
+#[test]
+fn issue_flow_reports_shadows_and_device_checks_outside_the_ledger() {
+    let tmp = tempfile::tempdir().unwrap();
+    let now: i64 = 1_800_000_000;
+    let iso = |secs: i64| civil_time::utc_timestamp(secs as u64);
+    let shadow = |n: u64| {
+        serde_json::json!({
+            "number": n, "title": "fix: 何か", "createdAt": iso(now - 86_400),
+            "closedAt": iso(now - 86_400 + 600), "comments": [],
+            "closedByPullRequestsReferences": [{"number": n + 1}], "labels": [],
+            "author": {"login": "tarotene"},
+        })
+    };
+    let recent = serde_json::json!([
+        shadow(101),
+        shadow(103),
+        {
+            "number": 105, "title": "human: 実機で確かめる", "createdAt": iso(now - 3_600),
+            "closedAt": null, "comments": [], "closedByPullRequestsReferences": [],
+            "labels": [{"name": "handoff:human"}], "author": {"login": "tarotene"},
+        },
+        {
+            "number": 107, "title": "verify-ledger: vega", "createdAt": iso(now - 3_600),
+            "closedAt": null, "comments": [], "closedByPullRequestsReferences": [],
+            "labels": [{"name": "handoff:human"}], "author": {"login": "tarotene"},
+        },
+    ])
+    .to_string();
+    let open = serde_json::json!([
+        {"number": 105, "title": "human: 実機で確かめる", "createdAt": iso(now - 3_600), "author": {"login": "tarotene"}},
+    ])
+    .to_string();
+    let gh_log = tmp.path().join("gh.log");
+    write_exec(
+        &tmp.path().join("gh"),
+        &format!(
+            "#!/bin/sh\necho \"$*\" >> '{}'\ncase \"$*\" in\n  *'created:>='*) cat <<'EOF'\n{recent}\nEOF\n  ;;\n  *'--state open'*) cat <<'EOF'\n{open}\nEOF\n  ;;\n  *'issue list'*) echo '[]' ;;\n  *) exit 1 ;;\nesac\n",
+            gh_log.display()
+        ),
+    );
+
+    let claude_dir = tmp.path().join("claude");
+    fs::create_dir_all(&claude_dir).unwrap();
+    let state_dir = tmp.path().join("state");
+    fs::create_dir_all(&state_dir).unwrap();
+    let wrapup_bin = tmp.path().join("issue-inbox");
+    write_fake_wrapup(&wrapup_bin, &tmp.path().join("wrapup.log"));
+
+    let out = run(
+        &[
+            ("PROMOTION_DETECT_GH_BIN", &tmp.path().join("gh")),
+            ("PROMOTION_DETECT_CLAUDE_DIR", &claude_dir),
+            ("PROMOTION_DETECT_STATE_DIR", &state_dir),
+            ("PROMOTION_DETECT_INBOX_BIN", &wrapup_bin),
+            (
+                "PROMOTION_DETECT_INBOX_PATH",
+                &tmp.path().join("inbox.jsonl"),
+            ),
+        ],
+        &[("PROMOTION_DETECT_NOW", &now.to_string())],
+        true,
+    );
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(stdout.contains("PR で 1 日以内に閉じた"), "{stdout}");
+    assert!(stdout.contains("#101, #103"), "{stdout}");
+    assert!(
+        stdout.contains("確認の台帳の外に起票されました"),
+        "{stdout}"
+    );
+    assert!(stdout.contains("#105"), "{stdout}");
+    // 台帳そのもの(#107)は、台帳の外の実機確認に数えない。
+    assert!(!stdout.contains("#107"), "{stdout}");
+    // open は 1 件で、上限を超えていない。
+    assert!(!stdout.contains("件を超えています"), "{stdout}");
+
+    // 直近の起票は、7 日前の UTC の日付から問い合わせる。
+    let calls = fs::read_to_string(&gh_log).unwrap();
+    let since = format!(
+        "created:>={}",
+        civil_time::utc_date((now - 7 * 86_400) as u64)
+    );
+    assert!(calls.contains(&since), "{calls}");
+    assert!(calls.contains("--state open"), "{calls}");
+}
