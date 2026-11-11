@@ -120,40 +120,73 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - name: ShellCheck surviving scripts
-        uses: ludeeus/action-shellcheck@00cae500b08a931fb5698e11e79bfbd38e612a38 # 2.0.0
-        with:
-          # Scans every remaining shell script (bootstrap.sh + scripts/*.sh +
-          # tests/*.sh). The procedural symlink/dev-tool/keybase installers were
-          # removed in Phase 4 (#218); scripts/ now mixes home-manager-deployed
-          # user-environment tools with true escape-hatch/diagnostic scripts.
-          scandir: '.'
-          # config/ holds zsh modules and the fcitx5 profile, which shellcheck
-          # cannot parse (SC1071). zsh syntax is validated by the step below.
-          ignore_paths: config
-          severity: error
-        env:
-          SHELLCHECK_OPTS: -e SC1091
-
-      # config/ is excluded above because it holds zsh modules and the fcitx5
-      # profile, which shellcheck cannot parse (SC1071). config/git/hooks/* is
-      # genuine bash (the core.hooksPath pre-push / pre-commit chain), so it
-      # gets its own pass with the exclusion lifted. (The Claude Code, Codex and
-      # Copilot hooks are Rust, crates/*, and run as `cargo test --workspace` in
-      # the `rust` job below.)
-      - name: ShellCheck git hooks
-        uses: ludeeus/action-shellcheck@00cae500b08a931fb5698e11e79bfbd38e612a38 # 2.0.0
-        with:
-          scandir: './config/git/hooks'
-          severity: error
-        env:
-          SHELLCHECK_OPTS: -e SC1091
-
-      - name: Install zsh for syntax validation
+      # shellcheck comes from the Ubuntu archive (apt), not from a GitHub release
+      # asset: ludeeus/action-shellcheck downloaded the `stable` tarball from
+      # github.com on every step and had no retry, so a GitHub release-download
+      # outage failed this job (2026-11-08, `This does not look like a tar
+      # archive`; #1395). zsh is installed in the same step for the syntax check
+      # below.
+      - name: Install shellcheck and zsh
         run: |
           set -euo pipefail
           sudo apt-get update
-          sudo apt-get install -y zsh
+          sudo apt-get install -y shellcheck zsh
+          shellcheck --version
+
+      # The file selection reproduces ludeeus/action-shellcheck 2.0.0 exactly
+      # (its "Run statuscode=0" step): a fixed list of shell file names, plus
+      # extension-less executables whose first line matches its shebang regex,
+      # with its default excludes (.git, *.go, mvnw) and, for the first pass,
+      # `ignore_paths: config` (any directory named config, at any depth).
+      # Scans every remaining shell script (bootstrap.sh + scripts/*.sh +
+      # tests/*.sh). The procedural symlink/dev-tool/keybase installers were
+      # removed in Phase 4 (#218); scripts/ now mixes home-manager-deployed
+      # user-environment tools with true escape-hatch/diagnostic scripts.
+      # config/ holds zsh modules and the fcitx5 profile, which shellcheck
+      # cannot parse (SC1071); zsh syntax is validated by a step below.
+      # config/git/hooks/* is genuine bash (the core.hooksPath pre-push /
+      # pre-commit chain), so it gets its own pass with the exclusion lifted.
+      # (The Claude Code, Codex and Copilot hooks are Rust, crates/*, and run as
+      # `cargo test --workspace` in the `rust` job below.)
+      - name: ShellCheck surviving scripts and git hooks
+        env:
+          SHELLCHECK_OPTS: -e SC1091
+        run: |
+          set -euo pipefail
+          set -f
+          scan() {
+            local dir=$1
+            shift
+            local ex=('!' -path '*./.git/*' '!' -path '*.go' '!' -path '*/mvnw' "$@")
+            find "$dir" "${ex[@]}" -type f '(' \
+              -name '*.bash' -o -name '.bashrc' -o -name 'bashrc' -o -name '.bash_aliases' \
+              -o -name '.bash_completion' -o -name '.bash_login' -o -name '.bash_logout' \
+              -o -name '.bash_profile' -o -name 'bash_profile' -o -name '*.ksh' -o -name 'suid_profile' \
+              -o -name '*.zsh' -o -name '.zlogin' -o -name 'zlogin' -o -name '.zlogout' -o -name 'zlogout' \
+              -o -name '.zprofile' -o -name 'zprofile' -o -name '.zsenv' -o -name 'zsenv' \
+              -o -name '.zshrc' -o -name 'zshrc' -o -name '*.sh' -o -path '*/.profile' -o -path '*/profile' \
+              -o -name '*.shlib' ')' -print0
+            find "$dir" "${ex[@]}" -type f '!' -name '*.*' -perm /111 -print0 |
+              while IFS= read -r -d '' f; do
+                if head -n1 "$f" | grep -Eqs '^#! */[^ ]*/(env *)?[abk]*sh'; then
+                  printf '%s\0' "$f"
+                fi
+              done
+          }
+          check() {
+            local status=0 n=0 f
+            while IFS= read -r -d '' f; do
+              n=$((n + 1))
+              shellcheck --severity=error "$f" || status=1
+            done
+            echo "checked $n file(s)"
+            [ "$n" -gt 0 ] || { echo "::error::no shell files found"; return 1; }
+            return "$status"
+          }
+          status=0
+          scan . '!' -path '*./config/*' '!' -path '*/config/*' '!' -path 'config' | check || status=1
+          scan ./config/git/hooks | check || status=1
+          exit "$status"
 
       - name: Zsh module syntax check
         run: |
