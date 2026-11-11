@@ -1,0 +1,3 @@
+bin.name = "kiriban"
+args = ["request-allowed", "--number", "1000", "--getter", "tarotene", "--owner", "tarotene"]
+status.code = 0

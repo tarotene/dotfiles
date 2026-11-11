@@ -83,6 +83,45 @@ pub fn opens_request(classes: &[Class]) -> bool {
         .any(|c| matches!(c, Class::Grand | Class::Repdigit))
 }
 
+/// 踏んだのが管理人(リポジトリの owner)本人か。GitHub のログイン名は大文字と小文字を区別しない。
+pub fn is_owner(getter: &str, owner: &str) -> bool {
+    getter.eq_ignore_ascii_case(owner)
+}
+
+/// キリリク受付を開くか: 大キリ番かゾロ目で、踏んだのが管理人本人でない。本人が踏んだ受付は、お題を出す人が
+/// いないまま期限まで open に残るだけなので開かない(ADR-1529 の段5。dotfiles の #999・#1000・#1111 の受付は、
+/// どれもお題が来なかった)。bot が踏んだときは、従来どおり管理人預かりで開く。
+pub fn request_allowed(classes: &[Class], getter: &str, owner: &str) -> bool {
+    opens_request(classes) && !is_owner(getter, owner)
+}
+
+/// 受付期限を過ぎたか(期限の翌日から過ぎたとみなす)。どちらかが `YYYY-MM-DD` の形でなければ `false`
+/// (読めない期限で閉じない)。同じ形の日付は、文字列の順が日付の順と一致する。
+pub fn is_expired(expires: &str, today: &str) -> bool {
+    is_date_shape(expires) && is_date_shape(today) && today > expires
+}
+
+/// 期限切れの受付を閉じるときのコメント。
+pub fn render_expire_comment(expires: &str) -> String {
+    let mut s = String::new();
+    let _ = writeln!(
+        s,
+        "受付期限({expires})を過ぎたので、キリリクの受付を締め切ります。"
+    );
+    let _ = writeln!(
+        s,
+        "お題をお持ちの方は、この Issue を開き直して書き込んでください。"
+    );
+    s.push('\n');
+    let _ = writeln!(s, "―― 管理人より");
+    s.push('\n');
+    let _ = writeln!(
+        s,
+        "<sub>kiriban workflow による自動の締め切りです({DOCS_URL})。</sub>"
+    );
+    s
+}
+
 /// 踏んだのが bot か(`user.type == "Bot"` か、ログイン名の末尾が `[bot]`)。
 pub fn is_bot(login: &str, user_type: &str) -> bool {
     user_type == "Bot" || login.ends_with("[bot]")
@@ -253,6 +292,12 @@ pub fn render_comment(ctx: &Ctx, classes: &[Class], request: Option<&Request>) -
                 ctx.owner, q.number
             );
             let _ = writeln!(s, "(有効期限: {})", q.expires);
+        }
+        (false, None) if opens_request(classes) && is_owner(ctx.getter, ctx.owner) => {
+            let _ = writeln!(
+                s,
+                "踏んだのは管理人本人なので、キリリクの受付は開きません(自分で自分にお題は出せません)。"
+            );
         }
         (false, None) => {
             let _ = writeln!(
@@ -536,5 +581,61 @@ mod tests {
         assert!(!is_date_shape("2026-1-24"));
         assert!(!is_date_shape("20261124"));
         assert!(!is_date_shape("2026-11-2x"));
+    }
+
+    #[test]
+    fn request_is_not_opened_when_the_owner_gets_it() {
+        let c = classify(1000);
+        assert!(!request_allowed(&c, "tarotene", "tarotene"));
+        assert!(
+            !request_allowed(&c, "TaroTene", "tarotene"),
+            "login は大文字と小文字を区別しない"
+        );
+        assert!(request_allowed(&c, "someone", "tarotene"));
+        assert!(
+            request_allowed(&c, "renovate[bot]", "tarotene"),
+            "bot は従来どおり管理人預かりで開く"
+        );
+        assert!(
+            !request_allowed(&classify(1100), "someone", "tarotene"),
+            "キリ番(100 の倍数)は開かない"
+        );
+    }
+
+    #[test]
+    fn owner_comment_without_request_says_why() {
+        let s = render_comment(&ctx(1111, "tarotene", false), &classify(1111), None).unwrap();
+        assert!(
+            s.contains("踏んだのは管理人本人なので、キリリクの受付は開きません"),
+            "{s}"
+        );
+        assert!(!s.contains("記念に一言カキコ"), "{s}");
+        // 受付の無い番号(100 の倍数)では、本人でも従来の文面。
+        let s = render_comment(&ctx(1100, "tarotene", false), &classify(1100), None).unwrap();
+        assert!(s.contains("記念に一言カキコ"), "{s}");
+        // 本人でない人は、従来どおり。
+        let s = render_comment(&ctx(1111, "someone", false), &classify(1111), None).unwrap();
+        assert!(s.contains("記念に一言カキコ"), "{s}");
+    }
+
+    #[test]
+    fn expiry_starts_the_day_after_the_deadline() {
+        assert!(!is_expired("2026-11-24", "2026-11-23"));
+        assert!(!is_expired("2026-11-24", "2026-11-24"));
+        assert!(is_expired("2026-11-24", "2026-11-25"));
+        assert!(is_expired("2026-11-24", "2027-01-01"));
+        assert!(
+            !is_expired("不明", "2027-01-01"),
+            "読めない期限では閉じない"
+        );
+        assert!(!is_expired("2026-11-24", ""));
+    }
+
+    #[test]
+    fn expire_comment_names_the_deadline_and_has_no_mention() {
+        let s = render_expire_comment("2026-11-24");
+        assert!(s.contains("受付期限(2026-11-24)を過ぎた"), "{s}");
+        assert!(s.contains("開き直して"), "{s}");
+        assert!(!s.contains('@'), "{s}");
     }
 }

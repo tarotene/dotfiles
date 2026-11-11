@@ -13,10 +13,19 @@ description: >-
   冪等: 祝福コメントとキリリク Issue は本文の marker で既存を探し、あれば作らない
   (workflow_dispatch での再実行で増えない)。
 
+  mode: expire では、受付期限を過ぎた open のキリリク受付 Issue に締め切りのコメントを
+  書いて閉じる(定期の実行から呼ぶ。ADR-1529 の段5)。踏んだのが owner 本人のときは、
+  受付 Issue を開かない(判定は crates/kiriban の request_allowed)。
+
 inputs:
   number:
-    description: 判定する Issue / PR の番号
-    required: true
+    description: 判定する Issue / PR の番号(mode が celebrate のとき必須)
+    required: false
+    default: ''
+  mode:
+    description: celebrate(番号を祝う)か expire(期限切れの受付を閉じる)
+    required: false
+    default: celebrate
 
 runs:
   using: composite
@@ -42,13 +51,18 @@ runs:
         GH_REPO: ${{ github.repository }}
         OWNER: ${{ github.repository_owner }}
         NUMBER: ${{ inputs.number }}
+        MODE: ${{ inputs.mode }}
       run: |
         set -euo pipefail
         if ! command -v cargo > /dev/null 2>&1; then
           echo "::error::cargo が見つかりません。kiriban(crates/kiriban)は Rust ツールチェーンを必要とします" >&2
           exit 1
         fi
-        if ! [[ "$NUMBER" =~ ^[1-9][0-9]*$ ]]; then
+        if [[ "$MODE" != celebrate && "$MODE" != expire ]]; then
+          echo "::error::mode は celebrate か expire にしてください: $MODE" >&2
+          exit 1
+        fi
+        if [[ "$MODE" == celebrate ]] && ! [[ "$NUMBER" =~ ^[1-9][0-9]*$ ]]; then
           echo "::error::number は正の整数にしてください: $NUMBER" >&2
           exit 1
         fi
@@ -59,6 +73,28 @@ runs:
         kiriban() { "$KIRIBAN_BIN" "$@"; }
         summary="${GITHUB_STEP_SUMMARY:-/dev/null}"
         tmp="$(mktemp -d)"
+
+        # 受付期限を過ぎた open のキリリク受付 Issue に、締め切りのコメントを書いて閉じる。
+        # 期限は本文の表の「| 受付期限 | YYYY-MM-DD |」から読む。読めない受付は閉じない。
+        if [[ "$MODE" == expire ]]; then
+          today="$(date -u +%F)"
+          gh issue list --label kiririku --state open --limit 1000 --json number,body \
+            --jq '.[] | [.number, ((.body // "") | (capture("\\| 受付期限 \\| (?<d>[0-9-]+) \\|").d)? // "")] | @tsv' \
+            > "$tmp/open.tsv"
+          closed=0
+          while IFS=$'\t' read -r num expires; do
+            [[ -n "$num" && -n "$expires" ]] || continue
+            if kiriban expired --expires "$expires" --today "$today"; then
+              kiriban expire-comment --expires "$expires" > "$tmp/expire.md"
+              gh issue comment "$num" --body-file "$tmp/expire.md" > /dev/null
+              gh issue close "$num" --reason "not planned" > /dev/null
+              echo "- #$num: 受付期限 $expires を過ぎたので閉じた" >> "$summary"
+              closed=$((closed + 1))
+            fi
+          done < "$tmp/open.tsv"
+          echo "期限切れのキリリク受付を ${closed} 件閉じました(今日 $today、UTC)"
+          exit 0
+        fi
 
         # n を判定して祝う。allow_request=true のときだけキリリク受付 Issue を開く。
         # 新しく開いたキリリク Issue の番号を REQUEST_CREATED に入れる(無ければ空)。
@@ -102,7 +138,8 @@ runs:
 
           # キリリク受付 Issue(大キリ番とゾロ目だけ)。
           local request_args=() request_num="" expires=""
-          if [[ "$allow_request" == true ]] && grep -qx 'request=true' <<<"$verdict"; then
+          if [[ "$allow_request" == true ]] \
+            && kiriban request-allowed --number "$n" --getter "$getter" --owner "$OWNER" | grep -qx 'request=true'; then
             local marker="<!-- kiriban-request:$n -->"
             request_num="$(gh issue list --label kiririku --state all --limit 1000 \
               --json number,body \

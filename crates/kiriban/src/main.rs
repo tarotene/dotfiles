@@ -8,17 +8,22 @@
 //!                        --owner OWNER --repo OWNER/REPO [--request-issue M --expires DATE]
 //!   kiriban request-title --number N
 //!   kiriban request-body  --number N --kind … --getter … --getter-type … --owner … --repo … --expires DATE
+//!   kiriban request-allowed --number N --getter LOGIN --owner OWNER   request=true|false(本人が踏んだら false)
+//!   kiriban expired --expires DATE --today DATE   期限を過ぎていれば終了コード 0、過ぎていなければ 1
+//!   kiriban expire-comment --expires DATE         期限切れの受付を閉じるときのコメント
 //!
-//! 終了コード: 0 = 成功, 1 = 指定の番号がキリ番でない(comment / request-*), 2 = 使い方の誤り。
+//! 終了コード: 0 = 成功, 1 = 指定の番号がキリ番でない(comment / request-*)・期限を過ぎていない(expired),
+//! 2 = 使い方の誤り。
 
 use kiriban::{
-    classify, is_bot, is_date_shape, is_safe_name, opens_request, render_comment,
-    render_request_body, request_title, Class, Ctx, Kind, Request, LABELS,
+    classify, is_bot, is_date_shape, is_expired, is_safe_name, opens_request, render_comment,
+    render_expire_comment, render_request_body, request_allowed, request_title, Class, Ctx, Kind,
+    Request, LABELS,
 };
 use std::collections::HashMap;
 use std::process::ExitCode;
 
-const USAGE: &str = "usage: kiriban <classify N | labels | comment … | request-title --number N | request-body …>\n";
+const USAGE: &str = "usage: kiriban <classify N | labels | comment … | request-title --number N | request-body … | request-allowed … | expired … | expire-comment …>\n";
 
 fn usage_error(msg: &str) -> ExitCode {
     eprintln!("kiriban: {msg}");
@@ -200,6 +205,48 @@ fn main() -> ExitCode {
                 }
                 None => ExitCode::from(1),
             }
+        }
+        "request-allowed" => {
+            let o = match parse_opts(rest, &["number", "getter", "owner"]) {
+                Ok(o) => o,
+                Err(e) => return usage_error(&e),
+            };
+            let Some(n) = o.get("number").and_then(|s| parse_number(s)) else {
+                return usage_error("--number は正の整数");
+            };
+            let (Some(getter), Some(owner)) = (o.get("getter"), o.get("owner")) else {
+                return usage_error("--getter と --owner が必要です");
+            };
+            println!("request={}", request_allowed(&classify(n), getter, owner));
+            ExitCode::SUCCESS
+        }
+        "expired" => {
+            let o = match parse_opts(rest, &["expires", "today"]) {
+                Ok(o) => o,
+                Err(e) => return usage_error(&e),
+            };
+            let (Some(expires), Some(today)) = (o.get("expires"), o.get("today")) else {
+                return usage_error("--expires と --today が必要です");
+            };
+            if !is_date_shape(today) {
+                return usage_error("--today は YYYY-MM-DD");
+            }
+            if is_expired(expires, today) {
+                ExitCode::SUCCESS
+            } else {
+                ExitCode::from(1)
+            }
+        }
+        "expire-comment" => {
+            let o = match parse_opts(rest, &["expires"]) {
+                Ok(o) => o,
+                Err(e) => return usage_error(&e),
+            };
+            let Some(expires) = o.get("expires").filter(|d| is_date_shape(d)) else {
+                return usage_error("--expires は YYYY-MM-DD");
+            };
+            print!("{}", render_expire_comment(expires));
+            ExitCode::SUCCESS
         }
         other => usage_error(&format!("未知のサブコマンド: {other}")),
     }
