@@ -313,6 +313,10 @@ Preserve the compatibility contracts and removal conditions in the migration doc
   `cargo run -p docs-index -- render`; `cargo test --workspace` fails on a stale
   `docs/README.md` index (`docs/agents/docs-index.md`).
 - `nix flake check` — evaluates every host's activation package.
+- `nix build .#checks.x86_64-linux.dotfiles-tools-doc --no-link` — the API-docs condition CI's
+  `docs-rust` uses (`cargo doc --no-deps --workspace` with `RUSTDOCFLAGS=-D warnings`). A local
+  `cargo doc --document-private-items` is a different condition and does not reproduce an
+  `unresolved link` failure.
 - `nix build .#homeConfigurations.<host>.activationPackage --no-link` — build a host.
 - `hms` — canonical apply (pushed main); `hms .` applies the current
   checkout/worktree for pre-push verification (wraps switch + daemon-reload +
