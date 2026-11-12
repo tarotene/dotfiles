@@ -64,4 +64,22 @@ fn gate_follows_config_records_and_escape_hatch() {
     })
     .to_string();
     assert!(is_deny(gate::hook(Agent::Claude, &mcp)));
+
+    // 7. ja-polish が動けない間(直近 5 件の記録がすべて素通し)は、通していない段落でも拒否しない。
+    //    往復を求めても、素通しが増えるだけだからである(API キーが無い機体の症状)。
+    let entries: Vec<records::Entry> = (0..records::UNAVAILABLE_RUN)
+        .map(|i| records::Entry::skipped(format!("unavailable{i}"), "m", "No key found"))
+        .collect();
+    records::append(&path, &entries).unwrap();
+    assert!(gate::hook(Agent::Claude, &mcp).is_none());
+    //    書き直しが 1 件入れば、並びが切れて、関所は元に戻る(直った)。
+    records::append(
+        &path,
+        &[records::Entry::polished(
+            blocks::hash("直った後の段落です。"),
+            "m",
+        )],
+    )
+    .unwrap();
+    assert!(is_deny(gate::hook(Agent::Claude, &mcp)));
 }
