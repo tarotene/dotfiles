@@ -109,7 +109,7 @@ What runs automatically, when, and on which stack: see the [pipeline map](pipeli
 - [ADR-1400](adr/1400-skill-entry-layers.md) — skill を「手で打つ入口」と「エージェントが選ぶ知識」の 2 層に分け、入口だけに `my-` を付けて、それ以外を `/` の一覧から隠す
 - [ADR-1472](adr/1472-stop-outcome.md) — Stop hook の結果を `StopOutcome` と `Reentry` の型で持ち、描画を `Reply::render` の 1 か所に集める
 - [ADR-1529](adr/1529-issue-inflow-criterion.md) — Issue に置くのは、マージ後も残る状態を持ち、ほかに置き場が無いものだけにする
-- [ADR-0000](adr/0000-deploy-worker-action.md) — 静的サイトの配信を composite action `deploy-worker` に集め、private リポジトリの静的サイトは Workers に置く
+- [ADR-1553](adr/1553-deploy-worker-action.md) — 静的サイトの配信を composite action `deploy-worker` に集め、private リポジトリの静的サイトは Workers に置く
 <!-- END GENERATED -->
 
 ## 運用・調査・設計(`docs/` 直下)

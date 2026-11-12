@@ -1,4 +1,4 @@
-# ADR-0000 — 静的サイトの配信を composite action `deploy-worker` に集め、private リポジトリの静的サイトは Workers に置く
+# ADR-1553 — 静的サイトの配信を composite action `deploy-worker` に集め、private リポジトリの静的サイトは Workers に置く
 
 - Status: Accepted
 - Date: 2026-11-12

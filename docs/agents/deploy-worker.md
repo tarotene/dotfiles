@@ -1,7 +1,7 @@
 # deploy-worker — private リポジトリの静的サイトを Workers に置き、配信の手順を共通の action で呼ぶ
 
 実装: `.github/actions/deploy-worker/action.yml`(composite action)
-決定: `docs/adr/0000-deploy-worker-action.md`
+決定: `docs/adr/1553-deploy-worker-action.md`
 走る場所: サイトのリポジトリの GitHub Actions(`uses: tarotene/dotfiles/.github/actions/deploy-worker@main`)
 
 ## どちらに置くか
