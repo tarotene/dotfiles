@@ -55,8 +55,10 @@ scratchpad は git の外なので基点が無く、本文の全体が対象に�
    `## 要確認` のように、別の検査が見出しの語で節を探すものがあるため。
 4. `writing-style-hub` が指す `docs/style/writing.md`(private の文体規約)をその場で読み、指示文に
    載せる。写しは持たない。ハブが解決できないときは、基準なしでは送らず、段落を素通しにする。
-5. 対象の段落と、その前後の段落(参考。書き換えない)を、`llm prompt -m <model> -s <指示文>
-   --no-stream -n` に標準入力で渡す。`-n` で llm の履歴 DB に残さない。
+5. 対象の段落を `chunk_paras`(既定 8)個ずつの束に分け、最大 `parallel`(既定 3)本を同時に送る。
+   各束は、その段落と前後の段落(参考。書き換えない)を、`llm prompt -m <model> -s <指示文>
+   [-o thinking_level <値>] --no-stream -n` に標準入力で渡す。`-n` で llm の履歴 DB に残さない。
+   混雑・時間切れのときの再依頼と予備のモデルは「失敗したとき」(ADR-1387 の D9〜D11)。
 6. 戻ってきた段落を照合する。外れたら、その段落だけ 1 回再依頼する:
    - 伏せ字がすべて同数で残っている
    - 数値の集合(全角は半角にそろえる)が同じ
@@ -135,8 +137,21 @@ scratchpad は git の外なので基点が無く、本文の全体が対象に�
 ## 失敗したとき
 
 止めない(fail-open)。失敗した段落は**元の本文のまま**残り、`skipped(<理由>)` で記録される。理由の例:
-`llm が見つかりません`、`llm が失敗しました: Error: No key found …`、`120 秒以内に応答がありません`、
+`llm が見つかりません`、`llm が失敗しました: Error: No key found …`、`45 秒以内に応答がありません`、
 `スタイルガイドのハブを解決できません`、伏せ字・数値・記法・分量の照合に再依頼でも外れた。
+
+素通しにする前に、依頼の失敗を 3 種に分けて手を打つ(判定は `crates/ja-polish/src/llm.rs` の
+`classify_stderr` の 1 か所。標準エラーの先頭 2000 字の語で決める):
+
+| 種類 | 例 | 手 |
+|---|---|---|
+| 混雑(`Busy`) | `high demand`・429・503・`RESOURCE_EXHAUSTED`・通信の不調 | 同じモデルに最大 `retries`(既定 2)回まで再依頼(待ち 2 秒→6 秒、±25%)。通らなければ予備のモデルに 1 回 |
+| 時間切れ(`Timeout`) | `45 秒以内に応答がありません` | 同じモデルは待ち直さず、すぐ予備のモデルに 1 回 |
+| 恒久(`Permanent`) | `No key found`・`llm が見つかりません`・不明なモデル名 | 再依頼も予備もなし。素通し |
+
+予備のモデル(既定 `gemini-flash-lite-latest`)には、思考量の指定を渡さない。記録の `model` は、実際に答えた
+モデル。混雑・時間切れで通せなかった素通しの記録には `"transient":true` が付く(キーの未設定や照合の外れには
+付かない。課金の検討を知らせる判定の入力)。1 つの束が失敗しても、ほかの束は書き直す。
 
 `~/.local/state/claude/gate-events.jsonl` に、書き直した回ごとに `ja-polish` の `fail-open`(1 段落でも
 素通しがあった)か `pass` を残す。`gate-failopen-advisory` が、`pass` を挟まずに 3 回続けて `fail-open` の
@@ -145,7 +160,11 @@ scratchpad は git の外なので基点が無く、本文の全体が対象に�
 ## 設定とキー
 
 - 設定ファイル: `~/.config/dotfiles/ja-polish.toml`(home-manager が置く)。`model`(既定
-  `gemini-3.6-flash`。暫定で、理由と戻す条件は下の「モデルの選択」)と `timeout_secs`(既定 120)。**このファイルの有無が、その機体で有効かどうかの
+  `gemini-3.6-flash`。暫定で、理由と戻す条件は下の「モデルの選択」)、`fallback_model`(既定
+  `gemini-flash-lite-latest`。空の文字列で使わない)、`thinking_level`(`minimal` `low` `medium` `high`。
+  既定は指定なし)、`timeout_secs`(既定 45)。ほかに `chunk_paras`(8)・`parallel`(3)・`retries`(2)・
+  `retry_base_ms`(2000)が書けるが、home-manager の option(`dotfiles.jaPolish.fallbackModel`・
+  `thinkingLevel`・`timeoutSecs`)があるのは前の 3 つだけ。**このファイルの有無が、その機体で有効かどうかの
   唯一の印**。無ければ関所は何も検査しない(置いていない機体では、関所も LLM への送信も起きない)。環境変数 `JA_POLISH_MODEL` で
   その場だけ上書きできる。
 - API キー: 各機体で一度 `llm keys set gemini` を手で実行する。キーは `llm keys path` が指す
@@ -170,7 +189,8 @@ scratchpad は git の外なので基点が無く、本文の全体が対象に�
   2026-11-12。All Systems Operational)。同じページに「無料枠のリクエストは優先して切り捨てられる枠を使い、
   課金枠は優先して守られる」(Free-tier requests use sheddable capacity, while billed-tier requests are
   protected by critical priority)とある。無料枠の最新モデルが混んでいる、という読みは、この記述からの推論で、
-  混雑の理由そのものは未確認。
+  混雑の理由そのものは未確認。なお、この引用は後で再確認できていない: 同じ日に状態ページをブラウザで開くと
+  「Failed to list incidents history: authentication error」と出て、本文が読めなかった(ADR-1387 の改訂)。
 - 戻す条件: `llm prompt -m gemini-3.8-flash -n --no-stream 'こんにちは'` が 30 秒以内に応答すること。
   満たしたら `home/modules/ja-polish.nix` と `crates/ja-polish/src/config.rs` の既定値を戻す。
 

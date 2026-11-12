@@ -22,6 +22,14 @@ pub struct Entry {
     pub model: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reason: Option<String>,
+    /// 素通しの原因が、混雑・時間切れのような一時的なもの(再依頼や予備モデルでも通せなかった)か。
+    /// キーの未設定のような恒久的な原因や、照合の外れでは立てない。古い記録には無いので `false`。
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub transient: bool,
+}
+
+fn is_false(b: &bool) -> bool {
+    !*b
 }
 
 impl Entry {
@@ -32,6 +40,7 @@ impl Entry {
             state: "polished".to_string(),
             model: model.to_string(),
             reason: None,
+            transient: false,
         }
     }
 
@@ -42,7 +51,14 @@ impl Entry {
             state: "skipped".to_string(),
             model: model.to_string(),
             reason: Some(reason.to_string()),
+            transient: false,
         }
+    }
+
+    /// 素通しの原因が一時的なもの([`Entry::transient`])だと印を付ける。
+    pub fn with_transient(mut self, transient: bool) -> Self {
+        self.transient = transient;
+        self
     }
 }
 
@@ -157,7 +173,31 @@ mod tests {
             state: state.to_string(),
             model: "m".to_string(),
             reason: None,
+            transient: false,
         }
+    }
+
+    #[test]
+    fn transient_flag_is_written_only_when_set_and_old_lines_read_as_false() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("r.jsonl");
+        append(
+            &path,
+            &[
+                Entry::skipped("a".into(), "m", "混雑").with_transient(true),
+                Entry::skipped("b".into(), "m", "キー未設定"),
+            ],
+        )
+        .unwrap();
+        let text = std::fs::read_to_string(&path).unwrap();
+        let lines: Vec<&str> = text.lines().collect();
+        assert!(lines[0].contains("\"transient\":true"), "{}", lines[0]);
+        assert!(!lines[1].contains("transient"), "{}", lines[1]);
+        let old: Entry = serde_json::from_str(
+            "{\"ts_unix\":1,\"sha\":\"x\",\"state\":\"skipped\",\"model\":\"m\"}",
+        )
+        .unwrap();
+        assert!(!old.transient);
     }
 
     #[test]

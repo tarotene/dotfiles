@@ -61,6 +61,43 @@ in
         (nix/ja-polish-llm.nix) registers: check with `llm models`.
       '';
     };
+    fallbackModel = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      # `crates/ja-polish/src/config.rs` の DEFAULT_FALLBACK_MODEL と同じにする。応答が速い軽いモデルで、
+      # 2026-11-12 に vega の無料枠で `llm prompt -m gemini-flash-lite-latest` が即座に応答した
+      # (docs/agents/ja-polish.md「モデルの選択」)。
+      default = "gemini-flash-lite-latest";
+      description = ''
+        The model that ja-polish tries once when `model` is busy (retries exhausted) or times out.
+        `null` turns the fallback off. The thinking level is not passed to it, because a fallback
+        model does not necessarily offer the same choices.
+      '';
+    };
+    thinkingLevel = lib.mkOption {
+      type = lib.types.nullOr (
+        lib.types.enum [
+          "minimal"
+          "low"
+          "medium"
+          "high"
+        ]
+      );
+      # 既定は null(モデルの既定に任せる。gemini-3.6-flash は medium)。値は、固定の見本で応答時間と
+      # 書き直しの質を測って決める(docs/adr/1387-ja-polish.md の D11)。
+      default = null;
+      description = ''
+        The thinking level passed to the main model (`llm -o thinking_level`; llm-gemini 0.35
+        accepts these four for gemini-3.6-flash). Lower is faster. `null` leaves it to the model.
+      '';
+    };
+    timeoutSecs = lib.mkOption {
+      type = lib.types.ints.positive;
+      default = 45;
+      description = ''
+        Seconds to wait for one request. A model that does not answer within it counts as timed
+        out and ja-polish moves on to the fallback model instead of waiting again.
+      '';
+    };
   };
 
   config = lib.mkIf cfg.enable {
@@ -68,8 +105,14 @@ in
     dotfiles.binaries.".local/bin" = [
       "ja-polish"
     ];
+    # 空の `fallback_model` は「予備を使わない」(キーを省くと、ja-polish の既定の予備を使う)。
     xdg.configFile."dotfiles/ja-polish.toml".text = ''
       model = "${cfg.model}"
+      fallback_model = "${lib.optionalString (cfg.fallbackModel != null) cfg.fallbackModel}"
+      timeout_secs = ${toString cfg.timeoutSecs}
+    ''
+    + lib.optionalString (cfg.thinkingLevel != null) ''
+      thinking_level = "${cfg.thinkingLevel}"
     '';
   };
 }
