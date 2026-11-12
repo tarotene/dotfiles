@@ -51,8 +51,8 @@ person-state リポジトリ側の `state/performances/scripts/capacity-check.sh
 (需要 vs 供給)と `scripts/milestone-check.sh`(マイルストーン目標日の
 到来)の出力をそのまま読み、今週の練習配分案を組み立てる。決定的
 スクリプトは person-state リポジトリ側に既にあるため、このスキル側に
-新規スクリプトは無い — 週次レビュー(`state/reviews/weekly/routine.md`
-の Cadence 割当節)から呼ばれる想定で、割当そのものはソルバ化しない
+新規スクリプトは無い — 月次レビュー(person-state リポジトリで毎月起きる
+Issue「月次レビュー YYYY-MM」の Cadence 割当節)から呼ばれる想定で、割当そのものはソルバ化しない
 (person-state リポジトリ側の既存決定を継承)。
 
 ### 2. 合わせ調整の統合
