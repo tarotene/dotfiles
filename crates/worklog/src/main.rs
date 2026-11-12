@@ -159,6 +159,12 @@ fn add_cmd(args: &[String]) -> Result<(), String> {
                 p.map_or(String::new(), |p| p.display().to_string())
             ),
         }
+        if let Some((state, summary)) = &r.kept {
+            println!(
+                "注意: 書かなかった。この項目は {state} で、記録済みの要旨「{summary}」は更新されない(語彙に、開いている\
+項目の要旨を直す出来事が無い)。報告には、台帳の要旨でなく、今の状況を書く"
+            );
+        }
         return Ok(());
     }
     let repo = repo.or_else(cwd_repo);

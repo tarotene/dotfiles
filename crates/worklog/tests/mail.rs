@@ -126,6 +126,30 @@ fn an_item_walks_the_states_and_the_terminal_state_stops_the_writer() {
 }
 
 #[test]
+fn an_opening_event_with_another_summary_on_an_open_item_says_the_old_summary_stays() {
+    // F8: ask のあとの draft は、開いている項目への「開く出来事」なので書かずに畳まれ、台帳の要旨(返信しない案)は
+    // 古いまま残る。黙って畳まず、書いた時点で、記録済みの要旨が更新されないことを知らせる。
+    let e = env();
+    ok(&add(&e, 0, "ask: 返信しない案 [gmail:t1/m1]"));
+    let again = add(&e, 0, "draft: 返信を下書きした [gmail:t1/m1]");
+    ok(&again);
+    assert!(again.stdout.starts_with("既に記録済み"), "{}", again.stdout);
+    assert!(
+        again.stdout.contains("注意: 書かなかった。この項目は awaiting で、記録済みの要旨「返信しない案」は更新されない"),
+        "{}",
+        again.stdout
+    );
+    // 要旨が同じ読み直しには、注意を出さない。
+    let same = add(&e, 0, "ask: 返信しない案 [gmail:t1/m1]");
+    ok(&same);
+    assert!(!same.stdout.contains("注意"), "{}", same.stdout);
+    // 台帳の要旨は、実際に古いまま。
+    assert!(run(&e, 0, &["mail", "open"])
+        .stdout
+        .contains("返信しない案"));
+}
+
+#[test]
 fn re_reading_a_receipt_never_duplicates_and_a_new_receipt_supersedes_the_old_one() {
     let e = env();
     ok(&add(
