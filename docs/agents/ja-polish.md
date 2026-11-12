@@ -115,6 +115,9 @@ scratchpad は git の外なので基点が無く、本文の全体が対象に�
   merge-base が無い。`Write` / `Edit` / `MultiEdit` の前に、そのファイルの内容を
   `~/.local/state/claude/ja-polish/base/<パスのハッシュ>.snap` に残し(12 時間以内の新しいものがあれば
   上書きしない)、触れた文書の一覧を `touched/<session_id>.txt` に足す。作業ツリーには何も書かない。
+  まだ無い(これから `Write` で作る)ファイルの基点は、空にする。残さないと、続く `Edit` の前(= `Write` した後の
+  内容)が基点になり、`Edit` した段落だけが対象になって、残りの段落が通っていないまま `gh` の本文の関所に当たる
+  (scratchpad で `Write` → `Edit` → `ja-polish` と進めたときの症状)。
   基点の優先順位は、git の merge-base、スナップショット、なし(文書全体が対象)。セッション ID を使わない
   のは `ja-polish` の CLI が ID を知らないため。基点が古い側に寄っても、対象が増えるだけで、通した段落は
   記録で飛ばすので書き換えは増えない。
