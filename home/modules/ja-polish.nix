@@ -47,12 +47,18 @@ in
     };
     model = lib.mkOption {
       type = lib.types.str;
-      default = "gemini-3.8-flash";
+      # 暫定: 3.7・3.8 は、無料枠のキーで応答が返らない(2026-11-12 に vega で `llm prompt -m …` を
+      # 直接実行。3.8・3.7 は 60〜120 秒待っても無応答、ja-polish 経由では `high demand`。3.6 は即座に
+      # 応答)。AI Studio の状態ページは All Systems Operational で、無料枠は「優先して切り捨てられる枠」と
+      # 明記されている(https://aistudio.google.com/status、取得 2026-11-12)。
+      # 戻す条件: `llm prompt -m gemini-3.8-flash -n --no-stream 'こんにちは'` が 30 秒以内に応答すること。
+      default = "gemini-3.6-flash";
       description = ''
-        The model name passed to `llm -m`. The newest general-purpose model that the free tier of
-        the Gemini API allows (Google, "Gemini API Pricing", https://aistudio.google.com/docs/pricing,
-        retrieved 2026-11-08). It must be one that the pinned llm-gemini (nix/ja-polish-llm.nix)
-        registers: check with `llm models`.
+        The model name passed to `llm -m`. A general-purpose model that the free tier of the Gemini
+        API allows (Google, "Gemini API Pricing", https://aistudio.google.com/docs/pricing,
+        retrieved 2026-11-08) and that answers on the free tier right now (see the comment above
+        for why it is not the newest one). It must be one that the pinned llm-gemini
+        (nix/ja-polish-llm.nix) registers: check with `llm models`.
       '';
     };
   };
