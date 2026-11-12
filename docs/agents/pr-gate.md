@@ -742,6 +742,11 @@ required の未出現は、他のチェックが pending の間は出現待ち�
 集約ジョブ(`CI passed`)は `needs` の完了までチェックとして現れないので、上限で打ち切ると、他のジョブが走っている
 最中に「揃っていない」と誤って返す。pending が 0 のまま現れないとき(workflow が起動していない)だけ、上限で MISSING にする。
 
+全体の時間切れ(`pr-checks-wait` の `--timeout`、既定 1500 秒)も同じ規則に従う。時間切れの時点で他のチェックが
+pending なら、集約ジョブはまだ出ていないだけなので MISSING(判定不能、exit 2)にせず PENDING(exit 8)にする。
+判定は `crates/pr-gate/src/gates/ci.rs` の `missing_is_final`(pending が 0 のときだけ確定)。2026-11-11 に、25 分かかる
+`Mail lifecycle spec` の間に時間切れとなって UNKNOWN を返し、実際はその後に全緑だった。
+
 E の取り方は、base の ruleset の required → 空なら**既定ブランチの ruleset の required**
 → それも空なら quiesce。stacked PR で base が ruleset の対象外でも、CI は base を問わず
 同名のチェックを報告する(上の「ruleset のスコープと CI の報告は別軸」、#133)ので、

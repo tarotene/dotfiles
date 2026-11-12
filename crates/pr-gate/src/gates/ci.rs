@@ -230,6 +230,22 @@ pub fn decide(expected: &[Value], reported: &str) -> Verdict {
     }
 }
 
+/// required の未出現を、`Missing`(出ないまま)と確定してよいか。
+///
+/// 集約ジョブ(`CI passed`)は `needs` が全部終わるまでチェックとして現れないので、他のチェックが
+/// pending の間は「まだ出ていない」だけで、出ない証拠にならない。確定するのは、pending が 0 のまま
+/// 出現待ちの上限を過ぎたとき(workflow が起動していない)だけ。全体の時間切れ(`timed_out`)も同じで、
+/// pending が残るなら `Missing`(判定不能)にせず、呼び出し側が `Pending`(待てば変わる)にする
+/// (2026-11-11、25 分かかるジョブの間に時間切れとなり UNKNOWN を返したが、実際はその後に全緑だった)。
+fn missing_is_final(
+    missing: &[Value],
+    pending: usize,
+    appear_expired: bool,
+    timed_out: bool,
+) -> bool {
+    !missing.is_empty() && pending == 0 && (appear_expired || timed_out)
+}
+
 /// 待ちの結果の注記つき期待集合。`Ok((E, 注記))`。E が空なら quiesce で判定する。
 ///
 /// base の ruleset が required を持たないとき(stacked PR)は、既定ブランチの ruleset の
@@ -337,9 +353,9 @@ pub fn wait(
                     // required の未出現は、他のチェックが pending の間は出現待ちの上限で
                     // 打ち切らない: 集約ジョブ(`CI passed`)は `needs` が終わるまで
                     // チェックとして現れない。pending が 0 のまま現れないとき(workflow が
-                    // 起動していない)だけ、出現待ちの上限で Missing にする。
-                    let appear_expired = t >= appear_deadline && pending == 0;
-                    if !missing.is_empty() && (appear_expired || timed_out) {
+                    // 起動していない)だけ、出現待ちの上限で Missing にする。全体の時間切れも
+                    // 同じ理由で、pending が残る間は Missing にせず Pending にする(下の `timed_out`)。
+                    if missing_is_final(&missing, pending, t >= appear_deadline, timed_out) {
                         return done(
                             Outcome {
                                 status: Status::Missing,
@@ -438,6 +454,21 @@ pub fn render_failed(reported: &str) -> String {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn missing_is_final_only_when_nothing_is_pending() {
+        let m = vec![json!("CI passed")];
+        // 他のチェックが pending の間は、時間切れでも出現待ちの上限でも確定しない(集約ジョブは遅れて現れる)。
+        assert!(!missing_is_final(&m, 3, false, true));
+        assert!(!missing_is_final(&m, 3, true, false));
+        assert!(!missing_is_final(&m, 3, true, true));
+        // pending が 0 のまま、出現待ちの上限か時間切れを過ぎたら、起動していないと確定する。
+        assert!(missing_is_final(&m, 0, true, false));
+        assert!(missing_is_final(&m, 0, false, true));
+        // 上限の前は確定しない。未出現が無ければ確定の対象が無い。
+        assert!(!missing_is_final(&m, 0, false, false));
+        assert!(!missing_is_final(&[], 0, true, true));
+    }
 
     #[test]
     fn expected_forms() {
