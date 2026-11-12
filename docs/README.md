@@ -109,6 +109,7 @@ What runs automatically, when, and on which stack: see the [pipeline map](pipeli
 - [ADR-1400](adr/1400-skill-entry-layers.md) — skill を「手で打つ入口」と「エージェントが選ぶ知識」の 2 層に分け、入口だけに `my-` を付けて、それ以外を `/` の一覧から隠す
 - [ADR-1472](adr/1472-stop-outcome.md) — Stop hook の結果を `StopOutcome` と `Reentry` の型で持ち、描画を `Reply::render` の 1 か所に集める
 - [ADR-1529](adr/1529-issue-inflow-criterion.md) — Issue に置くのは、マージ後も残る状態を持ち、ほかに置き場が無いものだけにする
+- [ADR-1553](adr/1553-deploy-worker-action.md) — 静的サイトの配信を composite action `deploy-worker` に集め、private リポジトリの静的サイトは Workers に置く
 <!-- END GENERATED -->
 
 ## 運用・調査・設計(`docs/` 直下)
@@ -165,6 +166,7 @@ What runs automatically, when, and on which stack: see the [pipeline map](pipeli
 - [`agents/codify-signals.md`](agents/codify-signals.md) — as-code 化の候補を振り返りで記録する(段・兆候・既存手段)
 - [`agents/copilot-plan-review.md`](agents/copilot-plan-review.md) — プランレビューは critic を黙らせるのではなく、受入基準で閉じる
 - [`agents/decision-colocation.md`](agents/decision-colocation.md) — decision-colocation — 決定成果物と執行点を同じ PR に強制する
+- [`agents/deploy-worker.md`](agents/deploy-worker.md) — deploy-worker — private リポジトリの静的サイトを Workers に置き、配信の手順を共通の action で呼ぶ
 - [`agents/diagramming.md`](agents/diagramming.md) — diagramming スキル
 - [`agents/docs-index.md`](agents/docs-index.md) — docs-index — `docs/README.md` の索引を、文書の H1 から生成する
 - [`agents/esa-mcp.md`](agents/esa-mcp.md) — esa-mcp — esa.io MCP サーバのトークン供給

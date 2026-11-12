@@ -1,0 +1,127 @@
+name: 'Deploy a Worker'
+description: >-
+  静的アセットだけの Cloudflare Worker を wrangler で配信する共通部品
+  (docs/agents/deploy-worker.md、ADR は同文書の「決定」節を参照)。
+  `mode: deploy` は本番へ配信し、`mode: preview` は PR のプレビュー版
+  (Worker の version)を上げて、その URL を PR にコメントする。
+
+  この action が担うのは、サイトごとに複写されがちな 3 つだけである:
+  token が無いときは、落とさずに警告して成功で終わること(token を渡す前に
+  main を赤くしない)、本番と PR で wrangler の呼び方を揃えること、
+  プレビュー URL を 1 つの PR コメントに上書きで載せること。
+  wrangler 自体は、呼び出し側の lockfile で固定したものを `wrangler` 入力で
+  呼ぶ。依存の導入とビルド成果物の取得(download-artifact)も呼び出し側が
+  先に済ませる — token を持つ job で、この action が依存のスクリプトを
+  走らせないため。
+
+inputs:
+  mode:
+    description: '`deploy`(本番へ配信)または `preview`(PR のプレビュー)'
+    required: true
+  api-token:
+    description: >-
+      Cloudflare の API token(Workers Scripts の編集権限)。空なら配信せず、
+      警告を出して成功で終わる。
+    required: false
+    default: ''
+  account-id:
+    description: Cloudflare のアカウント ID
+    required: false
+    default: ''
+  wrangler:
+    description: >-
+      呼び出し側の lockfile で固定した wrangler を呼ぶコマンド
+      (例: `pnpm exec wrangler`、`npx --no-install wrangler`)。
+    required: true
+  working-directory:
+    description: wrangler.jsonc があるディレクトリ
+    required: false
+    default: '.'
+
+runs:
+  using: composite
+  steps:
+    - name: Check the inputs
+      id: ready
+      shell: bash
+      env:
+        MODE: ${{ inputs.mode }}
+        API_TOKEN: ${{ inputs.api-token }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+      run: |
+        set -euo pipefail
+        case "$MODE" in
+          deploy) ;;
+          preview)
+            if [ -z "$PR_NUMBER" ]; then
+              echo "::error::mode: preview は pull_request のイベントでだけ使えます" >&2
+              exit 1
+            fi
+            ;;
+          *)
+            echo "::error::mode は deploy か preview です(受け取った値: ${MODE})" >&2
+            exit 1
+            ;;
+        esac
+        if [ -z "$API_TOKEN" ]; then
+          echo "::warning::api-token is not set; skipped the ${MODE}."
+          echo "registered=false" >> "$GITHUB_OUTPUT"
+        else
+          echo "registered=true" >> "$GITHUB_OUTPUT"
+        fi
+
+    - name: Deploy to Cloudflare Workers
+      if: ${{ steps.ready.outputs.registered == 'true' && inputs.mode == 'deploy' }}
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        CLOUDFLARE_API_TOKEN: ${{ inputs.api-token }}
+        CLOUDFLARE_ACCOUNT_ID: ${{ inputs.account-id }}
+        WRANGLER: ${{ inputs.wrangler }}
+      run: |
+        set -euo pipefail
+        read -ra wrangler <<< "$WRANGLER"
+        "${wrangler[@]}" deploy
+
+    # PR のプレビュー: Worker の version を上げ、その URL を PR の 1 件のコメント
+    # (マーカー付き)に上書きで載せる。呼び出し側の job には `pull-requests: write` が要る。
+    - name: Upload a Worker version and comment its URL
+      if: ${{ steps.ready.outputs.registered == 'true' && inputs.mode == 'preview' }}
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        CLOUDFLARE_API_TOKEN: ${{ inputs.api-token }}
+        CLOUDFLARE_ACCOUNT_ID: ${{ inputs.account-id }}
+        WRANGLER: ${{ inputs.wrangler }}
+        GH_TOKEN: ${{ github.token }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+        HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        REPO: ${{ github.repository }}
+        WRANGLER_OUTPUT_FILE_PATH: ${{ runner.temp }}/wrangler-output.ndjson
+      run: |
+        set -euo pipefail
+        read -ra wrangler <<< "$WRANGLER"
+        "${wrangler[@]}" versions upload \
+          --preview-alias "pr-${PR_NUMBER}" \
+          --message "PR #${PR_NUMBER} ${HEAD_SHA}"
+        url=$(jq -r 'select(.type == "version-upload") | .preview_alias_url // .preview_url' "$WRANGLER_OUTPUT_FILE_PATH" | tail -n 1)
+        test -n "$url" && test "$url" != "null"
+        {
+          echo "<!-- wrangler-preview -->"
+          echo "Preview: ${url}"
+          echo
+          echo "Commit: ${HEAD_SHA}"
+        } > "${RUNNER_TEMP}/preview-comment.md"
+        id=$(gh api "repos/${REPO}/issues/${PR_NUMBER}/comments" --paginate \
+          --jq '[.[] | select(.body | contains("<!-- wrangler-preview -->")) | .id][0] // empty')
+        if [ -n "$id" ]; then
+          gh api -X PATCH "repos/${REPO}/issues/comments/${id}" -F "body=@${RUNNER_TEMP}/preview-comment.md" > /dev/null
+        else
+          gh pr comment "${PR_NUMBER}" --repo "${REPO}" --body-file "${RUNNER_TEMP}/preview-comment.md"
+        fi
+
+# 呼び出し側の job で宣言する permissions(composite action は宣言できない):
+#   contents: read        — checkout と、すべての mode
+#   pull-requests: write  — mode: preview だけ(PR にコメントを載せる)
+# token を持たせる env は、呼び出し側の job でなく、この action の入力
+# (api-token、account-id)に渡す。secret を job 全体の env に置かない。
