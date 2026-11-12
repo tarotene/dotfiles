@@ -23,7 +23,8 @@ secret は、アカウントの `Cloudflare` を宣言するインフラのリ�
    人が `bootstrap/` を適用する。サイトのリポジトリに、deploy 用の token と、アカウント ID の secret が入る。
 2. サイトのリポジトリに、下の `wrangler.jsonc` と workflow を置く。`name` は 1 で書いた Worker 名と同じにする
    (門の宣言が、この名前で Worker を引く)。
-3. `main` へ入れる。最初の配信で、Worker が作られる。
+3. `main` へ入れる。最初の配信で、Worker が作られる。それまで Worker は存在しないので、最初の PR の
+   `Preview` は必ず失敗する(下の「失敗したとき」)。`Preview` は参考用(`continue-on-error`)で、`CI passed` は通る。
 4. 閲覧の確認: ログインなしで `https://<Worker 名>.<アカウントの workers.dev のサブドメイン>.workers.dev/` を開くと、
    ログイン画面へ転送される。GitHub でログインして、本文が出る。
 5. 共同開発者に見せるときは、インフラのリポジトリで、その Worker の許可にメールか Org のチームを足す(PR 1 本)。
@@ -135,3 +136,4 @@ jobs:
 | `wrangler` が認証で落ちる | token の期限切れ。インフラのリポジトリで `bootstrap/` を適用し直す(token と secret が更新される) |
 | 配信できたが、ログインなしで本文が見える | 門の宣言が外れている。インフラのリポジトリで、全 Worker を守る宣言と、その Worker の公開(門を外す)宣言の有無を見る |
 | プレビューの URL が PR に載らない | `preview` の job に `pull-requests: write` があるか。`dependabot` の PR は secret が無く、飛ばされる |
+| 新しいサイトの最初の PR で `Preview` が「You cannot upload a new version of a Worker that does not yet exist」で落ちる | 想定どおり。Worker がまだ無いので、`wrangler` は version を上げられない。`main` への最初の配信で Worker ができれば、以後の PR では動く(実測: 2026-11-12、認証は通っていた) |
