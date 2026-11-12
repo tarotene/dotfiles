@@ -604,7 +604,7 @@ impl Guard {
                 if !f.has_base {
                     return None;
                 }
-                judge_edit(project, &prs, f)
+                judge_edit(project, &nwo, &prs, f)
             }
             Kind::MergeCli | Kind::MergeApi => None,
         }
@@ -733,7 +733,7 @@ impl Guard {
                 return None;
             }
             f.target = num;
-            judge_edit(project, &prs, &f)
+            judge_edit(project, &nwo, &prs, &f)
         }
     }
 }
@@ -793,7 +793,47 @@ fn find_nearest_ancestor_pr(
     best.map(|(_, n, h)| (n, h))
 }
 
-fn judge_edit(project: &Path, prs: &str, f: &PrFlags) -> Option<String> {
+/// 祖先を求めるときに使う、対象 PR の head のコミット。
+///
+/// 既定は `gh pr list` の `headRefOid`。ただし強制 push の直後は、GitHub 側の `headRefOid` が
+/// 数十秒のあいだ載せ替え前のまま残り、古い先頭コミットで最近傍の祖先 PR を求めて誤って拒否する
+/// (2026-11-11、PR #1535 を別の積みの最上段の上に載せ替えて push した直後)。次の 3 つがすべて
+/// 成り立つときだけ、手元で確定して GitHub に届いた `HEAD` に置き換える。
+///
+/// 1. 対象のリポジトリが、手元のプロジェクトのリポジトリである(`-R` で別のリポジトリを指すときは、
+///    同名のブランチが手元にあっても別物なので置き換えない)。
+/// 2. 対象 PR の head ブランチが、手元の現在のブランチである。
+/// 3. `HEAD` が push 済みである(上流の追跡 ref、無ければ `origin/<ブランチ>` と等しい)。載せ替えたが
+///    まだ push していないときは、GitHub 上の PR の実体と食い違うので置き換えない。
+///
+/// どれか 1 つでも成り立たなければ `row.oid` のまま(従来と同じ)。
+fn effective_head_oid(project: &Path, nwo: &str, row: &PrRow) -> String {
+    let local = (|| {
+        if !owner_repo(project)?.eq_ignore_ascii_case(nwo) {
+            return None;
+        }
+        let cur = git_out(project, &["branch", "--show-current"])?;
+        if cur.is_empty() || cur != row.head {
+            return None;
+        }
+        let head = git_out(project, &["rev-parse", "--verify", "--quiet", "HEAD"])?;
+        let tracking = git_out(
+            project,
+            &["rev-parse", "--verify", "--quiet", "@{upstream}"],
+        )
+        .filter(|s| !s.is_empty())
+        .or_else(|| {
+            git_out(
+                project,
+                &["rev-parse", "--verify", "--quiet", &format!("origin/{cur}")],
+            )
+        })?;
+        (!head.is_empty() && head == tracking).then_some(head)
+    })();
+    local.unwrap_or_else(|| row.oid.clone())
+}
+
+fn judge_edit(project: &Path, nwo: &str, prs: &str, f: &PrFlags) -> Option<String> {
     let row = if !f.target.is_empty() {
         let t = f.target.as_str();
         first_row_where(prs, |e| {
@@ -810,12 +850,13 @@ fn judge_edit(project: &Path, prs: &str, f: &PrFlags) -> Option<String> {
         })
     }?; // 対象 PR が解決できない -> 通す
 
-    if row.oid.is_empty() {
+    let head_oid = effective_head_oid(project, nwo, &row);
+    if head_oid.is_empty() {
         return None;
     }
     if !git_ok(
         project,
-        &["cat-file", "-e", &format!("{}^{{commit}}", row.oid)],
+        &["cat-file", "-e", &format!("{head_oid}^{{commit}}")],
     ) {
         return None;
     }
@@ -824,7 +865,8 @@ fn judge_edit(project: &Path, prs: &str, f: &PrFlags) -> Option<String> {
         return None;
     }
 
-    let (parent_num, parent_head) = find_nearest_ancestor_pr(project, &row.oid, prs, "", &row.num)?;
+    let (parent_num, parent_head) =
+        find_nearest_ancestor_pr(project, &head_oid, prs, "", &row.num)?;
     if declared_base != parent_head {
         let (num, head) = (&row.num, &row.head);
         return Some(format!(
