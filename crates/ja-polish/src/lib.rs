@@ -15,9 +15,11 @@
 //! - `stop`: 文書ファイルの関所(Stop)
 //! - `baseline`・`style`: 基点の内容と、書き直しの基準(文体規約)の取得
 //! - `app`: 1 回分の流れと報告
+//! - `bench`: 固定の見本で、モデル × 思考量の組ごとに、時間と質の物差しを測る(`ja-polish bench`)
 
 pub mod app;
 pub mod baseline;
+pub mod bench;
 pub mod blocks;
 pub mod config;
 pub mod gate;

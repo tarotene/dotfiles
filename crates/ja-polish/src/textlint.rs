@@ -21,6 +21,12 @@ use std::time::Duration;
 pub trait Fixer: Sync {
     /// 各段落(伏せ字つき)を直して返す。戻りは入力と同じ長さ・同じ並び。直せない・失敗したときは入力のまま。
     fn fix(&self, texts: &[String]) -> Vec<String>;
+
+    /// 段落に残る textlint の指摘の数(直さずに数える)。測定(`ja-polish bench`)が、書き直しの前後で
+    /// 比べるのに使う。道具が無い・失敗したときは `None`。
+    fn issues(&self, _texts: &[String]) -> Option<usize> {
+        None
+    }
 }
 
 /// 何も直さない。textlint を使わない設定のとき、およびテストで使う。
@@ -144,9 +150,61 @@ impl Textlint {
     }
 }
 
+impl Textlint {
+    /// 直さずに指摘を数える(`--format json` の `messages` の合計)。
+    fn try_count(&self, texts: &[String]) -> Result<usize, String> {
+        if texts.is_empty() {
+            return Ok(0);
+        }
+        let dir = TempDir::new()?;
+        let rc = dir.path().join("rc.json");
+        let input = dir.path().join("input.md");
+        std::fs::write(&rc, rc_json(self.prh.as_deref()).to_string()).map_err(|e| e.to_string())?;
+        std::fs::write(&input, format!("{}\n", texts.join(SEP))).map_err(|e| e.to_string())?;
+
+        let mut cmd = Command::new(&self.bin);
+        cmd.arg("--config")
+            .arg(&rc)
+            .arg("--format")
+            .arg("json")
+            .arg(&input)
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null());
+        let mut child =
+            spawn_group(&mut cmd).map_err(|e| format!("{} を起動できません: {e}", self.bin))?;
+        let mut out_pipe = child.stdout.take().expect("piped stdout");
+        let reader = std::thread::spawn(move || {
+            let mut buf = Vec::new();
+            let _ = std::io::Read::read_to_end(&mut out_pipe, &mut buf);
+            buf
+        });
+        let status =
+            wait_with_timeout(&mut child, FIX_TIMEOUT).ok_or("textlint が時間内に終わりません")?;
+        let out = reader.join().unwrap_or_default();
+        match status.code() {
+            Some(0) | Some(1) => {}
+            other => return Err(format!("textlint が終了コード {other:?} で失敗しました")),
+        }
+        let v: serde_json::Value = serde_json::from_slice(&out).map_err(|e| e.to_string())?;
+        Ok(v.as_array()
+            .map(|files| {
+                files
+                    .iter()
+                    .map(|f| f["messages"].as_array().map_or(0, Vec::len))
+                    .sum()
+            })
+            .unwrap_or(0))
+    }
+}
+
 impl Fixer for Textlint {
     fn fix(&self, texts: &[String]) -> Vec<String> {
         self.try_fix(texts).unwrap_or_else(|_| texts.to_vec())
+    }
+
+    fn issues(&self, texts: &[String]) -> Option<usize> {
+        self.try_count(texts).ok()
     }
 }
 

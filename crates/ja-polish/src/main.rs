@@ -6,6 +6,9 @@
 //!   ja-polish --check [--no-baseline] FILE…|-   未通過の日本語の段落を一覧する(あれば終了コード 1)
 //!   ja-polish stop-gate                         Stop hook: 標準入力の Stop の入力を読み、通していない
 //!                                               文書があれば {"decision":"block"} を出す(常に終了コード 0)
+//!   ja-polish bench LIST [--variants A,B,…]     固定の見本(LIST の `<commit>:<path>`)で、モデル × 思考量の
+//!                                               組(`model` か `model@level`)ごとに時間と質を測り、表で出す。
+//!                                               何も書き換えず、記録もしない(docs/agents/ja-polish.md)
 //!
 //! 書き直しは、基点(git なら origin の既定ブランチとの merge-base)に無い段落、つまり追加・
 //! 変更した段落だけが対象。基点が取れないときは文書全体が対象だが、一度通した段落は記録で
@@ -15,7 +18,7 @@
 use ja_polish::app::{self, Env};
 use ja_polish::llm::LlmCli;
 use ja_polish::textlint::{Fixer, NoFixer, Textlint};
-use ja_polish::{baseline, config, polish, records};
+use ja_polish::{baseline, bench, config, polish, records};
 use std::io::Read;
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -24,7 +27,8 @@ const USAGE: &str = "使い方:
   ja-polish --stdin [--dry-run]
   ja-polish [--dry-run] [--no-baseline] FILE…
   ja-polish --check [--no-baseline] FILE…|-
-  ja-polish stop-gate   (Stop hook。標準入力の JSON を読む)";
+  ja-polish stop-gate   (Stop hook。標準入力の JSON を読む)
+  ja-polish bench LIST [--variants model[@level],…]   (固定の見本で測る。書き換えない)";
 
 #[derive(Default)]
 struct Opts {
@@ -74,6 +78,9 @@ fn main() -> ExitCode {
     if args.first().map(String::as_str) == Some("stop-gate") {
         // hook: 判定不能・入力が読めないときは何も出さず通す。
         return agent_session::entry::run_stop(&STOP_SPEC, ja_polish::stop::hook);
+    }
+    if args.first().map(String::as_str) == Some("bench") {
+        return bench_command(&args[1..]);
     }
     let opts = match parse(&args) {
         Ok(o) => o,
@@ -160,6 +167,144 @@ fn main() -> ExitCode {
     }
 }
 
+/// `bench` の引数: 一覧のファイルと、`--variants`(カンマ区切りの `model` か `model@level`)。
+fn parse_bench(args: &[String]) -> Result<(String, Option<Vec<String>>), String> {
+    let mut list = None;
+    let mut variants = None;
+    let mut it = args.iter();
+    while let Some(a) = it.next() {
+        match a.as_str() {
+            "--variants" => {
+                let v = it.next().ok_or("--variants に値がありません")?;
+                variants = Some(
+                    v.split(',')
+                        .map(str::trim)
+                        .filter(|s| !s.is_empty())
+                        .map(str::to_string)
+                        .collect::<Vec<_>>(),
+                );
+            }
+            s if s.starts_with("--") => return Err(format!("知らない引数です: {s}")),
+            s if list.is_none() => list = Some(s.to_string()),
+            s => return Err(format!("見本の一覧は 1 つだけ指定してください: {s}")),
+        }
+    }
+    let list = list.ok_or("見本の一覧のファイルを指定してください")?;
+    if variants.as_ref().is_some_and(Vec::is_empty) {
+        return Err("--variants が空です".to_string());
+    }
+    Ok((list, variants))
+}
+
+/// 既定の組: 今の設定のモデルを、思考量の指定なし・minimal・low で。予備のモデルは、指定なしで 1 つ。
+fn default_variants(cfg: &config::Config) -> Vec<bench::Variant> {
+    let mut v = vec![
+        bench::Variant {
+            model: cfg.model.clone(),
+            thinking: cfg.thinking_level.clone(),
+        },
+        bench::Variant {
+            model: cfg.model.clone(),
+            thinking: Some("minimal".to_string()),
+        },
+        bench::Variant {
+            model: cfg.model.clone(),
+            thinking: Some("low".to_string()),
+        },
+    ];
+    if let Some(fb) = &cfg.fallback_model {
+        v.push(bench::Variant {
+            model: fb.clone(),
+            thinking: None,
+        });
+    }
+    let mut seen = Vec::new();
+    v.retain(|x| {
+        let dup = seen.contains(x);
+        if !dup {
+            seen.push(x.clone());
+        }
+        !dup
+    });
+    v
+}
+
+fn git_show(spec: &str) -> Result<String, String> {
+    let out = std::process::Command::new("git")
+        .args(["show", spec])
+        .output()
+        .map_err(|e| format!("git を起動できません: {e}"))?;
+    if !out.status.success() {
+        return Err(String::from_utf8_lossy(&out.stderr).trim().to_string());
+    }
+    Ok(String::from_utf8_lossy(&out.stdout).into_owned())
+}
+
+fn bench_command(args: &[String]) -> ExitCode {
+    let (list_path, variants) = match parse_bench(args) {
+        Ok(x) => x,
+        Err(msg) => {
+            eprintln!("ja-polish bench: {msg}\n{USAGE}");
+            return ExitCode::from(2);
+        }
+    };
+    let cfg = config::load().unwrap_or_default();
+    let list = match std::fs::read_to_string(&list_path) {
+        Ok(t) => t,
+        Err(e) => {
+            eprintln!("ja-polish bench: {list_path} を読めません: {e}");
+            return ExitCode::from(1);
+        }
+    };
+    let samples = match bench::load_samples(&list, &git_show) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("ja-polish bench: {e}");
+            return ExitCode::from(1);
+        }
+    };
+    let style = match ja_polish::style::load() {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("ja-polish bench: {e}");
+            return ExitCode::from(1);
+        }
+    };
+    let variants: Vec<bench::Variant> = match variants {
+        Some(v) => v.iter().map(|s| bench::Variant::parse(s)).collect(),
+        None => default_variants(&cfg),
+    };
+    // 指摘数を数えるためだけに、textlint を使う。無ければ「未計測」。
+    let textlint = Textlint::from_config(&cfg);
+    let counter: &dyn Fixer = match &textlint {
+        Some(t) => t,
+        None => &NoFixer,
+    };
+
+    eprintln!(
+        "ja-polish bench: 見本 {} 本、組 {} 個を、順に測ります(1 組ごとに数十秒〜数分)",
+        samples.len(),
+        variants.len()
+    );
+    let mut rows = Vec::new();
+    for (i, v) in variants.iter().enumerate() {
+        eprintln!("[{}/{}] {} …", i + 1, variants.len(), v.label());
+        let row = bench::measure(v, &cfg, &samples, &style, &LlmCli, counter);
+        eprintln!(
+            "[{}/{}] {}: {:.0} 秒、書き直し {} / 素通し {}",
+            i + 1,
+            variants.len(),
+            row.label,
+            row.secs,
+            row.polished,
+            row.skipped
+        );
+        rows.push(row);
+    }
+    print!("{}", bench::render_table(&rows, &samples));
+    ExitCode::SUCCESS
+}
+
 fn check(env: &Env, opts: &Opts) -> ExitCode {
     let known = env
         .records_path
@@ -223,6 +368,43 @@ mod tests {
         assert_eq!(o.inputs, vec!["a.md", "b.md"]);
         let o = parse(&v(&["--check", "-"])).unwrap();
         assert!(o.check && o.inputs == vec!["-"]);
+    }
+
+    #[test]
+    fn parse_bench_reads_the_list_and_variants() {
+        let (l, v) = parse_bench(&v(&["samples.txt"])).unwrap();
+        assert_eq!((l.as_str(), v), ("samples.txt", None));
+        let (_, v) = parse_bench(&v_(&["s.txt", "--variants", "a@low, b ,"])).unwrap();
+        assert_eq!(v, Some(vec!["a@low".to_string(), "b".to_string()]));
+        assert!(parse_bench(&v_(&[])).is_err());
+        assert!(parse_bench(&v_(&["a", "b"])).is_err());
+        assert!(parse_bench(&v_(&["a", "--variants"])).is_err());
+        assert!(parse_bench(&v_(&["a", "--variants", ","])).is_err());
+        assert!(parse_bench(&v_(&["a", "--nope"])).is_err());
+    }
+
+    fn v_(a: &[&str]) -> Vec<String> {
+        v(a)
+    }
+
+    #[test]
+    fn default_variants_are_unique_and_include_the_fallback() {
+        let mut c = config::Config::default();
+        let d = default_variants(&c);
+        assert_eq!(
+            d.iter().map(bench::Variant::label).collect::<Vec<_>>(),
+            vec![
+                "gemini-3.6-flash@既定",
+                "gemini-3.6-flash@minimal",
+                "gemini-3.6-flash@low",
+                "gemini-flash-lite-latest@既定"
+            ]
+        );
+        // 設定で既に minimal なら、同じ組を重ねない。
+        c.thinking_level = Some("minimal".into());
+        c.fallback_model = None;
+        let d = default_variants(&c);
+        assert_eq!(d.len(), 2);
     }
 
     #[test]
