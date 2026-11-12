@@ -297,6 +297,19 @@ fn rejects_recursive_native_and_unreviewed_version() {
         "{err}"
     );
     assert!(err.contains("reviewed.toml"), "{err}");
+    // 実機の版がレビュー済みより古いときは、直し方の `codex update` を案内する。
+    assert!(err.contains("codex update"), "{err}");
+    assert!(f.order().is_empty());
+    // 新しいときは、レビューの手順だけ(`codex update` はレビュー済みの版へ戻すだけで、直し方でない)。
+    let f = Fixture::new();
+    script(
+        &f.home().join(".local/bin/codex"),
+        "echo 'codex-cli 999.0.0'",
+    );
+    let o = f.cmd().output().unwrap();
+    let err = String::from_utf8_lossy(&o.stderr);
+    assert!(err.contains("unreviewed Codex version"), "{err}");
+    assert!(!err.contains("codex update"), "{err}");
     assert!(f.order().is_empty());
 }
 

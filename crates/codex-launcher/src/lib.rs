@@ -38,6 +38,39 @@ pub fn reviewed() -> Result<(String, String), String> {
     Ok((version.into(), commit.into()))
 }
 
+/// `codex-cli X.Y.Z` の `X.Y.Z` を、数の組として読む。読めなければ `None`。
+fn parse_codex_version(text: &str) -> Option<[u64; 3]> {
+    let mut parts = text.strip_prefix("codex-cli ")?.trim().split('.');
+    let version = [
+        parts.next()?.parse().ok()?,
+        parts.next()?.parse().ok()?,
+        parts.next()?.parse().ok()?,
+    ];
+    parts.next().is_none().then_some(version)
+}
+
+/// 版の不一致で止めるときのエラー文。実機の版がレビュー済みより古いときは、直し方が
+/// `codex update`(レビュー済みの版を固定 commit の installer で入れる)なので、先に案内する。
+/// 新しいとき、版を読めないとき(出力なし・形式違い)は、レビューの手順だけを案内する。
+fn unreviewed_message(found: &str, reviewed: &str) -> String {
+    let expected = format!("codex-cli {reviewed}");
+    let older = matches!(
+        (parse_codex_version(found), parse_codex_version(&expected)),
+        (Some(f), Some(r)) if f < r
+    );
+    let hint = if older {
+        "the installed Codex is older than the reviewed release: run `codex update` to install \
+         the reviewed version (docs/codex-plan.md, \"起動ラッパーの版固定\"). "
+    } else {
+        ""
+    };
+    format!(
+        "unreviewed Codex version (found {found:?}, reviewed {expected:?}); {hint}\
+         to accept another release, review the launcher vocabulary against it, repeat the \
+         acceptance tests, then update reviewed.toml (docs/codex-plan.md, \"起動ラッパーの版固定\")"
+    )
+}
+
 /// Install only the reviewed release, with no inherited credentials or installer overrides.
 pub fn update(native: &Path, home: &Path) -> Result<(), String> {
     use std::os::unix::fs::PermissionsExt;
@@ -458,15 +491,13 @@ pub fn command(native: &Path, launch: Launch) -> Result<Command, String> {
         let (reviewed, _) = reviewed()?;
         let expected = format!("codex-cli {reviewed}");
         if !version.status.success() || found != expected {
-            return Err(format!(
-                "unreviewed Codex version (found {:?}, reviewed {expected:?}); \
-                 review the launcher vocabulary against that release, repeat the acceptance \
-                 tests, then update reviewed.toml (docs/codex-plan.md, \"起動ラッパーの版固定\")",
+            return Err(unreviewed_message(
                 if found.is_empty() {
                     "<no output>"
                 } else {
                     found
-                }
+                },
+                &reviewed,
             ));
         }
         let cwd = std::fs::canonicalize(
@@ -512,4 +543,33 @@ pub fn command(native: &Path, launch: Launch) -> Result<Command, String> {
     }
     child.args(&args);
     Ok(child)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::unreviewed_message;
+
+    #[test]
+    fn older_installed_version_points_at_codex_update() {
+        let m = unreviewed_message("codex-cli 0.164.0", "0.165.0");
+        assert!(m.contains("codex update"), "{m}");
+        assert!(m.contains("reviewed.toml"), "{m}");
+        // 辞書順では 0.9.0 > 0.165.0 になるが、数として比べる。
+        assert!(unreviewed_message("codex-cli 0.9.0", "0.165.0").contains("codex update"));
+    }
+
+    #[test]
+    fn newer_unreadable_or_empty_version_keeps_only_the_review_steps() {
+        for found in [
+            "codex-cli 0.166.0",
+            "codex-cli 1.0.0",
+            "codex-cli 0.165.0-beta.1",
+            "codex 0.164.0",
+            "<no output>",
+        ] {
+            let m = unreviewed_message(found, "0.165.0");
+            assert!(!m.contains("codex update"), "{found}: {m}");
+            assert!(m.contains("reviewed.toml"), "{found}: {m}");
+        }
+    }
 }
