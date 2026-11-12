@@ -38,6 +38,18 @@ pub fn issue_state(num: &str, nwo: &str) -> Option<String> {
     ])
 }
 
+/// workflow run の conclusion(`success`・`failure`・`cancelled` など)。実行中・取得不能は `None`。
+pub fn run_conclusion(nwo: &str, run_id: u64) -> Option<String> {
+    let c = gh_ok(&[
+        "api",
+        &format!("repos/{nwo}/actions/runs/{run_id}"),
+        "-q",
+        ".conclusion // empty",
+    ])?;
+    let c = c.trim();
+    (!c.is_empty()).then(|| c.to_string())
+}
+
 /// gh-stack 拡張が導入済みか。`--version` がバイナリの唯一の存在確認手段
 /// (サブコマンド一覧に "installed" フラグは無い)。
 pub fn stack_extension_available() -> bool {

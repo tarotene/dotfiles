@@ -147,8 +147,18 @@ cancelled になる)。** GitHub の公式文書は「stack の各 PR は、stac
 the stack targets the base of the stack."、GitHub Docs "Stacked pull requests"、取得 2026-10-28)。
 `ci.yml` と `darwin-build.yml` の concurrency の鍵は `head.sha` なので、同じ head への 2 本目が
 1 本目を cancel する(2026-10-27 に #1157 の head で 4 回観測。二重起動の内部動作そのものは
-未確認)。cancelled の run は無害で、`pr-gate` は `latest_runs_only` で古い run を除いて判定する。
-2 本目は下段が変わった後の合成木を検査する。直さずに受け入れる。
+未確認)。待つ側(`pr-gate`・`pr-checks-wait`)は、`split_runs`(`crates/pr-gate/src/gates/ci.rs`)で古い run を除いて判定するので、cancelled の
+run が待ちを赤にすることは無い。強制 push の直後で、新しい run のチェックがまだ現れず、古い run の取消だけが見えるあいだは、
+その run が取り消されたものであること(run の conclusion が `cancelled`)を確かめて、新しい run を最大 120 秒
+(`PR_GATE_CANCEL_GRACE`)待つ。2 本目は下段が変わった後の合成木を検査する。直さずに受け入れる。
+
+**ただし、置き換えられた古い run の失敗した required のチェックは、マージを止めることがある。** 2026-11-11 に、11 段の stack の
+最上段に `merge-async` を呼ぶと、結果が「Required status check CI passed is failing」で、どの段も入らなかった(古い run の
+`CI passed` が失敗のまま残っていた。`pr-checks-wait` は新しい run の全緑で OK を返していた)。`pr-checks-wait` は、全緑のとき、
+古い run に失敗した required が残っていれば、OK の下に注記を出す(run の ID と `gh run rerun --failed <run>`)。マージの前に、
+この注記が出ていないことを確かめる。出ていれば、その run を再実行して上書きし、`pr-checks-wait` をもう一度呼ぶ(古い run の
+required が再実行で pending のあいだは、全緑と読まずに待つ)。なお、「required が全緑のとき、古い run の失敗でマージ API が
+拒否する」条件の厳密な定義(同名のチェックのうち何を見るか)は、GitHub の文書で確かめていない(未確認。上の 1 件の実測だけ)。
 
 中間段(bottom でも tip でもない段)、または変更 path が build/rust の
 入力に含まれない段(bottom・tip を含む、ADR-468 Amendment 2026-09-26)は

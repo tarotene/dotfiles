@@ -738,6 +738,18 @@ Stop の G_CI と待ちの CLI `pr-checks-wait` が同じ関数を使う(判定�
 #1157 では先の run の `cancel` を赤と読んで誤って NG を返した。E が全緑なら OK、pending が残る間は待ち、pending が 0 に
 なってなお cancel が残るときに NG とする。
 
+強制 push の直後は、新しい run のチェックがまだ現れず、古い run の取消(と、その集約ジョブの失敗)だけが見える。失敗・取消が、
+すべて「取り消された run」(run の conclusion が `cancelled`。`repos/<nwo>/actions/runs/<id>` を 1 回引く)のものなら、
+`PR_GATE_CANCEL_GRACE`(既定 120 秒)のあいだ、新しい run を待つ(`failures_are_only_cancelled_runs`)。猶予を過ぎても新しい run が
+来なければ、本当の NG とする。失敗の中に run の無いもの(外部の status)が混じるときと、run の conclusion が `cancelled` でない
+ときは、待たずに NG のままである。
+
+置き換えられた古い run の required は、2 つの扱いを足す。(1) 古い run の required が pending(`gh run rerun --failed` の再実行中)の
+あいだは、新しい run が全緑でも OK にしない(`decide` が Wait を返す)。(2) 古い run に失敗した required が残っていて、全緑で OK のときは、
+OK の下に注記を出す(`stale_failure_note`。run の ID と `gh run rerun --failed <run>`)。NG にしないのは、GitHub のマージ API が
+古い run の失敗でどの条件で拒否するかを文書で確かめていないため(2026-11-11 に、11 段の stack で `merge-async` が
+「Required status check CI passed is failing」で拒否した 1 件の実測だけ)。
+
 required の未出現は、他のチェックが pending の間は出現待ちの上限(`PR_GATE_CHECK_APPEAR_TIMEOUT`)で打ち切らない。
 集約ジョブ(`CI passed`)は `needs` の完了までチェックとして現れないので、上限で打ち切ると、他のジョブが走っている
 最中に「揃っていない」と誤って返す。pending が 0 のまま現れないとき(workflow が起動していない)だけ、上限で MISSING にする。
@@ -794,6 +806,7 @@ pr-checks-wait [<PR>] [-R OWNER/REPO] [--timeout SECS]   # 既定 1500 秒
 | `PR_GATE_POLL_INTERVAL` | `10` | 判定のためにチェックを取り直す間隔(秒、小数可) |
 | `PR_GATE_CHECK_APPEAR_TIMEOUT` | `60` | 期待集合の出現待ち上限(秒) |
 | `PR_GATE_QUIESCE` | `15` | stacked PR で「安定」と見なす無変化時間(秒) |
+| `PR_GATE_CANCEL_GRACE` | `120` | 失敗・取消がすべて取り消された run のものであるとき、置き換える新しい run を待つ猶予(秒) |
 | `PR_GATE_FETCH_TTL` | `600` | SessionStart の `git fetch` を省略する TTL(秒) |
 | `SKIP_PR_GATE` | — | `1` でスキップ |
 
