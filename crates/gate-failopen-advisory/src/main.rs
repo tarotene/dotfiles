@@ -51,9 +51,9 @@ fn threshold_from(raw: Option<&str>) -> usize {
         .unwrap_or(DEFAULT_THRESHOLD)
 }
 
-/// 閾値に届いた gate ごとの警告文。届いた gate が無ければ `None`。
-fn advisory(events: &Path, threshold: usize) -> Option<String> {
-    let lines: Vec<String> = GATES
+/// 閾値に届いた gate ごとの警告文。届いた gate が無ければ空。
+fn gate_lines(events: &Path, threshold: usize) -> Vec<String> {
+    GATES
         .iter()
         .filter_map(|(gate, hint)| {
             let n = trailing_fail_open(events, gate);
@@ -63,14 +63,66 @@ fn advisory(events: &Path, threshold: usize) -> Option<String> {
                 )
             })
         })
-        .collect();
-    (!lines.is_empty()).then(|| format!("[gate-failopen-advisory] {}", lines.join("\n")))
+        .collect()
+}
+
+/// 課金の検討を知らせる、一時的な原因による素通しの割合(%)の既定の閾値。
+const DEFAULT_BILLING_PERCENT: f64 = 5.0;
+
+fn billing_percent_from(raw: Option<&str>) -> f64 {
+    raw.and_then(|s| s.trim().parse::<f64>().ok())
+        .filter(|p| p.is_finite() && *p > 0.0)
+        .unwrap_or(DEFAULT_BILLING_PERCENT)
+}
+
+/// ja-polish の課金の検討の知らせ(ADR-1387 の D6 の続き、段 4)。直近 7 日の記録のうち、混雑・時間切れで
+/// 素通しになった段落の割合が `percent_threshold` を超えたら、1 行の警告を返す。キーの未設定や照合の外れ
+/// による素通しは数えない(課金では直らない)。記録が `TRANSIENT_MIN_SAMPLES` 件に満たないときは、率が
+/// 不安定なので何も言わない。
+fn billing_line(records: &Path, now_unix: u64, percent_threshold: f64) -> Option<String> {
+    use ja_polish::records::{transient_rate, TRANSIENT_MIN_SAMPLES, TRANSIENT_WINDOW};
+    let rate = transient_rate(records, now_unix, TRANSIENT_WINDOW);
+    if rate.total < TRANSIENT_MIN_SAMPLES || rate.percent() <= percent_threshold {
+        return None;
+    }
+    Some(format!(
+        "ja-polish が、直近 7 日の {total} 段落のうち {n} 段落({pct:.0}%)を、混雑・時間切れで素通しにしています(閾値 {th}%)。無料枠は、混んだときに先に切り捨てられる枠で処理される(推論)ので、有料枠を検討してください。有料枠は、送った文面を Google の製品の改善に使わず、切り捨てられにくい。gemini-3.6-flash で月の目安は $30 前後(推定)。判断の材料は docs/adr/1387-ja-polish.md の「有料の API キー・Vertex AI」。閾値は環境変数 `JA_POLISH_TRANSIENT_ADVISORY_PERCENT` で変えられる。",
+        total = rate.total,
+        n = rate.transient,
+        pct = rate.percent(),
+        th = percent_threshold,
+    ))
+}
+
+/// ja-polish がこの機体で有効か(設定ファイルがあるか。`ja_polish::config` の定義と同じ)。
+fn ja_polish_enabled() -> bool {
+    ja_polish::config::config_path().is_some_and(|p| p.is_file())
 }
 
 fn run() -> Option<()> {
     let events = default_path()?;
     let threshold = threshold_from(std::env::var("GATE_FAILOPEN_THRESHOLD").ok().as_deref());
-    let ctx = advisory(&events, threshold)?;
+    let mut lines = gate_lines(&events, threshold);
+    if ja_polish_enabled() {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        let percent = billing_percent_from(
+            std::env::var("JA_POLISH_TRANSIENT_ADVISORY_PERCENT")
+                .ok()
+                .as_deref(),
+        );
+        if let Some(l) =
+            ja_polish::records::records_path().and_then(|p| billing_line(&p, now, percent))
+        {
+            lines.push(l);
+        }
+    }
+    if lines.is_empty() {
+        return None;
+    }
+    let ctx = format!("[gate-failopen-advisory] {}", lines.join("\n"));
     print!(
         "{}",
         Reply::context(ctx).render(Agent::Claude, HookEvent::SessionStart)
@@ -104,5 +156,52 @@ mod tests {
         assert_eq!(threshold_from(Some("-1")), 3);
         assert_eq!(threshold_from(Some("abc")), 3);
         assert_eq!(threshold_from(Some("")), 3);
+    }
+
+    #[test]
+    fn billing_percent_parsing() {
+        assert_eq!(billing_percent_from(None), 5.0);
+        assert_eq!(billing_percent_from(Some(" 12.5 ")), 12.5);
+        assert_eq!(billing_percent_from(Some("0")), 5.0, "0 は常時警告になる");
+        assert_eq!(billing_percent_from(Some("-3")), 5.0);
+        assert_eq!(billing_percent_from(Some("abc")), 5.0);
+        assert_eq!(billing_percent_from(Some("NaN")), 5.0);
+    }
+
+    fn write_records(dir: &Path, now: u64, transient: usize, others: usize) -> std::path::PathBuf {
+        use ja_polish::records::{append, Entry};
+        let path = dir.join("records.jsonl");
+        let mut entries = Vec::new();
+        for i in 0..transient {
+            let mut e = Entry::skipped(format!("t{i}"), "m", "混雑").with_transient(true);
+            e.ts_unix = now - 60;
+            entries.push(e);
+        }
+        for i in 0..others {
+            let mut e = Entry::polished(format!("p{i}"), "m");
+            e.ts_unix = now - 60;
+            entries.push(e);
+        }
+        append(&path, &entries).unwrap();
+        path
+    }
+
+    #[test]
+    fn billing_line_needs_enough_samples_and_a_rate_above_the_threshold() {
+        let d = tempfile::tempdir().unwrap();
+        let now = 1_000_000;
+        // 20 件中 2 件(10%)で、閾値 5% を超える: 知らせる。
+        let p = write_records(d.path(), now, 2, 18);
+        let line = billing_line(&p, now, 5.0).expect("10% > 5%");
+        assert!(line.contains("20 段落のうち 2 段落(10%)"), "{line}");
+        assert!(line.contains("docs/adr/1387-ja-polish.md"), "{line}");
+        // 同じ率でも、閾値ちょうどは超えていない: 黙る。
+        assert!(billing_line(&p, now, 10.0).is_none());
+        // 率が高くても、件数が下限(20)に満たない: 黙る。
+        let d2 = tempfile::tempdir().unwrap();
+        let few = write_records(d2.path(), now, 3, 6);
+        assert!(billing_line(&few, now, 5.0).is_none());
+        // 記録が無い: 黙る。
+        assert!(billing_line(&d.path().join("none.jsonl"), now, 5.0).is_none());
     }
 }

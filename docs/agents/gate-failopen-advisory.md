@@ -47,6 +47,17 @@ fail-open で設計した hook は、依存先(外部 CLI・モデル・認証)�
   失敗を数え、成功でゼロに戻し、閾値で trip する。本案は trip(遮断)せず、fail-open の設計を保つため警告だけ。
 - 軸: 表現不可能 — 現行の語彙は成功を記録しないので「連続」を表現できない。語彙を足し、ログの末尾から導く。
 
+## ja-polish の課金の検討(率で知らせる)
+
+連続回数とは別に、`ja-polish` については、**直近 7 日の素通しのうち、混雑・時間切れによるものの割合**でも知らせる
+(ADR-1387 の D14、`billing_line`)。無料枠が混んで素通しが増えたときに、課金の検討を促すため。
+
+- 見る記録は `~/.local/state/claude/ja-polish/records.jsonl`。分子は `"transient":true` の素通しだけで、キーの
+  未設定や照合の外れは分母にだけ入る。期間内の記録が 20 件に満たないときは何も言わない。
+- 割合が 5% を超えたら、無料枠の扱い(推論)・有料枠の違い・月の目安(推定)・判断の材料(ADR-1387)を 1 行で出す。
+  閾値は環境変数 `JA_POLISH_TRANSIENT_ADVISORY_PERCENT` で変えられる。
+- `ja-polish` の設定ファイル(`~/.config/dotfiles/ja-polish.toml`)が無い機体では何も言わない。
+
 ## 他の fail-open の hook に使う
 
 `crates/gate-failopen-advisory/src/main.rs` の `GATES` に 1 行(gate 名と復旧の手がかり)を足し、その gate が

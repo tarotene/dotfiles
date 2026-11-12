@@ -110,6 +110,53 @@ fn load_where(path: &Path, keep: impl Fn(&Entry) -> bool) -> HashSet<String> {
         .collect()
 }
 
+/// 混雑・時間切れによる素通しの率を見る期間(秒)。7 日。
+pub const TRANSIENT_WINDOW: u64 = 7 * 24 * 60 * 60;
+
+/// 率を判定に使う、期間内の最少の段落数。数件の記録で 1〜2 件が素通しになっただけで率が跳ね上がり、
+/// 課金の検討を知らせすぎないための下限。
+pub const TRANSIENT_MIN_SAMPLES: usize = 20;
+
+/// 期間内の記録の数と、そのうち一時的な原因(混雑・時間切れ)で通せなかった素通しの数。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct TransientRate {
+    pub transient: usize,
+    pub total: usize,
+}
+
+impl TransientRate {
+    /// 一時的な原因の素通しの割合(%)。記録が無ければ 0。
+    pub fn percent(&self) -> f64 {
+        if self.total == 0 {
+            0.0
+        } else {
+            self.transient as f64 * 100.0 / self.total as f64
+        }
+    }
+}
+
+/// `now_unix` から `window_secs` 秒さかのぼった期間の記録を数える。キーの未設定や照合の外れによる
+/// 素通しは、`transient` の印が無いので、分子に入らない(分母には入る)。`transient` の印を持たない古い記録も
+/// 同じ。ファイルが無い・読めない行は数えない。
+pub fn transient_rate(path: &Path, now_unix: u64, window_secs: u64) -> TransientRate {
+    let Ok(text) = std::fs::read_to_string(path) else {
+        return TransientRate::default();
+    };
+    let since = now_unix.saturating_sub(window_secs);
+    let mut rate = TransientRate::default();
+    for e in text
+        .lines()
+        .filter_map(|l| serde_json::from_str::<Entry>(l).ok())
+        .filter(|e| e.ts_unix >= since)
+    {
+        rate.total += 1;
+        if e.transient {
+            rate.transient += 1;
+        }
+    }
+    rate
+}
+
 /// `ja-polish` が動けない、と見る直近の件数と、最後の 1 件からの猶予(秒)。
 pub const UNAVAILABLE_RUN: usize = 5;
 pub const UNAVAILABLE_WINDOW: u64 = 60 * 60;
@@ -212,6 +259,47 @@ mod tests {
         )
         .unwrap();
         assert!(!old.transient);
+    }
+
+    #[test]
+    fn transient_rate_counts_only_the_window_and_only_marked_skips() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("r.jsonl");
+        let now = 1_000_000u64;
+        let at = |ts: u64, e: Entry| Entry { ts_unix: ts, ..e };
+        append(
+            &path,
+            &[
+                // 期間の外(8 日前): 数えない。
+                at(
+                    now - 8 * 86_400,
+                    Entry::skipped("old".into(), "m", "混雑").with_transient(true),
+                ),
+                // 期間の中: 書き直し 2、混雑の素通し 1、キー未設定の素通し 1(分母だけに入る)。
+                at(now - 86_400, Entry::polished("a".into(), "m")),
+                at(now - 3_600, Entry::polished("b".into(), "m")),
+                at(
+                    now - 600,
+                    Entry::skipped("c".into(), "m", "混雑").with_transient(true),
+                ),
+                at(now - 60, Entry::skipped("d".into(), "m", "No key found")),
+            ],
+        )
+        .unwrap();
+        let r = transient_rate(&path, now, TRANSIENT_WINDOW);
+        assert_eq!(
+            r,
+            TransientRate {
+                transient: 1,
+                total: 4
+            }
+        );
+        assert!((r.percent() - 25.0).abs() < 1e-9);
+        assert_eq!(
+            transient_rate(&dir.path().join("none.jsonl"), now, TRANSIENT_WINDOW),
+            TransientRate::default()
+        );
+        assert_eq!(TransientRate::default().percent(), 0.0);
     }
 
     #[test]
