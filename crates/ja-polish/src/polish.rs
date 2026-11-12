@@ -9,6 +9,7 @@ use crate::config::Config;
 use crate::llm::{self, Backend, FailureKind, Item, LlmError, Request};
 use crate::mask::{self, Masked};
 use crate::records::Entry;
+use crate::textlint::Fixer;
 use std::collections::hash_map::RandomState;
 use std::collections::HashSet;
 use std::hash::{BuildHasher, Hasher};
@@ -260,12 +261,13 @@ fn call(
     Err(Skip::from(last))
 }
 
-/// 1 つの束の段落を書き直す。`ks` は束に入る段落の番号(`items`・`masked` の添字)で、戻り値は `ks` と
-/// 同じ並び。照合で外れた段落だけ、もう 1 回依頼する。依頼そのものが失敗したら、束の段落すべてを素通しにする。
+/// 1 つの束の段落を書き直す。`ks` は束に入る段落の番号(`items`・`base` の添字)で、戻り値は `ks` と
+/// 同じ並び。`base` は、前段の textlint が直したあとの、モデルに送った本文(伏せ字つき)で、戻りの照合の
+/// 基準になる。照合で外れた段落だけ、もう 1 回依頼する。依頼そのものが失敗したら、束の段落すべてを素通しにする。
 fn process_chunk(
     ks: &[usize],
     items: &[Item],
-    masked: &[Masked],
+    base: &[String],
     system: &str,
     cfg: &Config,
     backend: &dyn Backend,
@@ -293,7 +295,7 @@ fn process_chunk(
                 for (pos, &p) in todo.iter().enumerate() {
                     let verdict = match parsed.get(&(pos + 1)) {
                         None => Err("応答に該当する段落がありません".to_string()),
-                        Some(out) => verify(&masked[ks[p]].text, out),
+                        Some(out) => verify(&base[ks[p]], out),
                     };
                     if verdict.is_err() {
                         next.push(p);
@@ -312,14 +314,30 @@ fn process_chunk(
     outputs
 }
 
+/// textlint の直し(`fixer` の戻り)のうち、照合([`verify`])を通るものだけを採る。外れた段落、または
+/// 戻りの数が合わないときは、入力のまま。Gemini の出力と同じ照合なので、伏せ字・数値・記法・分量を壊す
+/// 直しは入らない。
+fn accept_fixes(inputs: &[String], fixed: &[String]) -> Vec<String> {
+    if fixed.len() != inputs.len() {
+        return inputs.to_vec();
+    }
+    inputs
+        .iter()
+        .zip(fixed)
+        .map(|(inp, out)| verify(inp, out).unwrap_or_else(|_| inp.clone()))
+        .collect()
+}
+
 /// 文書の未通過の日本語の段落を書き直す。
 ///
 /// - `baseline`: 基点の文書。あれば、そこに無い(追加・変更された)段落だけが対象。
 /// - `records`: 通した段落の `sha` の集合。
+/// - 順は「前段の textlint → Gemini → 後段の textlint」(D13)。前段の直しは、モデルが止まっても
+///   残る(素通しの段落も、前段が直した本文を最終の本文にし、その `sha` を記録する)。
 /// - 対象の段落は `cfg.chunk_paras` 個ずつの束に分け、最大 `cfg.parallel` 本を同時に送る
 ///   (1 回の依頼が大きいほど応答が遅くなり、時間切れにもなりやすいため)。束の中の再依頼と予備の
-///   モデルは `call`(非公開)。照合で外れた段落だけ、もう 1 回依頼する。通せなかった段落は元の本文のまま
-///   素通しにして理由を残す。
+///   モデルは `call`(非公開)。照合で外れた段落だけ、もう 1 回依頼する。通せなかった段落は、前段の
+///   直し以外は元の本文のまま素通しにして理由を残す。
 pub fn polish(
     text: &str,
     baseline: Option<&str>,
@@ -327,6 +345,7 @@ pub fn polish(
     style: &str,
     cfg: &Config,
     backend: &dyn Backend,
+    fixer: &dyn Fixer,
 ) -> PolishResult {
     let mut blocks = blocks::split(text);
     let idxs = pending_indexes(&blocks, baseline, records);
@@ -339,12 +358,15 @@ pub fn polish(
     }
 
     let masked: Vec<Masked> = idxs.iter().map(|&i| mask::mask(&blocks[i].text)).collect();
+    // 前段: textlint が定型の冗長表現を直す。モデルへ送る本文と、戻りの照合の基準は、直したあとの本文。
+    let originals: Vec<String> = masked.iter().map(|m| m.text.clone()).collect();
+    let base: Vec<String> = accept_fixes(&originals, &fixer.fix(&originals));
     let items: Vec<Item> = idxs
         .iter()
-        .zip(&masked)
-        .map(|(&i, m)| Item {
+        .zip(&base)
+        .map(|(&i, b)| Item {
             before: context(&blocks, i, false),
-            text: m.text.clone(),
+            text: b.clone(),
             after: context(&blocks, i, true),
         })
         .collect();
@@ -361,17 +383,32 @@ pub fn polish(
             scope.spawn(|| loop {
                 let c = next.fetch_add(1, Ordering::SeqCst);
                 let Some(ks) = chunks.get(c) else { break };
-                let out = process_chunk(ks, &items, &masked, &system, cfg, backend);
+                let out = process_chunk(ks, &items, &base, &system, cfg, backend);
                 slots.lock().expect("slots lock")[c] = Some(out);
             });
         }
     });
-    let outputs: Vec<Result<Verified, Skip>> = slots
+    let mut outputs: Vec<Result<Verified, Skip>> = slots
         .into_inner()
         .expect("slots lock")
         .into_iter()
         .flat_map(|o| o.expect("every chunk is processed"))
         .collect();
+
+    // 後段: モデルが書き直した段落に、もう一度 textlint の直しを当てる(モデルが持ち込む冗長表現を直す)。
+    let answered: Vec<usize> = (0..outputs.len()).filter(|&k| outputs[k].is_ok()).collect();
+    let answers: Vec<String> = answered
+        .iter()
+        .filter_map(|&k| outputs[k].as_ref().ok().map(|v| v.text.clone()))
+        .collect();
+    for (&k, text) in answered
+        .iter()
+        .zip(accept_fixes(&answers, &fixer.fix(&answers)))
+    {
+        if let Ok(v) = &mut outputs[k] {
+            v.text = text;
+        }
+    }
 
     let mut paras = Vec::new();
     let mut entries = Vec::new();
@@ -396,13 +433,22 @@ pub fn polish(
                 });
             }
             Err(skip) => {
+                // モデルが通せなかった段落でも、前段の直しは残す(直していなければ、元の本文のまま)。
+                let fixed = if base[k] == originals[k] {
+                    original.clone()
+                } else {
+                    mask::unmask(&base[k], &masked[k].slots)
+                };
+                if blocks::normalize(&fixed) != blocks::normalize(&original) {
+                    blocks[i].text = fixed.clone();
+                }
                 entries.push(
-                    Entry::skipped(blocks::hash(&original), &cfg.model, &skip.reason)
+                    Entry::skipped(blocks::hash(&fixed), &cfg.model, &skip.reason)
                         .with_transient(skip.transient),
                 );
                 paras.push(Para {
-                    before: original.clone(),
-                    after: original,
+                    before: original,
+                    after: fixed,
                     status: Status::Skipped(skip.reason.clone()),
                 });
             }
@@ -419,6 +465,7 @@ pub fn polish(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::textlint::NoFixer;
     use regex::Regex;
 
     /// 送られた依頼の記録(順序は並列だと決まらないので、中身で確かめる)。
@@ -507,7 +554,31 @@ mod tests {
     }
 
     fn run_with(text: &str, baseline: Option<&str>, cfg: &Config, fake: &Fake) -> PolishResult {
-        polish(text, baseline, &HashSet::new(), "# 規約", cfg, fake)
+        run_fixed(text, baseline, cfg, fake, &NoFixer)
+    }
+
+    fn run_fixed(
+        text: &str,
+        baseline: Option<&str>,
+        cfg: &Config,
+        fake: &Fake,
+        fixer: &dyn Fixer,
+    ) -> PolishResult {
+        polish(text, baseline, &HashSet::new(), "# 規約", cfg, fake, fixer)
+    }
+
+    /// 偽の textlint: 各段落に関数を当てる。
+    struct FnFixer(Box<dyn Fn(&str) -> String + Send + Sync>);
+
+    impl Fixer for FnFixer {
+        fn fix(&self, texts: &[String]) -> Vec<String> {
+            texts.iter().map(|t| (self.0)(t)).collect()
+        }
+    }
+
+    /// 「することができる」を「できる」に直す、偽の textlint。
+    fn redundant_fixer() -> FnFixer {
+        FnFixer(Box::new(|t| t.replace("することができる", "できる")))
     }
 
     fn run(text: &str, baseline: Option<&str>, fake: &Fake) -> PolishResult {
@@ -820,6 +891,78 @@ mod tests {
             .text
             .starts_with("一番目の段落だ。\n\n二番目の段落だ。\n\n三番目の段落です。"));
         assert!(r.text.ends_with("五番目の段落だ。\n"));
+    }
+
+    #[test]
+    fn textlint_fixes_before_and_after_the_model() {
+        let text = "検証することができる。\n";
+        // モデルは前段が直した本文(「検証できる。」)を受け取り、冗長な言い回しを持ち込んで返す。
+        let fake = Fake::new(vec![ok("<para n=\"1\">確認することができる。</para>")]);
+        let r = run_fixed(text, None, &cfg(), &fake, &redundant_fixer());
+        assert!(
+            fake.calls()[0]
+                .user
+                .contains("<text>\n検証できる。\n</text>"),
+            "前段で直した本文を送る: {}",
+            fake.calls()[0].user
+        );
+        // 後段が、モデルの持ち込んだ冗長表現を直す。
+        assert_eq!(r.text, "確認できる。\n");
+        assert_eq!(r.paras[0].status, Status::Polished);
+        assert_eq!(r.entries[0].sha, blocks::hash("確認できる。"));
+    }
+
+    #[test]
+    fn the_pre_fix_survives_when_the_model_fails() {
+        let text = "検証することができる。\n";
+        let fake = Fake::new(vec![Err(LlmError::permanent("API キーが未設定"))]);
+        let r = run_fixed(text, None, &cfg(), &fake, &redundant_fixer());
+        // モデルが通せなくても、前段の直しは入る。記録の鍵は、最終の本文(直したあと)。
+        assert_eq!(r.text, "検証できる。\n");
+        assert_eq!(r.skipped(), vec!["API キーが未設定"]);
+        assert_eq!(r.paras[0].before, "検証することができる。");
+        assert_eq!(r.paras[0].after, "検証できる。");
+        assert_eq!(r.entries[0].state, "skipped");
+        assert_eq!(r.entries[0].sha, blocks::hash("検証できる。"));
+    }
+
+    #[test]
+    fn a_skipped_paragraph_the_pre_fix_did_not_touch_stays_as_it_was() {
+        let text = "そのままの段落です。\n";
+        let fake = Fake::new(vec![Err(LlmError::permanent("キー無し"))]);
+        let r = run_fixed(text, None, &cfg(), &fake, &redundant_fixer());
+        assert_eq!(r.text, text);
+        assert_eq!(r.entries[0].sha, blocks::hash("そのままの段落です。"));
+    }
+
+    #[test]
+    fn a_fix_that_breaks_the_verification_is_dropped() {
+        // 数値を変える直しは、照合(数値の集合)で外れる。
+        let text = "検証は 3 件の段落です。\n";
+        let bad = FnFixer(Box::new(|t| t.replace('3', "4")));
+        let fake = Fake::new(vec![ok("<para n=\"1\">検証は 3 件の段落だ。</para>")]);
+        let r = run_fixed(text, None, &cfg(), &fake, &bad);
+        assert!(
+            fake.calls()[0].user.contains("検証は 3 件の段落です。"),
+            "直しを捨てて、元の本文を送る"
+        );
+        assert_eq!(r.text, "検証は 3 件の段落だ。\n");
+    }
+
+    #[test]
+    fn a_fixer_that_returns_the_wrong_count_changes_nothing() {
+        struct Short;
+        impl Fixer for Short {
+            fn fix(&self, _: &[String]) -> Vec<String> {
+                Vec::new()
+            }
+        }
+        let text = "一つ目の段落です。\n\n二つ目の段落です。\n";
+        let fake = Fake::new(vec![ok(
+            "<para n=\"1\">一つ目の段落だ。</para>\n<para n=\"2\">二つ目の段落だ。</para>",
+        )]);
+        let r = run_fixed(text, None, &cfg(), &fake, &Short);
+        assert_eq!(r.text, "一つ目の段落だ。\n\n二つ目の段落だ。\n");
     }
 
     #[test]

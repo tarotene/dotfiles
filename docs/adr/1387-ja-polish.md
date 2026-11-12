@@ -90,6 +90,18 @@ Issue: No-Issue(`/grill-me` セッション中の依頼。依頼文の「ja-poli
 
 読み込みを 2 つに分ける。`records::load`(`polished` と `skipped` の両方。関所と `--check` が使う)と、`records::load_polished`(`polished` だけ。`ja-polish` の書き直しが使う)である。問題が解消したあと(キーを入れた、混雑が収まった、など)に、同じ文書をもう一度 `ja-polish` に通せば、素通しだった段落が書き直される。恒久的な原因(キーが無いまま)で再実行すると、同じ段落をまた送って、素通しの記録が 1 行増える。記録は追記だけで、関所の判定は変わらない。
 
+### D13: Gemini の前後に、textlint の自動修正を挟む
+
+順は、前段の textlint → Gemini → 後段の textlint。決定論で直せる型(定型の冗長表現)を機械に任せる。前段の直しは、Gemini が混んでいて素通しになった段落にも残る(最終の本文は、前段が直したあとの本文で、その `sha` を記録する)。後段は、Gemini が持ち込む冗長表現を直す。
+
+- 使う規則は、nixpkgs が固定する `textlint-rule-preset-ja-technical-writing`(10.0.1)のうち `ja-no-redundant-expression` だけ(「することができる。」を「できる。」に自動で直す)。ほかの規則は、ja-polish が実行のたびに一時ディレクトリへ作る設定で無効にする。作業ツリーに `.textlintrc` は置かない。
+- `textlint-rule-prh`(6.0.0)は、private の文体規約の隣に `docs/style/prh.yml` があるときだけ使う。辞書の中身は、公開のこのリポジトリに置かない(ADR-0034)。辞書が無ければ prh は動かない。
+- 直した結果は、Gemini の出力と同じ照合(伏せ字・数値・行頭の記法・分量)を通るものだけを採る。textlint が無い・失敗した・時間切れ・段落の数が合わないときは、入力のまま(止めない)。全段落を 1 つのファイルにまとめて 1 回だけ起動する(1 回約 1 秒)。
+- 実測(2026-11-12、vega、隔離した HOME で nixpkgs の固定版): 「することができる。」は直った。句点の無い箇条書きの「…ことができる」と、「通信を行う」は、検出だけで直らなかった。自動で直せる範囲は狭い。**Gemini が持ち込む硬い語**(「のみ」「存在しない」)は、prh の辞書に載せれば後段で直せるが、辞書は別の PR で private のリポジトリに置く。
+- 設定の `textlint = false`(home-manager の `dotfiles.jaPolish.textlint.enable`)で切れる。
+
+計画からの差: `textlint-rule-preset-ai-words-ja` は採らなかった。自前の規則(`no-ai-words`・`no-short-topic-comma`)に自動修正が無く(nixpkgs-unstable の 1.2.2 を読んだ)、固定中の stable の nixpkgs に無い(unstable の overlay の撤去検査は、stable に同名の属性がある前提)ため、直す前後の段には使えない。段 3 の測定で、指摘数の物差しに使うかを決める。
+
 ### 執行点
 
 - `crates/ja-polish/src/llm.rs` — 失敗の 3 種(`FailureKind`)と、標準エラーからの判定(`classify_stderr`)、`-o thinking_level` の受け渡し
@@ -97,7 +109,9 @@ Issue: No-Issue(`/grill-me` セッション中の依頼。依頼文の「ja-poli
 - `crates/ja-polish/src/config.rs` — 設定の項目(`fallback_model`・`thinking_level`・`timeout_secs`・`chunk_paras`・`parallel`・`retries`・`retry_base_ms`)と既定値
 - `crates/ja-polish/src/records.rs` — 一時的な原因の素通しに付ける印(`transient`)、素通しを「通した」とみなさない読み込み(`load_polished`、D12)
 - `crates/ja-polish/src/app.rs` — 書き直しが `load_polished` を使う(D12)
-- `home/modules/ja-polish.nix` — 設定ファイルに出す option(`fallbackModel`・`thinkingLevel`・`timeoutSecs`)
+- `home/modules/ja-polish.nix` — 設定ファイルに出す option(`fallbackModel`・`thinkingLevel`・`timeoutSecs`)、textlint の環境と `textlint.enable`(D13)
+- `crates/ja-polish/src/textlint.rs` — textlint の自動修正(`Fixer`・`Textlint`)と、設定の生成(D13)
+- `crates/ja-polish/src/style.rs` — prh の辞書の場所(`prh_path`、D13)
 
 ## Alternatives considered
 
@@ -110,6 +124,8 @@ Issue: No-Issue(`/grill-me` セッション中の依頼。依頼文の「ja-poli
 - **OpenRouter の予備モデル列**(`models` 配列、失敗時に次のモデルへ。https://openrouter.ai/docs/guides/routing/model-fallbacks 、取得 2026-11-12) — 送り先が増え、無料のまま使うには `:free` のモデルだけを並べる必要がある。`llm-openrouter` から配列を渡せるかは未確認。**再訪の条件**: D9 の再依頼と予備のモデルを入れても、一時的な原因による素通しの割合が 5% を超え続けるとき。
 - **ローカルのモデル**(llama.cpp の SYCL、vega の Meteor Lake の iGPU) — 送信が無いので、会社の機体(#1385)の送り先の候補になる。llama.cpp の文書(docs/backend/SYCL.md、取得 2026-11-12)は、Meteor Lake の内蔵 GPU で 7B の q4 が毎秒 13〜16 トークンと書く。9 段落(出力 1,500 トークン前後)で 1.5〜2 分の見込み(推定)で、今の Gemini より遅い。日本語の書き直しの質の一次資料は取得できず、未確認。**再訪の条件**: 会社の機体の送り先を決めるとき(#1385)。
 - **ほかの提供元**(Mistral・Groq・Cerebras) — Groq の公式ページは 403 で読めず、Cerebras は試用のみで毎分 5 回(https://inference-docs.cerebras.ai/support/rate-limits 、取得 2026-11-12)。**再訪の条件**: OpenRouter と同じ。
+- **Gemini の指示文だけで、硬い語を避けさせる** — D13 の対抗馬。同じ入力に同じ結果が出る保証が無く、Gemini が止まると効かない。textlint の自動修正は、止まっても残る。ただし自動で直せる範囲が狭いので、指示文(private の文体規約)の側の強化も併用する。
+- **商用の校正サービス(Shodo・文賢)** — 感触で外した(送り先が増える)。分析ではない。
 - **Batch API・Flex 推論** — 待ちが分から 24 時間で、対話の CLI に向かない(Google, Batch API https://aistudio.google.com/docs/batch-api 、Flex https://aistudio.google.com/docs/flex-inference 、取得 2026-11-12)。
 
 ## Consequences
@@ -150,3 +166,4 @@ Issue: No-Issue(`/grill-me` セッション中の依頼。依頼文の「ja-poli
 - D10: 段落を束に分けて並列に送る。先行例なし: Gemini API の rate-limits・troubleshooting・batch-api・caching の各ページ(取得 2026-11-12)に、対話の依頼を分割する指針は無かった。軸: 還元。
 - D11: 思考量は設定で渡し、既定は測定で決める。先行例: Google, Gemini API "Thinking" https://aistudio.google.com/docs/thinking (取得 2026-11-12)。差分: 一致 — 遅延を下げるには thinking_level を下げる、という公式の指針どおり。値は測定で決める。軸: 還元。
 - D12: 素通しの段落を、`ja-polish` の次の実行で書き直しの対象に戻す。先行例なし: このリポジトリの記録まわりの設計(`docs/agents/ja-polish.md`、`docs/agents/gate-failopen-advisory.md`、取得 2026-11-12)だけを探し、同じ問題の扱いは見つからなかった。外部の例は探していない(未確認)。軸: 還元 — 記録の読み込みを 2 つに分けるだけ。
+- D13: Gemini の前後に textlint の自動修正を挟む。先行例: textlint, "CLI" https://textlint.org/docs/cli/ (取得 2026-11-12、調査の委譲先が `--fix` の説明を逐語で引いたもの)。差分: 一致 — `--fix` の自動修正をそのまま使う。設定は作業ツリーに置かず、ja-polish が実行のたびに作る。既存手段: 採用 — textlint(nixpkgs の固定版 15.7.1)。軸: 還元 — 定型の直しを、決定論の道具へ移す。

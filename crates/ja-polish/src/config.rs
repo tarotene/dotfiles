@@ -39,6 +39,9 @@ pub struct Config {
     pub parallel: usize,
     pub retries: u32,
     pub retry_base: Duration,
+    /// Gemini の前後に textlint の自動修正を挟むか(D13)。`textlint` コマンドが無いときは、
+    /// この設定に関わらず挟まない(止めない)。
+    pub textlint: bool,
 }
 
 impl Default for Config {
@@ -52,6 +55,7 @@ impl Default for Config {
             parallel: DEFAULT_PARALLEL,
             retries: DEFAULT_RETRIES,
             retry_base: Duration::from_millis(DEFAULT_RETRY_BASE_MS),
+            textlint: true,
         }
     }
 }
@@ -66,6 +70,7 @@ struct File {
     parallel: Option<usize>,
     retries: Option<u32>,
     retry_base_ms: Option<u64>,
+    textlint: Option<bool>,
 }
 
 pub fn config_path() -> Option<PathBuf> {
@@ -114,6 +119,9 @@ pub fn parse(text: &str) -> Config {
     if let Some(ms) = file.retry_base_ms {
         c.retry_base = Duration::from_millis(ms);
     }
+    if let Some(b) = file.textlint {
+        c.textlint = b;
+    }
     c
 }
 
@@ -148,6 +156,12 @@ mod tests {
         assert_eq!(c.thinking_level.as_deref(), Some("low"));
         assert_eq!((c.chunk_paras, c.parallel, c.retries), (4, 1, 0));
         assert_eq!(c.retry_base, Duration::ZERO);
+    }
+
+    #[test]
+    fn textlint_is_on_by_default_and_can_be_turned_off() {
+        assert!(parse("").textlint);
+        assert!(!parse("textlint = false\n").textlint);
     }
 
     #[test]

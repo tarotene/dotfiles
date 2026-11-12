@@ -37,10 +37,16 @@ impl Sandbox {
         c.env_clear()
             .env("PATH", std::env::var("PATH").unwrap_or_default())
             .env("HOME", self.dir.path())
+            // `env_clear` は TMPDIR も消す。textlint の一時ディレクトリが /tmp(sandbox では読み取り専用)に
+            // 向かわないよう、作業用のディレクトリを指す。
+            .env("TMPDIR", self.dir.path())
             .env("XDG_STATE_HOME", self.path("state"))
             .env("XDG_CONFIG_HOME", self.path("config"))
             .env("JA_POLISH_LLM_BIN", self.path("llm"))
-            .env("JA_POLISH_STYLE_FILE", self.path("style.md"));
+            .env("JA_POLISH_STYLE_FILE", self.path("style.md"))
+            // ホストに textlint があっても、既存のテストが影響されないよう、存在しない実行ファイルを指す
+            // (見つからないときは入力のまま。textlint を使うテストだけ `fake_textlint` で差し替える)。
+            .env("JA_POLISH_TEXTLINT_BIN", self.path("no-such-textlint"));
         c
     }
 
@@ -187,6 +193,104 @@ impl Sandbox {
             .map(str::to_string)
             .collect()
     }
+}
+
+impl Sandbox {
+    /// 偽の `textlint`: 入力ファイル(4 つ目の引数)の「することができる」を「できる」に直す。
+    fn fake_textlint(&self) -> PathBuf {
+        let p = self.path("textlint");
+        std::fs::write(
+            &p,
+            "#!/bin/sh\nsed -i 's/することができる/できる/' \"$4\"\nexit 1\n",
+        )
+        .unwrap();
+        std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).unwrap();
+        p
+    }
+}
+
+const REDUNDANT: &str = "文書を検証することができる。\n";
+
+#[test]
+fn textlint_pre_fix_survives_a_failing_llm_and_is_shown_in_the_report() {
+    let sb = Sandbox::new();
+    sb.fake_llm("Error: No key found - add one", true);
+    let tl = sb.fake_textlint();
+    let file = sb.path("doc.md");
+    std::fs::write(&file, REDUNDANT).unwrap();
+
+    let (out, _, code) = text(
+        &sb.cmd()
+            .env("JA_POLISH_TEXTLINT_BIN", &tl)
+            .arg(&file)
+            .output()
+            .unwrap(),
+    );
+    assert_eq!(code, Some(0));
+    assert!(out.contains("素通し 1"), "{out}");
+    assert!(out.contains("textlint の直しだけ入った"), "{out}");
+    assert!(out.contains("+ 文書を検証できる。"), "{out}");
+    assert_eq!(
+        std::fs::read_to_string(&file).unwrap(),
+        "文書を検証できる。\n",
+        "モデルが通せなくても、前段の直しは入る"
+    );
+    // 記録の鍵は、直したあとの本文。関所は、直したあとの文書を通したものとみなす。
+    let (out, _, code) = text(&sb.cmd().arg("--check").arg(&file).output().unwrap());
+    assert_eq!(code, Some(0), "{out}");
+}
+
+#[test]
+fn textlint_runs_before_and_after_the_llm_with_the_pre_fixed_text_sent() {
+    let sb = Sandbox::new();
+    // モデルは、冗長な言い回しを持ち込んで返す。後段の textlint が直す。
+    sb.fake_llm("<para n=\"1\">文書を確認することができる。</para>", false);
+    let tl = sb.fake_textlint();
+    let file = sb.path("doc.md");
+    std::fs::write(&file, REDUNDANT).unwrap();
+
+    let (out, err, code) = text(
+        &sb.cmd()
+            .env("JA_POLISH_TEXTLINT_BIN", &tl)
+            .arg(&file)
+            .output()
+            .unwrap(),
+    );
+    assert_eq!(code, Some(0), "{out}{err}");
+    assert!(out.contains("書き直し 1 / 変更なし 0 / 素通し 0"), "{out}");
+    let sent = std::fs::read_to_string(sb.path("llm.stdin")).unwrap();
+    assert!(
+        sent.contains("<text>\n文書を検証できる。\n</text>"),
+        "前段で直した本文を送る: {sent}"
+    );
+    assert_eq!(
+        std::fs::read_to_string(&file).unwrap(),
+        "文書を確認できる。\n",
+        "後段が、モデルの持ち込んだ冗長表現を直す"
+    );
+}
+
+#[test]
+fn textlint_false_in_the_config_turns_the_fixer_off() {
+    let sb = Sandbox::new();
+    sb.config("textlint = false\n");
+    sb.fake_llm("Error: No key found - add one", true);
+    let tl = sb.fake_textlint();
+    let file = sb.path("doc.md");
+    std::fs::write(&file, REDUNDANT).unwrap();
+    let (out, _, _) = text(
+        &sb.cmd()
+            .env("JA_POLISH_TEXTLINT_BIN", &tl)
+            .arg(&file)
+            .output()
+            .unwrap(),
+    );
+    assert!(out.contains("素通し 1"), "{out}");
+    assert_eq!(
+        std::fs::read_to_string(&file).unwrap(),
+        REDUNDANT,
+        "設定で切れば、直さない"
+    );
 }
 
 #[test]
