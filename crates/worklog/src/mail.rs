@@ -881,6 +881,9 @@ pub struct MailAdded {
     pub superseded: Vec<String>,
     /// 同じ出来事が既に記録済み。
     pub duplicate: bool,
+    /// 開いている項目に、別の要旨の「開く出来事」が来て、書かずに畳んだとき、その項目の (状態, 記録済みの要旨)。
+    /// 語彙に、開いている項目の要旨を直す出来事が無いので、台帳の要旨は古いまま残る。読み直しだけ(同じ要旨)なら `None`。
+    pub kept: Option<(String, String)>,
 }
 
 /// 畳み込んだ今の状態から許される出来事だけを書く。許されなければ書かずに止める。
@@ -917,6 +920,7 @@ pub fn add_mail(
             duplicate: matches!(added, Added::Duplicate(_)),
             path: Some(path_of(added)),
             superseded: vec![],
+            kept: None,
         });
     };
     let (evs, folded) = load(vault, days)?;
@@ -926,6 +930,7 @@ pub fn add_mail(
             path: None,
             superseded: vec![],
             duplicate: true,
+            kept: None,
         });
     }
     let mut superseded = Vec::new();
@@ -937,6 +942,7 @@ pub fn add_mail(
                         path: None,
                         superseded,
                         duplicate: true,
+                        kept: None,
                     });
                 }
                 return Err(format!(
@@ -946,10 +952,14 @@ pub fn add_mail(
             }
             if !def.from.contains(&item.state) {
                 if def.is_pure_opening() {
+                    // 開いている項目への、開く出来事。書かずに畳む(読み直しの冪等)。ただし、要旨が違うなら、台帳の
+                    // 要旨が更新されないまま古く残るので、呼び出し側が知らせられるように返す(F8)。
                     return Ok(MailAdded {
                         path: None,
                         superseded,
                         duplicate: true,
+                        kept: (item.summary != line.summary)
+                            .then(|| (item.state.clone(), item.summary.clone())),
                     });
                 }
                 return Err(format!("{key} は {} で、{} は書けない", item.state, def.id));
@@ -981,6 +991,7 @@ pub fn add_mail(
                     path: None,
                     superseded,
                     duplicate: true,
+                    kept: None,
                 });
             }
             let thread_key = line.tag.thread_key().expect("key があれば thread がある");
@@ -1025,6 +1036,7 @@ pub fn add_mail(
         duplicate: matches!(added, Added::Duplicate(_)),
         path: Some(path_of(added)),
         superseded,
+        kept: None,
     })
 }
 
