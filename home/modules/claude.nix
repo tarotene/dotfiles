@@ -282,6 +282,19 @@ in
         # Username for 'https://github.com'` and passed outside (measured on vega 2026-10-28).
         "git fetch *"
         "git pull *"
+        # `git switch` and `git branch` write `.git/config` (a branch's upstream: `git switch -c
+        # <branch> origin/<ref>` through `branch.autoSetupMerge`; `git branch -D` removes the
+        # branch's section). The sandbox keeps `.git/config` read-only by putting a stand-in
+        # `config.lock` where the real one would be, so inside it they stop half way with `could
+        # not lock config file ... File exists`: the branch and the work tree are updated but HEAD
+        # stays on the old branch (measured on vega 2026-11-11, #1534's session; the earlier guess
+        # of a clash with a parallel session was wrong). The write is not opened up through
+        # `allowWrite`: `.git/config` can declare hooks and aliases, which the sandbox guards on
+        # purpose. The two commands run outside it instead, and in auto mode the classifier
+        # reviews each call. That these exact patterns take a call out of the sandbox is the same
+        # kind as the lines above, and is not measured yet (docs/agents/agent-permissions.md).
+        "git switch *"
+        "git branch *"
         # `pr-checks-wait` (crates/pr-gate) runs `gh` inside itself, so the call must be
         # outside the sandbox too: started in the background from inside it, it exited 2
         # with `PR の base ブランチを取得できません` (the keyring is out of reach, 2026-10-28).

@@ -114,8 +114,12 @@ Claude Code 本体が、前景の `sleep N` のあとにコマンドを続ける
 ## sandbox の外で動かすコマンドは、単体で呼ぶ(#1164)
 
 `gh`・`git commit`・`git push`・`git add`・`git rebase`・`git merge`・`git cherry-pick`・`git revert`・`git tag`・
-`nix build` などは sandbox の外で動く(`sandbox.excludedCommands`、
-`home/modules/claude.nix`)。鍵束・gpg-agent・nix daemon が要るためである。ただし、**呼び出し全体の
+`git switch`・`git branch`・`nix build` などは sandbox の外で動く(`sandbox.excludedCommands`、
+`home/modules/claude.nix`)。鍵束・gpg-agent・nix daemon が要るためである。`git switch`・`git branch` は、
+上流の設定を `.git/config` に書く(`git switch -c <branch> origin/<ref>`、`git branch -D`)が、sandbox の中では
+`.git/config.lock` の代役が見えて `could not lock config file … File exists` で途中で止まる(ブランチと作業ツリーは
+更新されるが、HEAD は元のブランチのまま。2026-11-11 に実測。並行セッションとの取り合いではなかった)ので外に出した。
+`.git/config` は、フックや別名を書けるので、sandbox の書き込み許可には入れない。除外コマンドについて、**呼び出し全体の
 コマンドが除外パターンに合わないと、全体が sandbox の中に残る**(Anthropic, "Sandboxing"、
 <https://code.claude.com/docs/en/sandboxing>、取得 2026-10-27)。残ると `gh` は認証できず、署名は
 `No secret key` で失敗し、`nix` は `Read-only file system` になる。2026-10-28 に vega で、
