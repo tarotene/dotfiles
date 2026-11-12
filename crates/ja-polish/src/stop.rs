@@ -103,6 +103,10 @@ fn check(raw: &str) -> Option<StopOutcome> {
         return None;
     }
     config::load()?;
+    // ja-polish が動けない間は、往復を求めても素通しが増えるだけなので、止めない(投稿の関所と同じ)。
+    if records::unavailable_now() {
+        return None;
+    }
     let input: Value = serde_json::from_str(raw).ok()?;
     let cwd = input
         .get("cwd")

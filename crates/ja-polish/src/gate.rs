@@ -15,6 +15,8 @@
 //! - 設定ファイルが無い機体(ja-polish を有効にしていない機体)
 //! - 本文に `No-Attribution:` の行がある(本人の文の代理投稿。書き直しの対象外)
 //! - 環境変数 `SKIP_JA_POLISH_GATE=1`(ja-polish が壊れたときの逃げ道)
+//! - ja-polish が動けない間(直近 5 件の記録がすべて素通しで、最後が 1 時間以内。`records::unavailable`)。
+//!   往復を求めても、結果は素通しで、書き直しは起きない。1 時間たつと元に戻り、次の 1 回が確かめになる
 //! - 本文が取れない(コマンド置換の中身が不明、`--body-file` が読めない、知らない形の MCP 入力)。
 //!   判定不能を拒否に変えない
 //!
@@ -266,6 +268,10 @@ pub fn hook(agent: Agent, raw: &str) -> Option<Outcome> {
     }
     // 設定ファイルの無い機体は、ja-polish を有効にしていない。何も検査しない。
     config::load()?;
+    // ja-polish が動けない間(直近の記録がすべて素通し)は、往復を求めても素通しが増えるだけなので、拒否しない。
+    if records::unavailable_now() {
+        return None;
+    }
     let call = ToolCall::parse(agent, raw)?;
     let known = records::records_path()
         .map(|p| records::load(&p))
