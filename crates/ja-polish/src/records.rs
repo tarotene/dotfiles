@@ -84,14 +84,28 @@ pub fn records_path() -> Option<PathBuf> {
     Some(state_dir()?.join("records.jsonl"))
 }
 
-/// 記録済みの `sha` の集合。ファイルが無い・読めない行は空・読み飛ばし(関所の判定を
-/// 記録の不調で止めない)。
+/// 記録済みの `sha` の集合(書き直した段落も、素通しの段落も含む)。ファイルが無い・読めない行は
+/// 空・読み飛ばし(関所の判定を記録の不調で止めない)。**関所(投稿・Stop)と `--check` が使う**:
+/// 素通しの段落で止めると、動けない間に何も出せなくなるので、素通しも「通した」とみなす。
 pub fn load(path: &Path) -> HashSet<String> {
+    load_where(path, |_| true)
+}
+
+/// 書き直した(`state` が `polished`)段落の `sha` の集合。**`ja-polish` コマンドの書き直しが使う**:
+/// 素通しの段落は、動けない間(キーが無い・混雑・時間切れ)に元の文のまま通しただけなので、次に
+/// 実行したときに書き直しの対象へ戻す。素通しも「通した」とみなす [`load`] のままだと、直ったあとも
+/// 文面を変えない限り二度と書き直されない(2026-11-12 に、時間切れで素通しにした 10 段落で実測した)。
+pub fn load_polished(path: &Path) -> HashSet<String> {
+    load_where(path, |e| e.state == "polished")
+}
+
+fn load_where(path: &Path, keep: impl Fn(&Entry) -> bool) -> HashSet<String> {
     let Ok(text) = std::fs::read_to_string(path) else {
         return HashSet::new();
     };
     text.lines()
         .filter_map(|l| serde_json::from_str::<Entry>(l).ok())
+        .filter(|e| keep(e))
         .map(|e| e.sha)
         .collect()
 }
@@ -226,6 +240,27 @@ mod tests {
             .collect();
         append(&path, &more).unwrap();
         assert!(unavailable(&path, now + 5));
+    }
+
+    #[test]
+    fn load_polished_leaves_out_skipped_paragraphs_but_load_keeps_them() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("r.jsonl");
+        append(
+            &path,
+            &[
+                Entry::polished("done".into(), "m"),
+                Entry::skipped("passed-through".into(), "m", "時間切れ").with_transient(true),
+            ],
+        )
+        .unwrap();
+        // 関所の見方: 素通しも通した。
+        let all = load(&path);
+        assert!(all.contains("done") && all.contains("passed-through"));
+        // 書き直しの見方: 素通しはもう一度対象にする。
+        let polished = load_polished(&path);
+        assert!(polished.contains("done") && !polished.contains("passed-through"));
+        assert!(load_polished(&dir.path().join("none.jsonl")).is_empty());
     }
 
     #[test]
