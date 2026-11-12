@@ -400,7 +400,7 @@ ADR-0027 に従い単一チェーンに積む。手順・`Stack:` 行・段ご�
   恒久的に残る。
 - 直したはずの気づきが再発したときは、`--add` がノートを自動で open に戻す(再発の行が足される)。
 - 裁定されないまま `open` で 14 日たった気づきは、日次の `promotion-detect` が `lapsed` にする(ADR-1381)。`lapsed` は
-  `--list-open` に出ない。再発すれば `--add` が open に戻し、`--set-status` で `fixed`・`dropped` にも進められる。
+  `--list-open` に出ない(`--list-lapsed` で一覧できる)。再発すれば `--add` が open に戻し、`--set-status` で `fixed`・`dropped` にも進められる。
 
 ## 9. 完成の定義
 

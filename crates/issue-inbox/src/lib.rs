@@ -1005,13 +1005,47 @@ fn open_rows_json(rows: &[OpenRow]) -> serde_json::Value {
     )
 }
 
+/// 失効(lapsed)した気づきの行。`lapsed` は vault にだけある状態で、jsonl(1 行 = 1 回)の機体では何も無い。
+fn lapsed_rows(project: &str, repo: Option<&str>) -> Result<Vec<OpenRow>, String> {
+    let _ = drain_to_vault(project);
+    match open_vault() {
+        Some(v) => v
+            .lock()
+            .and_then(|g| vault::list_lapsed(&g, repo))
+            .map_err(|e| e.to_string())
+            .map(|l| l.into_iter().map(|n| (n, "vault", None)).collect()),
+        None => Ok(Vec::new()),
+    }
+}
+
 fn list_open_cmd(args: &[String]) -> Code {
+    list_cmd(args, false)
+}
+
+/// `--list-lapsed [--repo R] [--json]`: 状態が lapsed(open の放置が失効した)の気づきを、`--list-open` と同じ形で出す。
+/// `/my-cleanup` は `--list-open` だけを読むので、失効したものはここで見る。
+fn list_lapsed_cmd(args: &[String]) -> Code {
+    list_cmd(args, true)
+}
+
+/// `--list-open` と `--list-lapsed` の共通の本体。`lapsed` が真なら lapsed のノート、偽なら open のノート。
+fn list_cmd(args: &[String], lapsed: bool) -> Code {
+    let flag = if lapsed {
+        "--list-lapsed"
+    } else {
+        "--list-open"
+    };
     let Flags { repo, json, .. } = split_flags(args);
     let project = project_dir();
-    let rows = match open_rows(&project, repo) {
+    let listed = if lapsed {
+        lapsed_rows(&project, repo)
+    } else {
+        open_rows(&project, repo)
+    };
+    let rows = match listed {
         Ok(r) => r,
         Err(e) => {
-            eprintln!("issue-inbox: --list-open: {e}");
+            eprintln!("issue-inbox: {flag}: {e}");
             return 1;
         }
     };
@@ -1428,6 +1462,7 @@ pub fn gate_main(self_path: &str, args: &[String]) -> Code {
             "--collect" => collect_cmd(&args[1..]),
             "--collect-diff" => collect_diff_cmd(&args[1..]),
             "--adjudication-items" => adjudication_items_cmd(&args[1..]),
+            "--list-lapsed" => list_lapsed_cmd(&args[1..]),
             "--sweep" => sweep_cmd(&args[1..]),
             "--set-status" => set_status_cmd(self_path, &args[1..]),
             "--mark-filed" => {

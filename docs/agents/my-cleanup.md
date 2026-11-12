@@ -124,7 +124,7 @@ backlog-cleanup 側で再定義しない(ADR-0027)。
 これを採用する。状態は `fixed`(PR の URL を記録)、`issued`(Issue の URL を記録)、`dropped` の 3 つで、
 再発すると `--add` が open に戻す(vault の無い機体では、jsonl の行を取り除くだけで、状態は残らない)。
 裁定されないまま `open` で 14 日たった気づきは、日次の `promotion-detect` が `lapsed` にする(ADR-1381)。`lapsed` は
-`--list-open` に出ず、再発で open に戻る。
+`--list-open` に出ず(`--list-lapsed` で一覧できる)、再発で open に戻る。
 
 ### as-code 化の候補の却下には閉じた理由を付ける(ADR-1276)
 

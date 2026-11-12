@@ -140,6 +140,9 @@ SessionEnd で何かを起票させる案は、ドキュメント上の制約で
   写る(`crates/issue-inbox/src/collect.rs` の `recs_from_classification`)。語彙の外の処分と、`automatable` の無い
   `implement` は、`other` に黙って落とさず誤りにする(終了コード 1、`items.json` は書かない)。両方を渡すと、同じ id では
   `--rec` が勝つ(分類から作った推奨を、項目ごとに手で直せる)。
+- `--list-lapsed [--repo R] [--json]` — 状態が `lapsed`(`open` の放置が失効した)の気づきを、`--list-open` と同じ形・同じ並びで
+  出す。`/my-cleanup` は `--list-open` だけを集めるので、失効したものは、ここで見て、`--set-status` で `fixed`・`dropped` に進める
+  (再発すれば `--add` が `open` に戻す)。`lapsed` は vault にだけある状態で、jsonl の機体では何も出ない。
 - `--sweep [--dry-run] [--as-of YYYY-MM-DD]` — `open` のまま最後の行から 14 日以上たった気づきを、全 repo について
   `lapsed` にする(ADR-1381)。日次の `promotion-detect` が同じ関数を呼ぶ。`--dry-run` は書かずに対象を数える。
   `--as-of` は見積り用で `--dry-run` とだけ使える。冪等(`lapsed` は `open` でないので二重に書かない)。

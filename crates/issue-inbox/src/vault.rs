@@ -253,9 +253,21 @@ fn all_notes(g: &Locked) -> io::Result<Vec<(String, Note)>> {
 /// 状態が open のノートを、再発の行数の多い順(同数なら初出が古い順、さらに名前順)に返す。
 /// `repo` が `Some` ならその repo のノートだけ。
 pub fn list_open(g: &Locked, repo: Option<&str>) -> io::Result<Vec<OpenNote>> {
+    list_with_status(g, OPEN, repo)
+}
+
+/// 状態が `lapsed` のノート(open の放置が [`LAPSE_AFTER_DAYS`] 日を超えて失効したもの)を、`list_open` と同じ並びで返す。
+/// 裁定の手順(`/my-cleanup`)は `list_open` だけを読むので、失効したものは見えない。`lapsed` は終端ではなく、同じ題の
+/// 気づきが再発すれば `open` に戻る(`add`)。ここで見て、直す・捨てる(`--set-status`)を選べる。
+pub fn list_lapsed(g: &Locked, repo: Option<&str>) -> io::Result<Vec<OpenNote>> {
+    list_with_status(g, LAPSED, repo)
+}
+
+/// 状態が `status` のノートを、再発の行数の多い順(同数なら初出が古い順、さらに名前順)に返す。
+fn list_with_status(g: &Locked, status: &str, repo: Option<&str>) -> io::Result<Vec<OpenNote>> {
     let mut v: Vec<OpenNote> = all_notes(g)?
         .into_iter()
-        .filter(|(_, n)| n.get("status") == Some(OPEN))
+        .filter(|(_, n)| n.get("status") == Some(status))
         .filter(|(_, n)| repo.is_none_or(|r| n.get("repo") == Some(r)))
         .map(|(path, n)| OpenNote {
             title: n.get("title").unwrap_or("").to_string(),
@@ -911,6 +923,39 @@ mod tests {
         assert_eq!(status_of(&g, "d13"), "open");
         assert_eq!(status_of(&g, "d14"), LAPSED);
         assert_eq!(status_of(&g, "d15"), LAPSED);
+    }
+
+    #[test]
+    fn list_lapsed_returns_only_lapsed_notes_and_list_open_does_not_return_them() {
+        let (_d, v) = vault();
+        let g = v.lock().unwrap();
+        aged(&g, "fresh", "2026-11-05");
+        aged(&g, "old", "2026-10-20");
+        aged(&g, "older", "2026-10-10");
+        assert!(list_lapsed(&g, None).unwrap().is_empty());
+        sweep(&g, "2026-11-08", false).unwrap();
+        // 失効したものは list_lapsed に、そうでないものは list_open に出る。両方に出るものは無い。
+        let lapsed: Vec<_> = list_lapsed(&g, None)
+            .unwrap()
+            .into_iter()
+            .map(|n| n.title)
+            .collect();
+        assert_eq!(lapsed, ["older", "old"]); // 同じ行数なら初出が古い順
+        let open: Vec<_> = list_open(&g, None)
+            .unwrap()
+            .into_iter()
+            .map(|n| n.title)
+            .collect();
+        assert_eq!(open, ["fresh"]);
+        // repo で絞れる。再発して open に戻れば、list_lapsed から消える。
+        assert!(list_lapsed(&g, Some("o/other")).unwrap().is_empty());
+        add_item(&g, &item("old", "again", "2026-11-08"), "x").unwrap();
+        let lapsed: Vec<_> = list_lapsed(&g, None)
+            .unwrap()
+            .into_iter()
+            .map(|n| n.title)
+            .collect();
+        assert_eq!(lapsed, ["older"]);
     }
 
     #[test]
