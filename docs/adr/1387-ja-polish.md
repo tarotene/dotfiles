@@ -84,6 +84,14 @@ Issue: No-Issue(`/grill-me` セッション中の依頼。依頼文の「ja-poli
 
 `thinking_level`(`minimal` `low` `medium` `high`)を設定可能にし、llm の `-o thinking_level` に渡す。既定値は、測定用サンプルを入れる段階(段 3)で、応答時間・照合の通過率・textlint の指摘数の増減を測定して決定するまで、指定なし(モデルの既定)とする。速さだけで選ぶと、書き直しによってかえって文が硬くなる傾向(2026-11-12 の観察では「だけ」→「のみ」、「包む」→「ラップする」)が強まっても気づけないためである。
 
+### 執行点
+
+- `crates/ja-polish/src/llm.rs` — 失敗の 3 種(`FailureKind`)と、標準エラーからの判定(`classify_stderr`)、`-o thinking_level` の受け渡し
+- `crates/ja-polish/src/polish.rs` — 再依頼とバックオフ、予備のモデル(`call`)、束への分割と並列(`polish`)
+- `crates/ja-polish/src/config.rs` — 設定の項目(`fallback_model`・`thinking_level`・`timeout_secs`・`chunk_paras`・`parallel`・`retries`・`retry_base_ms`)と既定値
+- `crates/ja-polish/src/records.rs` — 一時的な原因の素通しに付ける印(`transient`)
+- `home/modules/ja-polish.nix` — 設定ファイルに出す option(`fallbackModel`・`thinkingLevel`・`timeoutSecs`)
+
 ## Alternatives considered
 
 - **Gemini CLI を使う** — 「Login with Google」が廃止済みで、API キー認証になる。内蔵の道具を設定で外す形(検出・設定頼み)になる。次点。
