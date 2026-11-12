@@ -1144,28 +1144,41 @@ fn collect_diff_cmd(args: &[String]) -> Code {
     }
 }
 
-/// `--adjudication-items <dir> [--rec <file>] [--label L]`: 保存した 2 つの JSON から、裁定ページの
-/// 入力(`<dir>/items.json`)を作る。`build.sh --data <dir>/items.json --out <page.html>` に渡す。
+/// `--adjudication-items <dir> [--classify <file>] [--rec <file>] [--label L]`: 保存した 2 つの JSON から、
+/// 裁定ページの入力(`<dir>/items.json`)を作る。`build.sh --data <dir>/items.json --out <page.html>` に渡す。
+///
+/// 推奨は 2 つの入口がある。`--classify` は、在庫の分類(項目の id → `{disposition, automatable?, bundle?, why?,
+/// when?}`)から、語彙の閉じた表で推奨(`rec_option`・`rec`)を作る(`collect::recs_from_classification`)。
+/// `--rec` は、項目の id → `{rec_option, rec, why, when}` を直接渡す。両方あるときは、同じ id では `--rec` が勝つ
+/// (分類から作った推奨を、項目ごとに手で直せる)。
 fn adjudication_items_cmd(args: &[String]) -> Code {
     let run = || -> Result<std::path::PathBuf, String> {
+        const USAGE: &str =
+            "usage: issue-inbox --adjudication-items <dir> [--classify <file>] [--rec <file>] [--label L]";
         let mut rec_path: Option<&str> = None;
+        let mut classify_path: Option<&str> = None;
         let mut label: Option<&str> = None;
         let mut rest: Vec<String> = Vec::new();
         let mut it = args.iter();
         while let Some(a) = it.next() {
             match a.as_str() {
                 "--rec" => rec_path = it.next().map(String::as_str),
+                "--classify" => classify_path = it.next().map(String::as_str),
                 "--label" => label = it.next().map(String::as_str),
                 _ => rest.push(a.clone()),
             }
         }
-        let dir =
-            std::path::PathBuf::from(rest.first().ok_or(
-                "usage: issue-inbox --adjudication-items <dir> [--rec <file>] [--label L]",
-            )?);
+        let dir = std::path::PathBuf::from(rest.first().ok_or(USAGE)?);
         let pop = collect::read_population(&read_json(&dir.join("population.json"))?)?;
         let findings = collect::read_findings(&read_json(&dir.join("findings.json"))?)?;
-        let recs = rec_path.map(|p| read_json(Path::new(p))).transpose()?;
+        let from_cls = classify_path
+            .map(|p| collect::recs_from_classification(&read_json(Path::new(p))?))
+            .transpose()?;
+        let from_rec = rec_path.map(|p| read_json(Path::new(p))).transpose()?;
+        let recs = match (from_cls, from_rec) {
+            (Some(c), Some(r)) => Some(collect::overlay_recs(c, &r)),
+            (c, r) => c.or(r),
+        };
         let label = label
             .map(str::to_string)
             .unwrap_or_else(|| format!("my-cleanup {}", civil_time::jst_today()));
