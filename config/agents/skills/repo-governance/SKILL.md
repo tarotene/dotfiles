@@ -56,6 +56,15 @@ the prerequisites. Below, `<profile>` means the bundle directory name above
 required flags (for example `--canonical-crate`/`--cli-crate` for `rust`,
 `--ats-email` for `typst`, `--package-name` for `astro-site`).
 
+Where a static site is published depends on who may read it. The `astro-site`
+profile publishes to GitHub Pages, which suits a public repository. For a
+**private** repository whose site should be readable only by its owner and chosen
+collaborators, publish a Cloudflare Worker behind Cloudflare Access instead:
+`docs/agents/deploy-worker.md` in `tarotene/dotfiles` has the checklist, the
+`wrangler.jsonc` and the workflow template, and the shared deploy action
+(`.github/actions/deploy-worker`). GitHub Pages cannot limit its readers on a
+personal account.
+
 ### Common parameters
 
 Confirm the following values with the user (plus the profile's own):
