@@ -8,7 +8,8 @@ use serde::Deserialize;
 use std::path::PathBuf;
 use std::time::Duration;
 
-pub const DEFAULT_MODEL: &str = "gemini-3.8-flash";
+/// `home/modules/ja-polish.nix` の `model` の既定値と同じにする(暫定の理由と戻す条件はそちらのコメント)。
+pub const DEFAULT_MODEL: &str = "gemini-3.6-flash";
 const DEFAULT_TIMEOUT_SECS: u64 = 120;
 
 #[derive(Debug, Clone, PartialEq, Eq)]

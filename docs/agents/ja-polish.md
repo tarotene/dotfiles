@@ -145,7 +145,7 @@ scratchpad は git の外なので基点が無く、本文の全体が対象に�
 ## 設定とキー
 
 - 設定ファイル: `~/.config/dotfiles/ja-polish.toml`(home-manager が置く)。`model`(既定
-  `gemini-3.8-flash`)と `timeout_secs`(既定 120)。**このファイルの有無が、その機体で有効かどうかの
+  `gemini-3.6-flash`。暫定で、理由と戻す条件は下の「モデルの選択」)と `timeout_secs`(既定 120)。**このファイルの有無が、その機体で有効かどうかの
   唯一の印**。無ければ関所は何も検査しない(置いていない機体では、関所も LLM への送信も起きない)。環境変数 `JA_POLISH_MODEL` で
   その場だけ上書きできる。
 - API キー: 各機体で一度 `llm keys set gemini` を手で実行する。キーは `llm keys path` が指す
@@ -157,6 +157,22 @@ scratchpad は git の外なので基点が無く、本文の全体が対象に�
   https://aistudio.google.com/docs/terms 、取得 2026-11-08)。個人の側は、それでよいと本人が裁定した。
   この経路(個人の無料キー)で、勤務先の文書は通さない。会社契約の送り先は、別の経路として要件を
   確かめてから足す(「横展開」)。
+
+### モデルの選択(暫定)
+
+既定は `gemini-3.6-flash`。最新の `gemini-3.8-flash` は、無料枠のキーで応答が返らなかったため外した。
+
+- 実測(2026-11-12、vega、`llm prompt -m <モデル> -n --no-stream 'こんにちは、と返してください。'` を直接実行):
+  `gemini-3.6-flash` と `gemini-flash-lite-latest` は即座に応答した。`gemini-3.8-flash` と `gemini-3.7-flash`
+  は 60〜120 秒待っても応答が無く、ja-polish 経由では `This model is currently experiencing high demand`
+  になった。`gemini-2.5-flash` は「新規ユーザーには使えない」と返り、`gemini-3.8-flash` を勧められた。
+- 公表された障害は無かった(Google AI Studio の状態ページ、https://aistudio.google.com/status、取得
+  2026-11-12。All Systems Operational)。同じページに「無料枠のリクエストは優先して切り捨てられる枠を使い、
+  課金枠は優先して守られる」(Free-tier requests use sheddable capacity, while billed-tier requests are
+  protected by critical priority)とある。無料枠の最新モデルが混んでいる、という読みは、この記述からの推論で、
+  混雑の理由そのものは未確認。
+- 戻す条件: `llm prompt -m gemini-3.8-flash -n --no-stream 'こんにちは'` が 30 秒以内に応答すること。
+  満たしたら `home/modules/ja-polish.nix` と `crates/ja-polish/src/config.rs` の既定値を戻す。
 
 ## なぜ Gemini CLI でなく llm か
 
@@ -185,8 +201,13 @@ llm-gemini 0.34 以降)。そのため overlay で、`llm-gemini` 0.35 と、そ
 
 実装の PR がマージされ `hms` が当たったあと、各機体(vega・altair)で一度だけ。
 
-1. Google AI Studio で API キーを作る。URL・画面名・ボタン名は **未確認**(作業時に画面を読んで
-   確かめ、その場でこの手順を直す)。
+1. ブラウザで https://aistudio.google.com/api-keys(「API Keys」ページ)を開き、**Create API key** を
+   押す。プロジェクトが一覧に無いときは、Dashboard → Projects の **Import projects** で取り込んでから、
+   もう一度押す(Google, "Using Gemini API keys"、https://aistudio.google.com/docs/api-key 、取得
+   2026-11-12)。2026-11-12 に vega でこの手順で発行でき、画面の表記が違うという報告は無かった。
+   プロジェクトの選択画面の表記は未確認。新しく作るときの名前は、`docs/personal-cloud-projects.md` の
+   汎用規則(`<tool>-<github-username>`)を転用して `ja-polish-<github-username>` とする(その規則は
+   OAuth のクライアントを想定した表で、API キーへの適用は転用)。課金先の設定は進めない(無料枠でよい)。
 2. `llm keys set gemini` を実行し、プロンプトに貼る。
 3. 端末で `echo '日本語を直すことができる。' > /tmp/t.md && ja-polish /tmp/t.md && ja-polish --check /tmp/t.md`
    を実行する(人の端末なので連結してよい)。確認する値: 書き直した差分が出て、最後に「未通過の日本語の
