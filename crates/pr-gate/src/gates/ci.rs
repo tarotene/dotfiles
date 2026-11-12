@@ -106,12 +106,13 @@ fn run_id(check: &Value) -> Option<u64> {
     RUN_ID_RE.captures(link)?[1].parse().ok()
 }
 
-/// 同じ workflow に複数の run があれば、run ID が最大のもの(最新)のチェックだけを残す。
+/// 報告を、(各 workflow の最新の run のチェック、置き換えられた古い run のチェック)に分ける。
+/// 同じ workflow に複数の run があれば、run ID が最大のものが最新である。
 /// 同じ head に run が重なる(base ブランチの更新で `synchronize` が重ねて飛ぶ)と、先の run は
 /// concurrency で cancel され、その集約ジョブ(`CI passed`)は fail で報告される。新しい run の
 /// 同名のチェックがまだ作られていない間、その古い fail を NG と読むと誤報になる(#1157 で
-/// 実際に起きた)。re-run は同じ run ID のままなので、これで落ちない。run ID の無いチェックは残す。
-fn latest_runs_only(all: Vec<Value>) -> Vec<Value> {
+/// 実際に起きた)。re-run は同じ run ID のままなので、これで落ちない。run ID の無いチェックは、最新の側に入れる。
+fn split_runs(all: Vec<Value>) -> (Vec<Value>, Vec<Value>) {
     let mut newest: std::collections::HashMap<String, u64> = std::collections::HashMap::new();
     for c in &all {
         if let Some(id) = run_id(c) {
@@ -120,24 +121,110 @@ fn latest_runs_only(all: Vec<Value>) -> Vec<Value> {
             *e = (*e).max(id);
         }
     }
-    all.into_iter()
-        .filter(|c| match run_id(c) {
-            Some(id) => {
-                let wf = c.get("workflow").and_then(Value::as_str).unwrap_or("");
-                newest.get(wf).is_none_or(|n| id >= *n)
-            }
-            None => true,
+    all.into_iter().partition(|c| match run_id(c) {
+        Some(id) => {
+            let wf = c.get("workflow").and_then(Value::as_str).unwrap_or("");
+            newest.get(wf).is_none_or(|n| id >= *n)
+        }
+        None => true,
+    })
+}
+
+/// 報告集合(`gh pr checks --json`)。配列として読めなければ `None`。置き換えられた古い run の
+/// チェックは除く([`split_runs`])。
+fn parse_reported(s: &str) -> Option<Vec<Value>> {
+    parse_split(s).map(|(latest, _)| latest)
+}
+
+/// 報告集合を、(最新の run のチェック、置き換えられた古い run のチェック)に分けて読む。
+fn parse_split(s: &str) -> Option<(Vec<Value>, Vec<Value>)> {
+    match serde_json::from_str::<Value>(s).ok()? {
+        Value::Array(a) => Some(split_runs(a)),
+        _ => None,
+    }
+}
+
+/// 古い run のチェックのうち、期待集合 `expected` の名前で、bucket が `buckets` のもの。
+fn stale_expected<'a>(older: &'a [Value], expected: &[Value], buckets: &[&str]) -> Vec<&'a Value> {
+    older
+        .iter()
+        .filter(|c| bucket_is(c, buckets).unwrap_or(false))
+        .filter(|c| {
+            jqv::field(c, "name")
+                .map(|n| expected.iter().any(|e| jqv::eq(e, &n)))
+                .unwrap_or(false)
         })
         .collect()
 }
 
-/// 報告集合(`gh pr checks --json`)。配列として読めなければ `None`。置き換えられた古い run の
-/// チェックは除く([`latest_runs_only`])。
-fn parse_reported(s: &str) -> Option<Vec<Value>> {
-    match serde_json::from_str::<Value>(s).ok()? {
-        Value::Array(a) => Some(latest_runs_only(a)),
-        _ => None,
+/// 置き換えられた古い run に、失敗した required のチェックが残っているときの注記(PASS に添える)。
+/// 古い run の失敗が残ったまま全緑に見えても、GitHub のマージ API は「Required status check … is failing」で
+/// 拒否することがある(同じ head で並走して取り消された run の `CI passed` が失敗で残る)。その run を
+/// `gh run rerun --failed` で再実行すると、上書きされる。
+pub fn stale_failure_note(reported: &str, expected: &[Value]) -> String {
+    let Some((_, older)) = parse_split(reported) else {
+        return String::new();
+    };
+    let mut seen: Vec<(String, u64)> = Vec::new();
+    for c in stale_expected(&older, expected, &["fail"]) {
+        let name = jqv::field(c, "name")
+            .map(|v| jqv::raw(&v))
+            .unwrap_or_default();
+        if let Some(id) = run_id(c) {
+            if !seen.iter().any(|(n, i)| *n == name && *i == id) {
+                seen.push((name, id));
+            }
+        }
     }
+    if seen.is_empty() {
+        return String::new();
+    }
+    let list = seen
+        .iter()
+        .map(|(n, i)| format!("{n}(run {i})"))
+        .collect::<Vec<_>>()
+        .join("、");
+    let cmds = seen
+        .iter()
+        .map(|(_, i)| *i)
+        .collect::<std::collections::BTreeSet<_>>()
+        .into_iter()
+        .map(|i| format!("gh run rerun --failed {i}"))
+        .collect::<Vec<_>>()
+        .join(" / ");
+    format!(
+        "注意: 置き換えられた古い run に、失敗した required のチェックが残っています: {list}。\
+         マージ API(merge-async)が「Required status check … is failing」で拒否することがあります。\
+         その run を再実行すると上書きされます: {cmds}(再実行の完了は、もう一度 `pr-checks-wait` で待てます)"
+    )
+}
+
+/// 失敗・取消のチェックが、すべて「取り消された run」のものか。`conclusion` は run の ID から run の
+/// conclusion を引く(`cancelled` なら、同じ head の新しい run に置き換えられた run)。失敗の中に、run の
+/// 無いもの(外部の status)が 1 つでもあれば `false`。失敗・取消が 1 つも無ければ `false`。
+pub fn failures_are_only_cancelled_runs(
+    reported: &str,
+    conclusion: impl Fn(u64) -> Option<String>,
+) -> bool {
+    let Some(r) = parse_reported(reported) else {
+        return false;
+    };
+    let mut ids: Vec<u64> = Vec::new();
+    for c in &r {
+        if !bucket_is(c, &["fail", "cancel"]).unwrap_or(false) {
+            continue;
+        }
+        let Some(id) = run_id(c) else {
+            return false;
+        };
+        if !ids.contains(&id) {
+            ids.push(id);
+        }
+    }
+    !ids.is_empty()
+        && ids
+            .iter()
+            .all(|id| conclusion(*id).as_deref() == Some("cancelled"))
 }
 
 fn names(reported: &[Value]) -> Result<Vec<Value>, JqError> {
@@ -183,7 +270,7 @@ pub fn decide(expected: &[Value], reported: &str) -> Verdict {
         pending: 0,
         reported: 0,
     };
-    let Some(r) = parse_reported(reported) else {
+    let Some((r, older)) = parse_split(reported) else {
         return unreadable();
     };
     let mut pending = 0;
@@ -216,8 +303,17 @@ pub fn decide(expected: &[Value], reported: &str) -> Verdict {
                 .unwrap_or(false);
             !in_e || bucket_is(x, &["pass", "skipping"]).unwrap_or(false)
         });
-        if all_green {
+        // 置き換えられた古い run の required が、再実行などで pending のあいだは、全緑とは読まない。
+        let stale_pending = stale_expected(&older, expected, &["pending"]).len();
+        if all_green && stale_pending == 0 {
             return Verdict::Pass;
+        }
+        if all_green {
+            return Verdict::Wait {
+                missing,
+                pending: pending + stale_pending,
+                reported: r.len(),
+            };
         }
     }
     if cancelled > 0 && pending == 0 {
@@ -330,16 +426,41 @@ pub fn wait(
     let quiesce = Duration::from_secs(cfg.quiesce);
     let mut prev: Option<usize> = None;
     let mut stable_since: Option<Instant> = None;
+    let mut cancelled_since: Option<Instant> = None;
+    let cancel_grace = Duration::from_secs(cfg.cancel_grace);
 
     loop {
         let reported = gh::reported_checks(pr_num, nwo);
         let t = Instant::now();
-        match decide(&expected, &reported) {
+        let verdict = decide(&expected, &reported);
+        // 失敗が、すべて取り消された run(同じ head の新しい run に置き換えられた run)のものなら、
+        // 新しい run のチェックが現れるまで待つ(強制 push の直後は、新しい run のチェックがまだ無く、
+        // 古い run の取消だけが見える)。猶予を過ぎても新しい run が来なければ、本当の NG とする。
+        if verdict == Verdict::Failed
+            && t < deadline
+            && failures_are_only_cancelled_runs(&reported, |id| gh::run_conclusion(nwo, id))
+        {
+            let since = *cancelled_since.get_or_insert(t);
+            if t.duration_since(since) < cancel_grace {
+                std::thread::sleep(cfg.poll.min(deadline.saturating_duration_since(t)));
+                continue;
+            }
+        }
+        if verdict != Verdict::Failed {
+            cancelled_since = None;
+        }
+        match verdict {
             Verdict::Failed => return done(Outcome::of(Status::Failed), reported),
             Verdict::Pass => {
+                let stale = stale_failure_note(&reported, &expected);
+                let detail = match (note.is_empty(), stale.is_empty()) {
+                    (_, true) => note,
+                    (true, false) => stale,
+                    (false, false) => format!("{note}\n{stale}"),
+                };
                 let o = Outcome {
                     status: Status::Pass,
-                    detail: note,
+                    detail,
                 };
                 return done(o, reported);
             }
@@ -545,6 +666,68 @@ mod tests {
         // E の cancel が残り、pending が 0 なら NG。
         let r = r#"[{"name":"job-a","bucket":"pass"},{"name":"job-b","bucket":"cancel"}]"#;
         assert_eq!(decide(&e2(), r), Verdict::Failed);
+    }
+
+    #[test]
+    fn a_rerun_of_an_old_run_is_waited_for_and_a_left_over_failure_is_noted() {
+        let e = vec![json!("job-a"), json!("CI passed")];
+        // 古い run(100)の CI passed を再実行中(pending)。新しい run(200)は全緑でも、全緑とは読まない。
+        let r = r#"[
+          {"name":"CI passed","bucket":"pending","link":"https://x/runs/100/job/9","workflow":"CI"},
+          {"name":"CI passed","bucket":"pass","link":"https://x/runs/200/job/4","workflow":"CI"},
+          {"name":"job-a","bucket":"pass","link":"https://x/runs/200/job/3","workflow":"CI"}]"#;
+        let (_, pending, _) = wait_of(decide(&e, r));
+        assert_eq!(pending, 1);
+        // 古い run の CI passed が失敗で残っている: 全緑(Pass)のまま、注記で知らせる(NG にはしない)。
+        let r = r#"[
+          {"name":"CI passed","bucket":"fail","link":"https://x/runs/100/job/1","workflow":"CI"},
+          {"name":"CI passed","bucket":"pass","link":"https://x/runs/200/job/4","workflow":"CI"},
+          {"name":"job-a","bucket":"pass","link":"https://x/runs/200/job/3","workflow":"CI"}]"#;
+        assert_eq!(decide(&e, r), Verdict::Pass);
+        let note = stale_failure_note(r, &e);
+        assert!(note.contains("CI passed(run 100)"), "{note}");
+        assert!(note.contains("gh run rerun --failed 100"), "{note}");
+        // required でない名前の古い失敗、古い run の無い報告には、注記を付けない。
+        let r = r#"[
+          {"name":"Build","bucket":"fail","link":"https://x/runs/100/job/1","workflow":"CI"},
+          {"name":"job-a","bucket":"pass","link":"https://x/runs/200/job/3","workflow":"CI"},
+          {"name":"CI passed","bucket":"pass","link":"https://x/runs/200/job/4","workflow":"CI"}]"#;
+        assert_eq!(stale_failure_note(r, &e), "");
+        let r = r#"[{"name":"job-a","bucket":"pass","link":"https://x/runs/200/job/3","workflow":"CI"}]"#;
+        assert_eq!(stale_failure_note(r, &e), "");
+    }
+
+    #[test]
+    fn failures_only_from_cancelled_runs_are_told_apart_from_real_ones() {
+        let r = r#"[
+          {"name":"CI passed","bucket":"fail","link":"https://x/runs/100/job/1","workflow":"CI"},
+          {"name":"Build","bucket":"cancel","link":"https://x/runs/100/job/2","workflow":"CI"}]"#;
+        let cancelled = |id: u64| (id == 100).then(|| "cancelled".to_string());
+        assert!(failures_are_only_cancelled_runs(r, cancelled));
+        // run の conclusion が failure(本当の失敗)や、まだ分からない(実行中・取得不能)なら、待たない。
+        assert!(!failures_are_only_cancelled_runs(r, |_| Some(
+            "failure".into()
+        )));
+        assert!(!failures_are_only_cancelled_runs(r, |_| None));
+        // 失敗の中に、run の無いもの(外部の status)が混じる、または失敗が無いなら、待たない。
+        let r = r#"[
+          {"name":"CI passed","bucket":"fail","link":"https://x/runs/100/job/1","workflow":"CI"},
+          {"name":"ext","bucket":"fail","link":"https://ci.example/b/1","workflow":""}]"#;
+        assert!(!failures_are_only_cancelled_runs(r, |_| Some(
+            "cancelled".into()
+        )));
+        let r = r#"[{"name":"job-a","bucket":"pass","link":"https://x/runs/100/job/1","workflow":"CI"}]"#;
+        assert!(!failures_are_only_cancelled_runs(r, |_| Some(
+            "cancelled".into()
+        )));
+        // 2 つの run の失敗は、両方が取り消された run のときだけ。
+        let r = r#"[
+          {"name":"a","bucket":"fail","link":"https://x/runs/100/job/1","workflow":"CI"},
+          {"name":"b","bucket":"cancel","link":"https://x/runs/101/job/2","workflow":"Other"}]"#;
+        assert!(!failures_are_only_cancelled_runs(r, |id| (id == 100).then(|| "cancelled".into())));
+        assert!(failures_are_only_cancelled_runs(r, |_| Some(
+            "cancelled".into()
+        )));
     }
 
     #[test]

@@ -18,6 +18,8 @@ pub struct Config {
     pub check_appear_timeout: u64,
     /// `PR_GATE_QUIESCE`(既定 15 秒): quiesce モードで「揃った」とみなす静止時間。
     pub quiesce: u64,
+    /// `PR_GATE_CANCEL_GRACE`(既定 120 秒): 失敗が、すべて取り消された run のものであるとき、置き換える新しい run を待つ猶予。
+    pub cancel_grace: u64,
     /// `PR_GATE_FETCH_TTL`(既定 600 秒): SessionStart で fetch を省く FETCH_HEAD の鮮度。
     pub fetch_ttl: u64,
     /// `PR_GATE_MAX_BLOCKS`(既定 6): escalate までの block 回数。
@@ -59,6 +61,7 @@ impl Config {
             poll: Duration::from_secs_f64(env_secs("PR_GATE_POLL_INTERVAL", 10.0)),
             check_appear_timeout: env_num("PR_GATE_CHECK_APPEAR_TIMEOUT", 60),
             quiesce: env_num("PR_GATE_QUIESCE", 15),
+            cancel_grace: env_num("PR_GATE_CANCEL_GRACE", 120),
             fetch_ttl: env_num("PR_GATE_FETCH_TTL", 600),
             max_blocks: env_num("PR_GATE_MAX_BLOCKS", 6),
             skip_env: agent_session::escape::PR_GATE.active(None, None).is_some(),
