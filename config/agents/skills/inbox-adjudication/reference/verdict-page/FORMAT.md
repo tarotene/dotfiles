@@ -110,9 +110,11 @@ Schema の sha256 を pin して、食い違いを検査する。Schema を変�
 `/` を `.` に換えたもの)の導出は変えない。変えると、過去の文書と新しい文書が別物になる。
 
 (c) **形を変えたら `format_version` を上げる。** 上げる場所は 3 つ: `items.schema.json` の `const`、
-`fixtures/` の入力、公開する Artifact の description(`形式 v<版>` と書く)。生成されたページには、入力の
-`format_version` が `<meta name="verdict-page-format">` として入る。版がページと description に残るので、
-公開済みのページがどの形式かを、あとから読める。
+`fixtures/` の入力、公開する Artifact の版の記録。版の記録は、description を渡せる公開の手段なら description に `形式 v<版>` と
+書く。渡せない手段(`publish_files` と `publish_version` は description の欄を持たない。2026-11-11 に、形式 5 のまま description が残った)は、
+公開時の `label` に `形式 v<版>` と書く。生成されたページには、入力の `format_version` が
+`<meta name="verdict-page-format">` として入るので、これが版の正本で、description か `label` はその写しである。
+公開済みのページがどの形式かは、`<meta>` から、あとで読める。
 
 (d) **再公開の手順。** 一括処理のたびに、同じ URL へ再公開する(`Artifact` の publish に、前回の `url` と
 生成した HTML のパスを渡す)。**`capabilities` は省略する。** 省略した再公開は、保存済みの宣言を変えずに引き
