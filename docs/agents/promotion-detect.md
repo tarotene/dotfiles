@@ -91,6 +91,11 @@ detect`)は、その「安定の兆候」を人間の想起に頼らず機械的
     - 逆向きの確認: タイトル `ledger-digest`・ラベル `ledger-status` の Issue の最新のコメントが 36 時間より古い(Issue・コメントが無い場合を含む)なら、
       `herdr notification show` で知らせる。1 日 1 回(`<state>/promotion-detect/ledger-digest-notified`)。読み取りに失敗したときは通知しない。
     - `gh` の失敗は理由を 1 行出して続け、日次の他の処理を止めない。`--dry-run` は書かず、本文を標準エラーに出す。
+    - **`--digest-check`**: 逆向きの確認だけを行う入口。候補の検出・気づきの失効・生存の記録はしない。日次の実行の時刻に Herdr が
+      起動していなくて通知を出せなかった日(出せなかったときは 1 日 1 回の印を書かない)を、その日のうちに再試行するため、
+      時間ごとの timer(`promotion-detect-digest-check`、毎日 09〜19 時の毎時。`due-remind` と同じ予定)が呼ぶ。印は日次と共通で、
+      どちらかが出せば、その日の残りは出さない。台帳の最新のコメントが新しい、または設定ファイルが無いときは何もしない。
+      `--dry-run` では何も確かめない(確認は通知を出す副作用があるため)。
     - Herdr は `PROMOTION_DETECT_HERDR_BIN`、時刻は `PROMOTION_DETECT_NOW`(unix 秒)で差し替えられる(テスト用)。
 
 いずれも閾値は `crates/promotion-detect/src/lib.rs` の定数

@@ -7,6 +7,10 @@
 //! 候補には、Issue の流量(PR の影の Issue・確認の台帳の外の実機確認・open の件数。ADR-1529、
 //! `promotion_detect::issue_flow`)も含む。`gh issue list` を 2 回呼ぶ(直近の起票と、open の全件)。
 //!
+//! `--digest-check` を付けると、台帳の日次の通知が途絶えていないかの確認だけを行う(下の ADR-1382 の逆向きの確認。
+//! 候補の検出・気づきの失効・生存の記録はしない)。時間ごとの timer が呼ぶ。日次の実行の時刻に Herdr が起動して
+//! いなくて通知を出せなかった日を、その日のうちに再試行するため。1 日 1 回の印は日次と共通。
+//!
 //! 候補の検出とは別に、vault の `inbox/` の気づきのうち、`open` のまま 14 日放置されたものを
 //! `lapsed` にする(ADR-1381。全 repo のノートが対象。`--dry-run` では書かず、件数を標準エラーに出す)。
 //!
@@ -138,6 +142,12 @@ fn main() {
     else {
         return; // $HOME が解決できない環境では何もしない(fail-open)
     };
+
+    // 台帳の日次の通知の確認だけを行う入口(時間ごとの timer が呼ぶ)。候補の検出も気づきの失効も生存の記録もしない。
+    if std::env::args().any(|a| a == "--digest-check") {
+        ledger_digest_check(&state_dir, &gh_bin, dry_run);
+        return;
+    }
 
     let mut candidates: Vec<(String, String)> = Vec::new();
 
@@ -317,20 +327,57 @@ fn open_counts(lock_dir: &Path) -> Option<std::collections::BTreeMap<String, usi
     }
 }
 
-/// 設定が無ければ何もしない。失敗は標準エラーに出して続ける(日次の他の処理を止めない)。
-fn ledger_heartbeat(state_dir: &Path, gh_bin: &str, dry_run: bool) {
+/// 端末ローカルの設定から、台帳のリポジトリ(`OWNER/REPO`)を読む。設定が無い機体では `None`(機能は無効)。
+/// 書式が違うときは、理由を標準エラーに出して `None`。
+fn ledger_repo() -> Option<String> {
     use promotion_detect::ledger_heartbeat as lh;
-    let Some(target_file) = ledger_target_file() else {
-        return;
-    };
-    let Ok(text) = std::fs::read_to_string(&target_file) else {
-        return; // 設定ファイルが無い: 機能は無効
-    };
-    let Some(repo) = lh::parse_target(&text) else {
+    let target_file = ledger_target_file()?;
+    let text = std::fs::read_to_string(&target_file).ok()?; // 設定ファイルが無い: 機能は無効
+    let repo = lh::parse_target(&text);
+    if repo.is_none() {
         eprintln!(
             "promotion-detect: {} が OWNER/REPO の形でない。台帳の確認を飛ばす",
             target_file.display()
         );
+    }
+    repo
+}
+
+/// `--digest-check`: 台帳の日次の通知が途絶えていないかの確認だけを行う(`ledger_heartbeat::run_digest_check`)。
+/// 生存の記録は書かない。時間ごとの timer が呼び、通知を出せなかった日の再試行を担う。`--dry-run` では何も確かめない
+/// (確認は通知を出す副作用があるため)。設定が無ければ何もしない。
+fn ledger_digest_check(state_dir: &Path, gh_bin: &str, dry_run: bool) {
+    use promotion_detect::ledger_heartbeat as lh;
+    let Some(repo) = ledger_repo() else {
+        return;
+    };
+    if dry_run {
+        eprintln!("promotion-detect: 日次の通知の確認(dry-run: 確かめない)");
+        return;
+    }
+    let gh = lh::CommandGh {
+        bin: gh_bin.to_string(),
+    };
+    let herdr = lh::CommandHerdr {
+        bin: env_string("PROMOTION_DETECT_HERDR_BIN", "herdr"),
+    };
+    let digest = lh::run_digest_check(&lh::Run {
+        gh: &gh,
+        herdr: &herdr,
+        repo: &repo,
+        now_unix: now_unix(),
+        counts: None,
+        notified_path: &state_dir
+            .join("promotion-detect")
+            .join("ledger-digest-notified"),
+    });
+    eprintln!("promotion-detect: 日次の通知の確認: {digest:?}");
+}
+
+/// 設定が無ければ何もしない。失敗は標準エラーに出して続ける(日次の他の処理を止めない)。
+fn ledger_heartbeat(state_dir: &Path, gh_bin: &str, dry_run: bool) {
+    use promotion_detect::ledger_heartbeat as lh;
+    let Some(repo) = ledger_repo() else {
         return;
     };
     let counts = open_counts(&state_dir.join("wrapup"));
