@@ -215,15 +215,20 @@ description: 溜まったメールの受信箱をまとめて処理する手順�
    ```
 
    - 出来事は `read|ask|draft|decide|apply|pass|move`(`remind`・`stale` は `worklog mail sweep` だけが書く)。
-     本人が対応すると決めた = `decide`、断る・見送ると決めた = `pass`、正本(予定、フィルタ規則など)へ反映した、
-     または送った = `apply`、別の追跡先(Issue、カレンダーの【期限】の予定)へ移した = `move`(`to:<owner/repo#N | cal:YYYY-MM-DD>` が要る)。
-     **本人が行う作業を「やる」と決めたら(`decide` で担当が本人)、期限の有無によらず Issue を起票して `move`
-     (`to:<owner/repo#N>`)で閉じる。** 担当は本人、ラベルは `handoff:human` と、ボールのラベル `ball:me`(ボールのラベルは
-     ちょうど 1 つ)、題名は `life: <要旨>`、本文は、先頭の非空行に `next: YYYY-MM-DD`(次に見る日)、続けて目的・出典の鍵・
-     期限・完了条件。起票先は、個人の状態を持つ非公開のリポジトリ。`gh issue create` は `issue-create-guard` が実行前に検査し、
-     ボールのラベルと先頭行の `next:` が無いと拒否する(規則の正本は `docs/agents/issue-create-guard.md`)。期限があれば、期限の予定を
-     足して `issue` 欄で Issue を指す(期限の日付は Issue に書かない)。枠を足したら、枠の日付が次の契機になるので、本文の
-     `next:` の行を消す(台帳の検査の `枠`)。作業を本人が済ませたら、本人が Issue を閉じる(2026-11-02 の本人の裁定)。
+     本人が決めて、エージェントが反映する(おまかせ、または本人が決めて私が反映する)= `decide`、断る・見送ると決めた = `pass`、
+     正本(予定、フィルタ規則など)へ反映した、または送った = `apply`、別の追跡先(Issue、カレンダーの【期限】の予定)へ
+     移した = `move`(`to:<owner/repo#N | cal:YYYY-MM-DD>` が要る)。
+     **本人が行う作業を「やる」と決めたら、`decide` を書かない。** 期限の有無によらず Issue を起票して、`awaiting` から
+     直接 `move`(`to:<owner/repo#N>`)で閉じる(語彙は `awaiting` からの `move` を許している)。`decided` はエージェントが
+     反映する裁定だけが居る状態で、本人担当の項目を置くと、日をまたいだときに、本人担当か反映待ちかを機械が見分けられない
+     (`worklog mail sweep` の検出。`docs/agents/mail-lifecycle.md`)。Issue の担当は本人、ラベルは `handoff:human` と、
+     ボールのラベル `ball:me`(ボールのラベルはちょうど 1 つ)、題名は `life: <要旨>`、本文は、先頭の非空行に
+     `next: YYYY-MM-DD`(次に見る日)、続けて目的・出典の鍵・期限・完了条件。起票先は、個人の状態を持つ非公開のリポジトリ。
+     `gh issue create` は `issue-create-guard` が実行前に検査し、ボールのラベルと先頭行の `next:` が無いと拒否する
+     (規則の正本は `docs/agents/issue-create-guard.md`)。期限があれば、期限の予定を足して `issue` 欄で Issue を指す
+     (期限の日付は Issue に書かない)。枠を足したら、枠の日付が次の契機になるので、本文の `next:` の行を消す(台帳の検査の `枠`)。
+     作業を本人が済ませたら、本人が Issue を閉じる(2026-11-02 の本人の裁定)。`decide` を書かない運用は、2026-11-10 に
+     台帳の残りの項目 1 として入れた。
      `handoff:light` は自動で付けない(4 条件が怪しいものが多く、付けると予定の枠が勝手に入るため)。
    - 媒体は `gmail|linkedin|lapras`。鍵の `<スレッド>/<受信>` は、Gmail ならスレッドとメッセージの id
      (`[A-Za-z0-9_=-]+`)、メッセージごとの id が取れない媒体は会話の id と、画面に出る受信日時を分まで
