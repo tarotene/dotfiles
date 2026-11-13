@@ -90,6 +90,30 @@ in
         accepts these four for gemini-3.6-flash). Lower is faster. `null` leaves it to the model.
       '';
     };
+    textlint = {
+      enable = lib.mkOption {
+        type = lib.types.bool;
+        default = true;
+        description = ''
+          Run textlint's autofix before and after the model (ADR-1387 D13). It rewrites boilerplate
+          such as "することができる。" deterministically, so the fix stays even when the model is busy.
+          Without a `textlint` command on PATH, ja-polish skips it silently.
+        '';
+      };
+      package = lib.mkOption {
+        type = lib.types.package;
+        # `textlint.withPackages` は、規則のパッケージを NODE_PATH に束ねる(nixpkgs の passthru)。
+        # preset-ja-technical-writing のうち有効にするのは `ja-no-redundant-expression` だけで、
+        # ほかの規則は ja-polish が実行のたびに作る設定(crates/ja-polish/src/textlint.rs)で無効にする。
+        # prh は、private の文体規約の隣の `docs/style/prh.yml` があるときだけ使われる。
+        default = pkgs.textlint.withPackages [
+          pkgs.textlint-rule-preset-ja-technical-writing
+          pkgs.textlint-rule-prh
+        ];
+        defaultText = lib.literalExpression "pkgs.textlint.withPackages [ pkgs.textlint-rule-preset-ja-technical-writing pkgs.textlint-rule-prh ]";
+        description = "The textlint environment (textlint and its rule packages) that ja-polish calls.";
+      };
+    };
     timeoutSecs = lib.mkOption {
       type = lib.types.ints.positive;
       default = 45;
@@ -101,7 +125,7 @@ in
   };
 
   config = lib.mkIf cfg.enable {
-    home.packages = [ cfg.package ];
+    home.packages = [ cfg.package ] ++ lib.optional cfg.textlint.enable cfg.textlint.package;
     dotfiles.binaries.".local/bin" = [
       "ja-polish"
     ];
@@ -110,6 +134,7 @@ in
       model = "${cfg.model}"
       fallback_model = "${lib.optionalString (cfg.fallbackModel != null) cfg.fallbackModel}"
       timeout_secs = ${toString cfg.timeoutSecs}
+      textlint = ${lib.boolToString cfg.textlint.enable}
     ''
     + lib.optionalString (cfg.thinkingLevel != null) ''
       thinking_level = "${cfg.thinkingLevel}"

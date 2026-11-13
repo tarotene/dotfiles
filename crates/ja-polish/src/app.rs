@@ -4,6 +4,7 @@
 use crate::config::Config;
 use crate::llm::{Backend, LlmError, Request};
 use crate::polish::{polish, PolishResult, Status};
+use crate::textlint::Fixer;
 use crate::{records, style};
 use std::path::PathBuf;
 
@@ -44,6 +45,7 @@ pub fn run_polish(
     text: &str,
     baseline: Option<&str>,
     backend: &dyn Backend,
+    fixer: &dyn Fixer,
     dry_run: bool,
 ) -> PolishResult {
     // 素通しの記録は「通した」とみなさない(関所は逆。`records::load_polished` の説明)。
@@ -54,8 +56,16 @@ pub fn run_polish(
         .unwrap_or_default();
 
     let result = match style::load() {
-        Ok(style) => polish(text, baseline, &known, &style, &env.config, backend),
-        Err(reason) => polish(text, baseline, &known, "", &env.config, &Refuse(reason)),
+        Ok(style) => polish(text, baseline, &known, &style, &env.config, backend, fixer),
+        Err(reason) => polish(
+            text,
+            baseline,
+            &known,
+            "",
+            &env.config,
+            &Refuse(reason),
+            fixer,
+        ),
     };
 
     if !dry_run && !result.paras.is_empty() {
@@ -101,6 +111,16 @@ pub fn report(label: &str, result: &PolishResult) -> String {
             }
             Status::Skipped(reason) => {
                 out.push_str(&format!("  [段落 {}] 素通し: {reason}\n", i + 1));
+                // モデルが通せなくても、前段の textlint の直しは入る。入ったときは差分を見せる。
+                if p.before != p.after {
+                    out.push_str("  (textlint の直しだけ入った)\n");
+                    for l in p.before.lines() {
+                        out.push_str(&format!("  - {l}\n"));
+                    }
+                    for l in p.after.lines() {
+                        out.push_str(&format!("  + {l}\n"));
+                    }
+                }
             }
             Status::Unchanged => {}
         }

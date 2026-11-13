@@ -6,6 +6,7 @@
 //! - `blocks`: 文書を段落に分け、日本語かどうかとハッシュを出す
 //! - `mask`: コード・URL・参照・見出しなどを伏せ字にし、戻りを照合する
 //! - `llm`: `llm` コマンドの呼び出しと、指示文・依頼文・応答の読み取り
+//! - `textlint`: Gemini の前後に挟む、textlint の自動修正(定型の冗長表現)
 //! - `polish`: 書き直しの本体と、未通過の段落の判定(`polish::pending`)
 //! - `records`: 通した段落の記録(形式の正本)
 //! - `config`: 設定ファイル。あれば有効な機体
@@ -27,3 +28,4 @@ pub mod records;
 pub mod snapshot;
 pub mod stop;
 pub mod style;
+pub mod textlint;

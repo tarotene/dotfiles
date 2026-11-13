@@ -14,6 +14,7 @@
 
 use ja_polish::app::{self, Env};
 use ja_polish::llm::LlmCli;
+use ja_polish::textlint::{Fixer, NoFixer, Textlint};
 use ja_polish::{baseline, config, polish, records};
 use std::io::Read;
 use std::path::PathBuf;
@@ -98,6 +99,14 @@ fn main() -> ExitCode {
         return check(&env, &opts);
     }
 
+    // textlint の自動修正。設定で切ってあれば何も直さない。`textlint` コマンドが無いときは、実行時に
+    // 入力のまま返す(止めない)。
+    let textlint = Textlint::from_config(&env.config);
+    let fixer: &dyn Fixer = match &textlint {
+        Some(t) => t,
+        None => &NoFixer,
+    };
+
     if opts.stdin {
         let text = match read_stdin() {
             Ok(t) => t,
@@ -106,7 +115,7 @@ fn main() -> ExitCode {
                 return ExitCode::from(1);
             }
         };
-        let result = app::run_polish(&env, &text, None, &LlmCli, opts.dry_run);
+        let result = app::run_polish(&env, &text, None, &LlmCli, fixer, opts.dry_run);
         print!("{}", result.text);
         if !result.paras.is_empty() {
             eprint!("{}", app::report("標準入力", &result));
@@ -130,7 +139,7 @@ fn main() -> ExitCode {
         } else {
             baseline::baseline_for(&path)
         };
-        let result = app::run_polish(&env, &text, base.as_deref(), &LlmCli, opts.dry_run);
+        let result = app::run_polish(&env, &text, base.as_deref(), &LlmCli, fixer, opts.dry_run);
         if result.paras.is_empty() {
             println!("ja-polish: {input}: 書き直す日本語の段落はありません");
             continue;

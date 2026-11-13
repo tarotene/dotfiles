@@ -67,6 +67,23 @@ scratchpad は git の外なので基点が無く、本文の全体が対象に�
    - 依頼の書式(`<para>` など)が混ざっていない
 7. 通った段落は伏せ字を戻して差し替え、`records.jsonl` に書く。
 
+## textlint の自動修正(Gemini の前後)
+
+上の流れの前と後に、textlint の自動修正(`--fix`)を挟む(ADR-1387 の D13、`crates/ja-polish/src/textlint.rs`)。
+順は「前段の textlint → Gemini → 後段の textlint」。
+
+- 前段は、伏せ字にした段落に当てる。直した本文を Gemini に送り、戻りの照合(上の 6)も、直した本文を基準にする。
+- 後段は、Gemini が書き直した段落に当てる。Gemini が持ち込む冗長表現を直す。
+- Gemini が通せなかった(素通しの)段落にも、前段の直しは残る。最終の本文は前段が直したあとの本文で、記録の
+  `sha` もそれ。報告には「textlint の直しだけ入った」と差分が出る。
+- 有効にする規則は、`textlint-rule-preset-ja-technical-writing` の `ja-no-redundant-expression` だけ(「することが
+  できる。」→「できる。」)。`prh` は、private の文体規約の隣に `docs/style/prh.yml` があるときだけ使う。
+  自動で直せる範囲は狭い(2026-11-12 の実測: 句点の無い箇条書きの「…ことができる」と「通信を行う」は検出だけ)。
+- textlint の直しは、Gemini の出力と同じ照合(伏せ字・数値・記法・分量)を通るものだけを採る。`textlint` が無い・
+  失敗・時間切れ(30 秒)のときは、入力のまま。止めない。
+- 設定の `textlint = false`(home-manager は `dotfiles.jaPolish.textlint.enable`)で切れる。環境変数
+  `JA_POLISH_TEXTLINT_BIN` で実行ファイルを、`JA_POLISH_PRH_FILE` で辞書を差し替えられる(テスト用)。
+
 ## 記録
 
 `~/.local/state/claude/ja-polish/records.jsonl`(`$XDG_STATE_HOME` があればその下)。1 行 1 段落:
@@ -168,8 +185,8 @@ scratchpad は git の外なので基点が無く、本文の全体が対象に�
   `gemini-3.6-flash`。暫定で、理由と戻す条件は下の「モデルの選択」)、`fallback_model`(既定
   `gemini-flash-lite-latest`。空の文字列で使わない)、`thinking_level`(`minimal` `low` `medium` `high`。
   既定は指定なし)、`timeout_secs`(既定 45)。ほかに `chunk_paras`(8)・`parallel`(3)・`retries`(2)・
-  `retry_base_ms`(2000)が書けるが、home-manager の option(`dotfiles.jaPolish.fallbackModel`・
-  `thinkingLevel`・`timeoutSecs`)があるのは前の 3 つだけ。**このファイルの有無が、その機体で有効かどうかの
+  `retry_base_ms`(2000)・`textlint`(既定 true)が書けるが、home-manager の option(`dotfiles.jaPolish.fallbackModel`・
+  `thinkingLevel`・`timeoutSecs`・`textlint.enable`)があるのは、`chunk_paras`・`parallel`・`retries`・`retry_base_ms` を除く項目だけ。**このファイルの有無が、その機体で有効かどうかの
   唯一の印**。無ければ関所は何も検査しない(置いていない機体では、関所も LLM への送信も起きない)。環境変数 `JA_POLISH_MODEL` で
   その場だけ上書きできる。
 - API キー: 各機体で一度 `llm keys set gemini` を手で実行する。キーは `llm keys path` が指す

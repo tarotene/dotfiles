@@ -19,6 +19,17 @@ pub fn style_path() -> Result<PathBuf, String> {
     Ok(Path::new(&hub).join("docs/style/writing.md"))
 }
 
+/// 辞書(prh)の場所。文体規約と同じ `docs/style/` の `prh.yml`(private のハブの側に置く。公開のこの
+/// リポジトリには、辞書の中身を置かない)。ハブが解決できないときは `None`で、辞書なしで動く。
+/// 環境変数 `JA_POLISH_PRH_FILE` があれば、そのファイル(テスト用の差し替え)。
+pub fn prh_path() -> Option<PathBuf> {
+    if let Some(p) = std::env::var_os("JA_POLISH_PRH_FILE").filter(|p| !p.is_empty()) {
+        return Some(PathBuf::from(p));
+    }
+    let hub = resolve(&WRITING_STYLE_HUB, &|k| std::env::var(k).ok()).ok()?;
+    Some(Path::new(&hub).join("docs/style/prh.yml"))
+}
+
 pub fn load() -> Result<String, String> {
     let path = style_path()?;
     std::fs::read_to_string(&path).map_err(|e| format!("{} を読めません: {e}", path.display()))
