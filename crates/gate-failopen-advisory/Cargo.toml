@@ -8,6 +8,7 @@ description = "fail-open で素通りし続けている gate を SessionStart �
 
 [dependencies]
 agent-session = { version = "0.1.0", path = "../agent-session" }
+ja-polish = { version = "0.1.0", path = "../ja-polish" }
 
 [dev-dependencies]
 serde_json.workspace = true

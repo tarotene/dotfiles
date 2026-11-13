@@ -269,7 +269,7 @@ edge = [
   { from = "herdr-status-advisory", to = "agent-session", kind = "context", label = "client / server mismatch", pipelines = ["host-hygiene"] },
   { from = "copilot-plan-review", to = "gate-failopen-advisory", kind = "file", label = "gate-events.jsonl (fail-open / pass)", pipelines = ["plan-approval"] },
   { from = "gate-failopen-advisory", to = "agent-session", kind = "context", label = "consecutive fail-open", pipelines = ["host-hygiene"] },
-  { from = "ja-polish", to = "gate-failopen-advisory", kind = "file", label = "gate-events.jsonl (fail-open / pass)", pipelines = ["host-hygiene"] },
+  { from = "ja-polish", to = "gate-failopen-advisory", kind = "file", label = "gate-events.jsonl (fail-open / pass) + records.jsonl (transient skips)", pipelines = ["host-hygiene"] },
 
   # === Implement to PR: tool call の guard(止めるものだけを描く)
   { from = "git-stash-guard", to = "agent-session", kind = "deny", label = "bare stash", pipelines = ["implement-to-pr"] },

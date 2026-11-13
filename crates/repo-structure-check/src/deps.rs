@@ -70,6 +70,11 @@ pub const EXCEPTIONS: &[(&str, &str, &str)] = &[
         "自前の道具の台帳(`Registry`・`parse_registry`)の読み",
     ),
     (
+        "gate-failopen-advisory",
+        "ja-polish",
+        "ja-polish の記録(`records::Entry`・`transient_rate`)と設定の場所の読み(課金の検討の知らせ、ADR-1387 の D14)。記録の読みを共有のライブラリへ移せば消える",
+    ),
+    (
         "github-app-snapshot",
         "github-audit",
         "jq 互換の読み(`jq::j_get`・`parse_ordered`)。`jq-json-compat` へ移せば消える",

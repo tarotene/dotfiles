@@ -102,6 +102,16 @@ Issue: No-Issue(`/grill-me` セッション中の依頼。依頼文の「ja-poli
 
 計画からの差: `textlint-rule-preset-ai-words-ja` は採らなかった。自前の規則(`no-ai-words`・`no-short-topic-comma`)に自動修正が無く(nixpkgs-unstable の 1.2.2 を読んだ)、固定中の stable の nixpkgs に無い(unstable の overlay の撤去検査は、stable に同名の属性がある前提)ため、直す前後の段には使えない。段 3 の測定で、指摘数の物差しに使うかを決める。
 
+### D14: 一時的な原因の素通しが多いときは、セッションの冒頭で、課金の検討を知らせる
+
+無料のまま続けるのが本人の裁定(2026-11-12)なので、課金は自動では切り替えず、判断の材料を出すだけにする。`gate-failopen-advisory`(SessionStart)が、`ja-polish` を有効にした機体で、直近 7 日の記録のうち、混雑・時間切れで素通しになった段落(D9 の `"transient":true`)の割合が 5% を超えたら、1 行の警告を出す。
+
+- 分子は、`transient` の印を持つ素通しだけ。キーの未設定や、照合の外れによる素通しは、課金では直らないので、分母にだけ入る。古い記録は印を持たない。
+- 期間内の記録が 20 件に満たないときは、率が不安定なので何も言わない。
+- 閾値は、環境変数 `JA_POLISH_TRANSIENT_ADVISORY_PERCENT` で変えられる(既定 5)。
+- 警告には、無料枠は混んだときに先に切り捨てられる枠で処理されること(推論)、有料枠は送った文面を製品の改善に使わず切り捨てられにくいこと、月の目安(推定)、この ADR の「有料の API キー・Vertex AI」を添える。
+- `ja-polish` の設定ファイルが無い機体(有効にしていない機体)では何も言わない。
+
 ### 執行点
 
 - `crates/ja-polish/src/llm.rs` — 失敗の 3 種(`FailureKind`)と、標準エラーからの判定(`classify_stderr`)、`-o thinking_level` の受け渡し
@@ -112,6 +122,8 @@ Issue: No-Issue(`/grill-me` セッション中の依頼。依頼文の「ja-poli
 - `home/modules/ja-polish.nix` — 設定ファイルに出す option(`fallbackModel`・`thinkingLevel`・`timeoutSecs`)、textlint の環境と `textlint.enable`(D13)
 - `crates/ja-polish/src/textlint.rs` — textlint の自動修正(`Fixer`・`Textlint`)と、設定の生成(D13)
 - `crates/ja-polish/src/style.rs` — prh の辞書の場所(`prh_path`、D13)
+- `crates/ja-polish/src/records.rs` — 期間内の、一時的な原因の素通しの割合(`transient_rate`、D14)
+- `crates/gate-failopen-advisory/src/main.rs` — 課金の検討の知らせ(`billing_line`、D14)
 
 ## Alternatives considered
 
@@ -167,3 +179,4 @@ Issue: No-Issue(`/grill-me` セッション中の依頼。依頼文の「ja-poli
 - D11: 思考量は設定で渡し、既定は測定で決める。先行例: Google, Gemini API "Thinking" https://aistudio.google.com/docs/thinking (取得 2026-11-12)。差分: 一致 — 遅延を下げるには thinking_level を下げる、という公式の指針どおり。値は測定で決める。軸: 還元。
 - D12: 素通しの段落を、`ja-polish` の次の実行で書き直しの対象に戻す。先行例なし: このリポジトリの記録まわりの設計(`docs/agents/ja-polish.md`、`docs/agents/gate-failopen-advisory.md`、取得 2026-11-12)だけを探し、同じ問題の扱いは見つからなかった。外部の例は探していない(未確認)。軸: 還元 — 記録の読み込みを 2 つに分けるだけ。
 - D13: Gemini の前後に textlint の自動修正を挟む。先行例: textlint, "CLI" https://textlint.org/docs/cli/ (取得 2026-11-12、調査の委譲先が `--fix` の説明を逐語で引いたもの)。差分: 一致 — `--fix` の自動修正をそのまま使う。設定は作業ツリーに置かず、ja-polish が実行のたびに作る。既存手段: 採用 — textlint(nixpkgs の固定版 15.7.1)。軸: 還元 — 定型の直しを、決定論の道具へ移す。
+- D14: 一時的な原因の素通しの率が閾値を超えたら、セッションの冒頭で知らせる。先行例: `crates/gate-failopen-advisory`(連続の fail-open を SessionStart で知らせる既存の仕組み、`docs/agents/gate-failopen-advisory.md`、取得 2026-11-12)。差分: 異なる — 連続回数でなく、期間内の率で判定し、件数の下限を持つ。軸: 検出のみ — 課金の判断は本人に残す。

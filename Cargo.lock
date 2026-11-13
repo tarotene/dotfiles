@@ -855,6 +855,7 @@ name = "gate-failopen-advisory"
 version = "0.1.0"
 dependencies = [
  "agent-session",
+ "ja-polish",
  "serde_json",
  "tempfile",
 ]

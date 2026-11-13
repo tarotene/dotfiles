@@ -367,7 +367,7 @@ l_login: "Login / autostart" {
   }
 }
 
-l_manual.n_ja_polish -> n_agent_session.l_session_start.n_gate_failopen_advisory: "gate-events.jsonl (fail-open / pass)" {
+l_manual.n_ja_polish -> n_agent_session.l_session_start.n_gate_failopen_advisory: "gate-events.jsonl (fail-open / pass) + records.jsonl (transient skips)" {
   class: e_file
 }
 l_manual.n_hms -> l_manual.n_agent_settings_reconcile: "activation" {
