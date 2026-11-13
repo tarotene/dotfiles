@@ -64,22 +64,21 @@ fn injects_until_the_mark_exists() {
     assert_eq!(out, "");
 }
 
-/// 会社の機体を想定: `desk-hub` だけがあり、`performance-hub` は無い。机の正本は
-/// ハブの中の別の場所(`DESK_CANON`)にある。
+/// 会社の機体を想定: `desk-hub` だけがあり、`performance-hub` は無い。机の正本の場所は
+/// 個人と同じ(`state/reviews/daily/desk.md`)。
 #[test]
 fn injects_on_a_machine_that_only_has_desk_hub() {
     let dir = tempfile::tempdir().unwrap();
     let hub = dir.path().join("company-hub");
     let state = dir.path().join("state");
-    std::fs::create_dir_all(hub.join("workday")).unwrap();
-    std::fs::write(hub.join("workday/desk.md"), "x").unwrap();
+    std::fs::create_dir_all(hub.join("state/reviews/daily")).unwrap();
+    std::fs::write(hub.join("state/reviews/daily/desk.md"), "x").unwrap();
 
     let out = Command::new(env!("CARGO_BIN_EXE_daily-desk-reminder"))
         .env_clear()
         .env("DESK_STATE_DIR", &state)
         .env("HOME", &state)
         .env("DESK_HUB", &hub)
-        .env("DESK_CANON", "workday/desk.md")
         .stdin(Stdio::null())
         .output()
         .unwrap();

@@ -9,7 +9,7 @@ description = "writing-style-hub / performance-hub(scripts/ 配下の bash 版�
 # writing-style-hub と performance-hub は同じ「マーカーファイル + 環境変数で private ハブの
 # 絶対パスを解決する」薄いポインタで、差分は環境変数名・マーカー名・存在確認する README・
 # 文言だけ(bash 版は片方をコピーして作られていた)。1 クレートに bin をまとめて単一正本にする。
-# desk-hub は、同じ型で、机の正本のファイルまで解決する(`resolve_desk`)。
+# desk-hub は、同じ型で、机の正本を持つハブを解決し、`performance-hub` への縮退を持つ(`resolve_desk`)。
 [[bin]]
 name = "writing-style-hub"
 path = "src/bin/writing-style-hub.rs"

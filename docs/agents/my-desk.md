@@ -42,17 +42,18 @@ hook: `crates/daily-desk-reminder`(SessionStart、1 日 1 回の注入)
 `desk-hub`(`crates/hub-resolve` の bin。`resolve_desk` が解決する)の規則:
 
 1. 環境変数 `DESK_HUB`、無ければ `${XDG_CONFIG_HOME:-$HOME/.config}/dotfiles/desk-hub` の 1 行目が、
-   机のハブ(リポジトリの絶対パス)。
-2. 机の正本のファイルは、ハブからの相対パスで、環境変数 `DESK_CANON`、無ければマーカーの 2 行目、
-   無ければ既定の `state/reviews/daily/desk.md`。絶対パス・`..`・`.` は使えない。
+   机のハブ(person-state リポジトリの絶対パス)。
+2. 机の正本の場所は、個人と会社で同じ `state/reviews/daily/desk.md`(ハブの中の固定のパス)。
+   個人と会社は、Slack の有無と GitHub アカウントの共用を除いて、対称な対にする(同じレイアウトの
+   person-state リポジトリを、側ごとに持つ)ので、場所を上書きする仕組みは持たない。正本が無ければ失敗する。
 3. `desk-hub` の目印が無く、`performance-hub` があれば、従来どおりそのハブが机を持つ(個人の機体は
    何も変えずに動く)。
 4. どちらも無ければ、明示のメッセージを出して非 0 で終わる。
-5. 使い方: `desk-hub` は机のハブ、`desk-hub --canon` は正本のファイルの絶対パスを、末尾改行なしで出す。
+5. 使い方: `desk-hub`(引数なし)は机のハブの絶対パスを、末尾改行なしで出す。
 
-会社の機体は、`performance-hub` を置かず、`desk-hub` だけで会社側のリポジトリの正本を指す。会社の机の中身
-(どの段をどの部品で行うか)は、会社側のリポジトリの ADR が決める。目印はどの機体でも手で置く
-(home-manager は宣言しない。`docs/operations.md` の目印の表)。
+会社の機体は、`performance-hub` を置かず、`desk-hub` だけで会社側の person-state リポジトリを指す。
+会社の机の中身(どの段をどの部品で行うか)は、会社側のリポジトリの ADR が決める。目印はどの機体でも
+手で置く(home-manager は宣言しない。`docs/operations.md` の目印の表)。
 
 ## なぜ hook を `issue-index` に同居させなかったか
 
