@@ -10,6 +10,7 @@ use repo_structure_check::hook_io::{self, ENVELOPE_EXCEPTIONS, STDIN_EXCEPTIONS}
 use repo_structure_check::host_names;
 use repo_structure_check::manifest::{check_tree, read_members, ZERO_DEPENDENCY_CRATES};
 use repo_structure_check::process_env::{self, HELPER_EXCEPTIONS, XDG_EXCEPTIONS};
+use repo_structure_check::side_symmetry;
 
 fn repo_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
@@ -164,6 +165,40 @@ fn the_host_name_check_reads_the_hosts_it_is_about() {
         host_names::MARKER_WRITER
     );
     assert!(files.len() > 40, "読んだ nix が少なすぎる: {}", files.len());
+}
+
+/// 個人と会社は対称な対(ADR「個人と会社は対称な対」): 公開の module は側(identity)で分岐しない。
+#[test]
+fn the_tree_does_not_branch_on_the_identity_in_public_modules() {
+    let files = host_names::read_files(&repo_root()).expect("read the nix sources");
+    let violations = side_symmetry::check_identity_branches(&files);
+    let report: Vec<String> = violations.iter().map(ToString::to_string).collect();
+    assert!(
+        violations.is_empty(),
+        "公開の module が側(identity)で分岐している:\n{}",
+        report.join("\n")
+    );
+}
+
+/// 空のツリーを読んで「違反なし」で通ってしまわないための番兵。
+#[test]
+fn the_identity_check_reads_the_public_modules_it_is_about() {
+    let files = host_names::read_files(&repo_root()).expect("read the nix sources");
+    let modules = files
+        .iter()
+        .filter(|f| f.path.starts_with("home/modules/"))
+        .count();
+    assert!(modules > 30, "読んだ公開の module が少なすぎる: {modules}");
+    for expected in [
+        side_symmetry::IDENTITY_MODULE,
+        "home/identities/personal.nix",
+        "home/identities/company.nix",
+    ] {
+        assert!(
+            files.iter().any(|f| f.path == expected),
+            "{expected} が読めていない"
+        );
+    }
 }
 
 #[test]
