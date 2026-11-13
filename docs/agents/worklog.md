@@ -2,8 +2,11 @@
 
 決定の記録: `docs/adr/998-worklog-vault-daily-note.md`
 実体: `crates/worklog`(CLI と SessionStart hook)
-配備: `home/hosts/vega/obsidian.nix`(CLI `~/.local/bin/worklog` と vault のマーカー)、
-`home/modules/agents.nix`(hook `~/.claude/hooks/worklog`)
+配備: 個人の機体(vega)は `home/hosts/vega/obsidian.nix`(CLI `~/.local/bin/worklog` と vault のマーカー)。
+会社の機体(arcturus)は、`home/hosts/arcturus.nix` が vault の明示初期化(`dotfiles.obsidian.initializeVault`)を有効にし、
+会社用 vault の場所とマーカーは private 側が宣言する(`docs/adr/1136-wrapup-inbox-to-vault.md` D3。2026-11-13 に arcturus で、
+マーカーが会社用 vault を指し、`worklog session-start` が注入文を出すことを確かめた)。会社用 vault を個人 vault へ
+自動でコピーしない。hook は `home/modules/agents.nix`(`~/.claude/hooks/worklog`)
 
 ## 何を解くか
 
@@ -74,7 +77,7 @@ worklog slot closed [--json] | check
 
 hub-resolve と同じ間接参照で、環境変数 `OBSIDIAN_VAULT`、無ければ
 `${XDG_CONFIG_HOME:-$HOME/.config}/dotfiles/obsidian-vault` の 1 行目(絶対パス。wrap-up の inbox と共有する単一の正本)。マーカーは
-`obsidian.nix` が `vaultPath` から置くので、vault を宣言した機体にしか無い。存在確認は共有の
+vault を宣言した機体にしか無い(vega は `obsidian.nix` が `vaultPath` から置く。会社の機体は private 側の宣言が置く)。存在確認は共有の
 `<vault>/.obsidian/app.json` で、worklog はさらに `<vault>/.obsidian/daily-notes.json` から、
 当日ノートの置き場と書式を読む。
 
@@ -90,7 +93,8 @@ JSON でない・扱えない書式は、これまでどおりエラーにする
   Codex は共通の hook 宣言から展開される。Copilot は `home/modules/agents.nix` が `~/.copilot/settings.json` の
   `sessionStart` に `--agent copilot` つきで登録する。出力の形は、Claude Code と Codex が `hookSpecificOutput` の
   入れ子、Copilot が最上位の `additionalContext`。
-- マーカーも環境変数も無い機体では何も出さない(会社の機体など)。
+- マーカーも環境変数も無い機体では何も出さない。マーカーがある機体は、その機体の vault に書く(個人の機体は個人用、
+  会社の機体は会社用。会社用 vault を個人 vault へ自動でコピーしない)。
 - 宣言はあるが vault が使えないときは、stderr に 1 行だけ出して exit 0 で終わる。
 - 注入文は、書く時点と kind の意味、書かないもの(会社の業務の中身、機密、既存の記録から導けること)、
   作業ディレクトリと同じ owner/repo の直近 7 日の stuck / found(新しい順、最大 10 行。記録であり、
