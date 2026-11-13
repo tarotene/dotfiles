@@ -72,6 +72,16 @@ option `dotfiles.host.name` で受け取る。
 `dotfiles.host.name` は既定値を持たない。名前を宣言しない機体は、評価が「option を使っているが定義が無い」で落ち、別の機体を
 指すマーカーを配備しない。綴りは `[a-z][a-z0-9-]*`(型で縛る)。例外は無い。
 
+### 側(identity)の分岐(`side_symmetry::check_identity_branches`、ADR「個人と会社は対称な対」)
+
+`home/**/*.nix` を同じ字句解析で読む。公開の module(`home/modules/**`)は、機体が個人か会社かで分岐しない。側ごとに違う値は
+typed な option にして、identity のファイル(`home/identities/**`)と host のファイルが値を与える。
+
+| 検査 | 内容 |
+|---|---|
+| 側を読まない | `home/modules/**` のコード(コメントを除く)に `dotfiles.identity` が現れたら落ちる。例外は、option を宣言して環境変数へ変換する `home/modules/identity.nix` だけ。説明のコメントに書くのは構わない |
+| 番兵 | `home/modules/identity.nix` が無い、または `dotfiles.identity` を宣言していないと落ちる(検査が空振りして通らないため) |
+
 ### 環境変数・ホーム・XDG(`process_env::check_tree`)
 
 `crates/*/src/**/*.rs` のうち、コメントの行と、ファイル末尾のテストの節(`#[cfg(test)]` から後)を除いた行を読む。環境変数が
@@ -181,6 +191,7 @@ ADR-1529 の置き場 4)。例外を解消すると鮮度の検査が落ちる�
 - crates/repo-structure-check/src/hook_io.rs
 - crates/repo-structure-check/src/escape.rs
 - crates/repo-structure-check/src/host_names.rs
+- crates/repo-structure-check/src/side_symmetry.rs
 - crates/repo-structure-check/src/process_env.rs
 - crates/repo-structure-check/src/civil_time.rs
 - crates/repo-structure-check/src/deps.rs
