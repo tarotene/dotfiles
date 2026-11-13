@@ -292,11 +292,11 @@
     # docs/agents/music-performance-planning.md has the design (that repository's
     # own ADR-0009).
     "performance-hub"
-    # desk-hub: resolves the repository holding THIS machine's morning-desk
-    # procedure (and the procedure file inside it) for the my-desk skill and the
-    # daily-desk-reminder hook — the work machine points it at its own
-    # repository and carries no performance-hub. Same marker-file/env-var
-    # indirection as the two above. docs/agents/my-desk.md has the design.
+    # desk-hub: resolves the person-state repository holding THIS machine's
+    # morning-desk procedure for the my-desk skill and the daily-desk-reminder
+    # hook — the work machine points it at its own person-state repository and
+    # carries no performance-hub. Same marker-file/env-var indirection as the two
+    # above. docs/agents/my-desk.md has the design.
     "desk-hub"
     # dotfiles-identity: `verify` succeeds only when this machine's declared
     # identity (DOTFILES_IDENTITY) and the Claude account actually logged in

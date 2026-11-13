@@ -13,18 +13,17 @@ description: 本人が習慣として手で打つ「朝の机」の入口(/my-de
 
 ## 1. ハブを解決して、手順を読む
 
-`desk-hub`(この機体の机の正本を持つリポジトリを解決する。`docs/agents/my-desk.md`)で、
-机のハブと、正本のファイルを解決する。
+`desk-hub`(この機体の机の正本を持つ person-state リポジトリを解決する。`docs/agents/my-desk.md`)で、
+person-state リポジトリのチェックアウトを解決する。
 
 ```
 HUB="$(desk-hub)" || exit 1
-CANON="$(desk-hub --canon)" || exit 1
 ```
 
-`"$CANON"` を最後まで読み、その手順に上から順に従う。手順の中の `$HUB` は、上の `HUB` である。
-目印 `desk-hub` が無い機体は、従来どおり `performance-hub` のハブの `state/reviews/daily/desk.md` を
+`"$HUB/state/reviews/daily/desk.md"` を最後まで読み、その手順に上から順に従う(正本の場所は、
+個人と会社で同じ)。目印 `desk-hub` が無い機体は、従来どおり `performance-hub` のハブを
 `desk-hub` が解決する。会社の機体には個人データ用の `performance-hub` を置かず、`desk-hub` だけで
-会社側の正本を指す。
+会社側の person-state リポジトリを指す。
 読めないとき(ハブが未設定、ファイルが無い)は、推測で手順を作らず、読めなかったことと
 直し方を伝えて止める。手順の中身は、ここに複写しない。
 
