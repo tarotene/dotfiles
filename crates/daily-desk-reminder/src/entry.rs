@@ -10,19 +10,17 @@ fn main() {
     // 標準入力は使わないが、読み切って hook の作法に合わせる。
     let _ = agent_session::input::read_stdin();
 
-    // ハブ(手順の正本を持つ private リポジトリ)が未設定の機体では、何もしない。
+    // 机の正本を持つリポジトリ(この機体の `desk-hub`、無ければ従来の `performance-hub`)が
+    // 未設定の機体では、何もしない。
     let getenv = |k: &str| std::env::var(k).ok();
-    let Ok(hub) = hub_resolve::resolve(&hub_resolve::PERFORMANCE_HUB, &getenv) else {
-        return;
-    };
-    // ハブはあるのに手順が無い: 無音だと壊れた設定を隠すので 1 行だけ出す。
-    let desk_md = std::path::Path::new(&hub).join("state/reviews/daily/desk.md");
-    if !desk_md.is_file() {
-        eprintln!(
-            "[daily-desk-reminder] desk.md が読めません: {}",
-            desk_md.display()
-        );
-        return;
+    match hub_resolve::resolve_desk(&getenv) {
+        Ok(_) => {}
+        Err(hub_resolve::DeskError::Unset(_)) => return,
+        // ハブはあるのに手順が解決できない: 無音だと壊れた設定を隠すので 1 行だけ出す。
+        Err(hub_resolve::DeskError::Broken(msg)) => {
+            eprintln!("[daily-desk-reminder] {}", msg.trim_end());
+            return;
+        }
     }
     let Some(dir) = state_dir(
         std::env::var_os("DESK_STATE_DIR"),

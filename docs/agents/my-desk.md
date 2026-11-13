@@ -6,8 +6,9 @@
 
 スキル: `config/agents/skills/my-desk/SKILL.md`
 hook: `crates/daily-desk-reminder`(SessionStart、1 日 1 回の注入)
-手順の正本: 別の private な person-state リポジトリの `state/reviews/daily/desk.md`
-(同リポジトリ側の ADR。出典は private リポジトリ側のため、ここでは決定の存在だけを参照する)
+手順の正本: 機体ごとに別の private なリポジトリの `desk.md`。個人の機体は person-state リポジトリの
+`state/reviews/daily/desk.md`、会社の機体は会社側のリポジトリ(下の「ハブは机専用の目印で解決する」)
+(各リポジトリ側の ADR。出典は private リポジトリ側のため、ここでは決定の存在だけを参照する)
 
 ## 動機
 
@@ -30,11 +31,28 @@ hook: `crates/daily-desk-reminder`(SessionStart、1 日 1 回の注入)
 (`docs/adr/519-routines-declaration-in-repo.md` D2、薄いポインタと home repo の正本)と同じ形を、
 手元のスキルに適用した。手順をスキルと `desk.md` の両方に書くと、複写と同期の二重管理になる。
 
-## ハブは新設しない
+## ハブは机専用の目印で解決する
 
-`performance-hub`(`crates/hub-resolve`)をそのまま流用する。同じリポジトリを指すマーカーを
-増やす理由が無い(`docs/agents/venue-search.md` と同じ判断)。マーカーが未設定の機体では、
-スキルが読めなかったことを伝えて止まる。
+最初は、`performance-hub`(`crates/hub-resolve`)をそのまま流用し、同じリポジトリを指すマーカーを
+増やさなかった(`docs/agents/venue-search.md` と同じ判断)。会社の機体にも机を通すとき、この判断を改めた。
+`performance-hub` は演奏本番・会場探しのスキルも読む個人データの目印で、会社の機体に置くと、
+個人の段が会社の機体で動く状態を作れてしまう。そこで、机専用の目印 `desk-hub` を足し、機体ごとに
+その机の正本を持つリポジトリを指す。
+
+`desk-hub`(`crates/hub-resolve` の bin。`resolve_desk` が解決する)の規則:
+
+1. 環境変数 `DESK_HUB`、無ければ `${XDG_CONFIG_HOME:-$HOME/.config}/dotfiles/desk-hub` の 1 行目が、
+   机のハブ(リポジトリの絶対パス)。
+2. 机の正本のファイルは、ハブからの相対パスで、環境変数 `DESK_CANON`、無ければマーカーの 2 行目、
+   無ければ既定の `state/reviews/daily/desk.md`。絶対パス・`..`・`.` は使えない。
+3. `desk-hub` の目印が無く、`performance-hub` があれば、従来どおりそのハブが机を持つ(個人の機体は
+   何も変えずに動く)。
+4. どちらも無ければ、明示のメッセージを出して非 0 で終わる。
+5. 使い方: `desk-hub` は机のハブ、`desk-hub --canon` は正本のファイルの絶対パスを、末尾改行なしで出す。
+
+会社の機体は、`performance-hub` を置かず、`desk-hub` だけで会社側のリポジトリの正本を指す。会社の机の中身
+(どの段をどの部品で行うか)は、会社側のリポジトリの ADR が決める。目印はどの機体でも手で置く
+(home-manager は宣言しない。`docs/operations.md` の目印の表)。
 
 ## なぜ hook を `issue-index` に同居させなかったか
 
@@ -45,7 +63,8 @@ hook: `crates/daily-desk-reminder`(SessionStart、1 日 1 回の注入)
 
 - イベントは SessionStart の `startup` だけ。`resume` と `compact` では出さない(印が無い限り、新しい
   セッションごとに 1 回出る)。
-- ハブが未設定の機体(会社の機体など)では何も出さない。ハブはあるが `desk.md` が読めないときは、
+- 机の目印(`desk-hub`、無ければ `performance-hub`)が未設定の機体では何も出さない。会社の機体は
+  `desk-hub` を置くと、会社側の正本を読んで注入が出る。ハブはあるが机の正本が読めないときは、
   stderr に 1 行だけ出す。
 - 日付は JST で、`TZ` や `date(1)` に依存せず unix 秒から求める(`crates/daily-desk-reminder`)。
 - 注入文は、本人が望むときにだけ `my-desk` を実行するよう促す。自動では走らせない。

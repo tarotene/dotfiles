@@ -192,6 +192,7 @@ Rust 対象はソース先頭の責務説明と利用側、skill は frontmatter
 | `git-prune-worktrees` | 残骸 worktree を整理する。 |
 | `git-unshelve` | 当該 worktree が退避した作業を戻す。git-shelve と対になる。 |
 | `performance-hub` | 演奏予定のハブを解決する補助入口。planning の手順とは異なる操作を指す。 |
+| `desk-hub` | 机の正本を持つハブと、正本のファイルを解決する補助入口。机の手順(my-desk)とは異なる操作を指す。 |
 | `writing-style-hub` | 文体規約のハブを解決する。 |
 | `pr-merge-settings-check` | PR のマージ設定の適合性を判定する。 |
 | `rulesets-context-check` | ruleset の必須チェック名と実装の対応を判定する。 |

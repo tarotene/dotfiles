@@ -1,6 +1,6 @@
 ---
 name: my-desk
-description: 本人が習慣として手で打つ「朝の机」の入口(/my-desk)。その日にさばくべき作業(返信が要るメール、日程回答、軽い人手タスク、未消費 PR の裁定、受信箱)を、朝のセッションで 1 か所から順に片付ける入口。手順の正本は別の private な person-state リポジトリの `state/reviews/daily/desk.md` にあり、このスキルはそこへ解決して従うだけの薄いポインタ。今日の机・机を開く・朝のルーチン・今日さばくこと・今日の分・daily desk・my desk、といった依頼や、SessionStart の「今日の机は未実施」の注入を受けたときに使う。start my day, work through today's inbox and tasks、といった英語の文脈でも使う。
+description: 本人が習慣として手で打つ「朝の机」の入口(/my-desk)。その日にさばくべき作業(返信が要るメール、日程回答、軽い人手タスク、未消費 PR の裁定、受信箱)を、朝のセッションで 1 か所から順に片付ける入口。手順の正本は、機体ごとに別の private なリポジトリ(個人の機体は person-state リポジトリ、会社の機体は会社側のリポジトリ)にあり、このスキルはそこへ解決して従うだけの薄いポインタ。今日の机・机を開く・朝のルーチン・今日さばくこと・今日の分・daily desk・my desk、といった依頼や、SessionStart の「今日の机は未実施」の注入を受けたときに使う。start my day, work through today's inbox and tasks、といった英語の文脈でも使う。
 ---
 
 `/my-desk` は、本人が習慣として手で打つ入口の 1 つ(もう 1 つは片付けの `/my-cleanup`)である。旧名の
@@ -9,18 +9,22 @@ description: 本人が習慣として手で打つ「朝の机」の入口(/my-de
 その日にさばく作業は、手元の資格情報(メールのコネクタ、`gh` のユーザートークン、受信箱の
 キャッシュ)を要するので、クラウドの定期実行からは届かない。このスキルは、その入口を
 朝のセッションに 1 つだけ置く。手順そのものは持たない。手順を変えるときは、
-person-state リポジトリ側の `desk.md` を直す。設計は `docs/agents/my-desk.md`。
+その機体の机の正本(`desk.md`)を持つリポジトリ側を直す。設計は `docs/agents/my-desk.md`。
 
 ## 1. ハブを解決して、手順を読む
 
-`performance-hub`(venue-search などと共通のハブ。`docs/agents/music-performance-planning.md`)で、
-person-state リポジトリのチェックアウトを解決する。
+`desk-hub`(この機体の机の正本を持つリポジトリを解決する。`docs/agents/my-desk.md`)で、
+机のハブと、正本のファイルを解決する。
 
 ```
-HUB="$(performance-hub)" || exit 1
+HUB="$(desk-hub)" || exit 1
+CANON="$(desk-hub --canon)" || exit 1
 ```
 
-`"$HUB/state/reviews/daily/desk.md"` を最後まで読み、その手順に上から順に従う。
+`"$CANON"` を最後まで読み、その手順に上から順に従う。手順の中の `$HUB` は、上の `HUB` である。
+目印 `desk-hub` が無い機体は、従来どおり `performance-hub` のハブの `state/reviews/daily/desk.md` を
+`desk-hub` が解決する。会社の機体には個人データ用の `performance-hub` を置かず、`desk-hub` だけで
+会社側の正本を指す。
 読めないとき(ハブが未設定、ファイルが無い)は、推測で手順を作らず、読めなかったことと
 直し方を伝えて止める。手順の中身は、ここに複写しない。
 

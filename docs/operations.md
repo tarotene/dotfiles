@@ -322,7 +322,7 @@ save the direct `/tmp/...` writes, so the rule for `/tmp` itself is replaced.
 
 ## Host-local marker files
 
-Three `${XDG_CONFIG_HOME:-$HOME/.config}/dotfiles/<name>` marker files let
+Four `${XDG_CONFIG_HOME:-$HOME/.config}/dotfiles/<name>` marker files let
 this PUBLIC repository's source stay unaware of host-specific or private
 values (ADR-0034 D5: the *schema* is public, the *values* are not).
 `style-hub` is never home-manager-managed — declaring it there would put
@@ -355,9 +355,10 @@ or a Linux host being switched before its OS hostname is renamed:
 | `host` | `crates/hms`'s `resolve_host()`, `bootstrap.sh` (ADR-0019) | optional; needs hand-placing only when the OS hostname doesn't already match, home-manager-managed after the first switch under the new name | `hostname` |
 | `private-hub` | `crates/hms`'s `resolve_default_ref()` (ADR-0034, #567) | optional; placed as a side effect of applying through a registered wrapper (`dotfiles.privateHub.ref`, home-manager-managed from then on) | `github:tarotene/dotfiles` (public-only apply) |
 | `style-hub` | `writing-style-hub` (`crates/hub-resolve`), for the `writing-style` skill (#115) | required for that skill, always hand-placed | `$WRITING_STYLE_HUB` env var only; otherwise the skill is unusable |
+| `desk-hub` | `desk-hub` (`crates/hub-resolve`), for the `my-desk` skill and the `daily-desk-reminder` hook ([`agents/my-desk.md`](agents/my-desk.md)). Line 1: the absolute path of the repository holding this machine's desk procedure; optional line 2: the procedure file's path inside it (default `state/reviews/daily/desk.md`) | optional; always hand-placed. A host that must not carry the personal-data marker `performance-hub` (the work machine) sets this one instead | `$DESK_HUB` / `$DESK_CANON` env vars, then the `performance-hub` hub; with neither the desk is silent in the hook and unresolved in the skill |
 
 Run `dotfiles-doctor` (deployed to `~/.local/bin` by
-`home/modules/packages.nix`) to see the current status of all three at
+`home/modules/packages.nix`) to see the current status of the first three at
 once — it reports each marker's presence and, for `style-hub`, whether it
 actually resolves (via `writing-style-hub`), without ever writing a value
 itself (#368). `host`/`private-hub` being unset is reported as `INFO`, not

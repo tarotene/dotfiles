@@ -538,9 +538,10 @@
 #    docs/agents/my-desk.md):
 #    その日にさばく作業(返信が要るメール、日程回答、人手タスク、未消費 PR の裁定、
 #    受信箱)の起点が、発火装置の違うものに散っていた問題への対処。手順の正本は
-#    private なハブ側の desk.md で、スキルはハブ(performance-hub)を解決して従うだけの
-#    薄いポインタ。hook は「今日の机は未実施」を注入し、実施済みの印
-#    (~/.local/state/claude/desk/<JST の日付>)があれば無音。ハブ未設定の機体でも無音。
+#    private なハブ側の desk.md で、スキルはハブ(`desk-hub`。無ければ従来の
+#    performance-hub)を解決して従うだけの薄いポインタ。hook は「今日の机は未実施」を
+#    注入し、実施済みの印(~/.local/state/claude/desk/<JST の日付>)があれば無音。
+#    ハブ未設定の機体でも無音。
 #
 # 39) worklog(SessionStart, matcher: startup、docs/agents/worklog.md):
 #    Git で管理するには重すぎる粒度の作業ログを、Obsidian vault の当日ノートへ 1 行ずつ
