@@ -243,6 +243,36 @@ fn busy_forever_falls_back_then_records_a_transient_skip() {
 }
 
 #[test]
+fn a_passed_through_paragraph_is_polished_on_the_next_run_while_the_gate_counts_it_as_passed() {
+    let sb = Sandbox::new();
+    let file = sb.path("doc.md");
+    std::fs::write(&file, SRC).unwrap();
+
+    // 1 回目: キーが無くて素通し。
+    sb.fake_llm("Error: No key found - add one", true);
+    let (out, _, _) = text(&sb.cmd().arg(&file).output().unwrap());
+    assert!(out.contains("素通し 1"), "{out}");
+
+    // 関所の見方(`--check`): 素通しも通した。動けない間に何も出せなくならないための設計。
+    let (out, _, code) = text(&sb.cmd().arg("--check").arg(&file).output().unwrap());
+    assert_eq!(code, Some(0), "{out}");
+    assert!(out.contains("未通過の日本語の段落はありません"), "{out}");
+
+    // 2 回目: 直ったので、同じ文面が書き直される(以前は「書き直す段落はありません」で、直らなかった)。
+    sb.fake_llm(GOOD, false);
+    let (out, err, code) = text(&sb.cmd().arg(&file).output().unwrap());
+    assert_eq!(code, Some(0), "{out}{err}");
+    assert!(out.contains("書き直し 1 / 変更なし 0 / 素通し 0"), "{out}");
+    assert_eq!(std::fs::read_to_string(&file).unwrap(), "文章を直す。\n");
+
+    // 3 回目: 書き直した記録があるので、もう送らない。
+    std::fs::remove_file(sb.path("llm.stdin")).unwrap();
+    let (out, _, _) = text(&sb.cmd().arg(&file).output().unwrap());
+    assert!(out.contains("書き直す日本語の段落はありません"), "{out}");
+    assert!(!sb.path("llm.stdin").exists());
+}
+
+#[test]
 fn missing_style_guide_refuses_to_send_and_passes_through() {
     let sb = Sandbox::new();
     sb.fake_llm(GOOD, false);

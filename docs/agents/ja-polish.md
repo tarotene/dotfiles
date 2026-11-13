@@ -153,6 +153,11 @@ scratchpad は git の外なので基点が無く、本文の全体が対象に�
 モデル。混雑・時間切れで通せなかった素通しの記録には `"transient":true` が付く(キーの未設定や照合の外れには
 付かない。課金の検討を知らせる判定の入力)。1 つの束が失敗しても、ほかの束は書き直す。
 
+**素通しの段落は、`ja-polish` の次の実行で、もう一度書き直しの対象になる**(ADR-1387 の D12)。書き直しは
+`state` が `polished` の記録だけを「通した」とみなし(`records::load_polished`)、関所と `--check` は素通しも
+「通した」とみなす(`records::load`)。キーを入れた・混雑が収まったあとは、同じ文書をもう一度 `ja-polish` に
+通せば、素通しだった段落が書き直される。キーが無いまま再実行すると、同じ段落をまた送って素通しの記録が 1 行増える。
+
 `~/.local/state/claude/gate-events.jsonl` に、書き直した回ごとに `ja-polish` の `fail-open`(1 段落でも
 素通しがあった)か `pass` を残す。`gate-failopen-advisory` が、`pass` を挟まずに 3 回続けて `fail-open` の
 とき、次のセッションの冒頭で警告する(`GATE_FAILOPEN_THRESHOLD` で変えられる)。

@@ -84,12 +84,19 @@ Issue: No-Issue(`/grill-me` セッション中の依頼。依頼文の「ja-poli
 
 `thinking_level`(`minimal` `low` `medium` `high`)を設定可能にし、llm の `-o thinking_level` に渡す。既定値は、測定用サンプルを入れる段階(段 3)で、応答時間・照合の通過率・textlint の指摘数の増減を測定して決定するまで、指定なし(モデルの既定)とする。速さだけで選ぶと、書き直しによってかえって文が硬くなる傾向(2026-11-12 の観察では「だけ」→「のみ」、「包む」→「ラップする」)が強まっても気づけないためである。
 
+### D12: `ja-polish` コマンドは、素通しの段落を次の実行でもう一度書き直す。関所は素通しも「通した」とみなす
+
+記録は `polished`(書き直した)と `skipped`(素通し)を区別して保持するが、以前は読み込みの 1 か所がどちらも「通した」として返していた。関所(投稿・Stop)にはこの挙動が必要である — 素通しで止めると、動けない間に何も出せなくなるためである(D6)。しかし `ja-polish` コマンド自体が同じ読み方をすると、素通しにした段落は、文面を変えない限り二度と書き直されない。2026-11-12 に ADR-1387 の 10 段落を旧版で書き直させたところ、1 回の依頼が 120 秒で時間切れになって全件が素通しになり、`ja-polish --check` は「未通過の日本語の段落はありません」と答え、再実行しても対象にならなかった。vega の記録にある 2882 件(すべて素通し)も同じ理由で直らない。
+
+読み込みを 2 つに分ける。`records::load`(`polished` と `skipped` の両方。関所と `--check` が使う)と、`records::load_polished`(`polished` だけ。`ja-polish` の書き直しが使う)である。問題が解消したあと(キーを入れた、混雑が収まった、など)に、同じ文書をもう一度 `ja-polish` に通せば、素通しだった段落が書き直される。恒久的な原因(キーが無いまま)で再実行すると、同じ段落をまた送って、素通しの記録が 1 行増える。記録は追記だけで、関所の判定は変わらない。
+
 ### 執行点
 
 - `crates/ja-polish/src/llm.rs` — 失敗の 3 種(`FailureKind`)と、標準エラーからの判定(`classify_stderr`)、`-o thinking_level` の受け渡し
 - `crates/ja-polish/src/polish.rs` — 再依頼とバックオフ、予備のモデル(`call`)、束への分割と並列(`polish`)
 - `crates/ja-polish/src/config.rs` — 設定の項目(`fallback_model`・`thinking_level`・`timeout_secs`・`chunk_paras`・`parallel`・`retries`・`retry_base_ms`)と既定値
-- `crates/ja-polish/src/records.rs` — 一時的な原因の素通しに付ける印(`transient`)
+- `crates/ja-polish/src/records.rs` — 一時的な原因の素通しに付ける印(`transient`)、素通しを「通した」とみなさない読み込み(`load_polished`、D12)
+- `crates/ja-polish/src/app.rs` — 書き直しが `load_polished` を使う(D12)
 - `home/modules/ja-polish.nix` — 設定ファイルに出す option(`fallbackModel`・`thinkingLevel`・`timeoutSecs`)
 
 ## Alternatives considered
@@ -142,3 +149,4 @@ Issue: No-Issue(`/grill-me` セッション中の依頼。依頼文の「ja-poli
 - D9: 混雑は指数バックオフで再依頼し、通らなければ予備のモデルに 1 回送る。先行例: Google, Gemini API "Troubleshooting" https://aistudio.google.com/docs/troubleshooting (取得 2026-11-12)。差分: 異なる — 公式は再依頼までで、別のモデルへの切り替えは OpenRouter の model fallbacks(https://openrouter.ai/docs/guides/routing/model-fallbacks 、取得 2026-11-12)にならって足した。時間切れは同じモデルを待ち直さない点も公式と違う(待ちの上限を 1 束で 90 秒前後に抑えるため)。軸: 還元。
 - D10: 段落を束に分けて並列に送る。先行例なし: Gemini API の rate-limits・troubleshooting・batch-api・caching の各ページ(取得 2026-11-12)に、対話の依頼を分割する指針は無かった。軸: 還元。
 - D11: 思考量は設定で渡し、既定は測定で決める。先行例: Google, Gemini API "Thinking" https://aistudio.google.com/docs/thinking (取得 2026-11-12)。差分: 一致 — 遅延を下げるには thinking_level を下げる、という公式の指針どおり。値は測定で決める。軸: 還元。
+- D12: 素通しの段落を、`ja-polish` の次の実行で書き直しの対象に戻す。先行例なし: このリポジトリの記録まわりの設計(`docs/agents/ja-polish.md`、`docs/agents/gate-failopen-advisory.md`、取得 2026-11-12)だけを探し、同じ問題の扱いは見つからなかった。外部の例は探していない(未確認)。軸: 還元 — 記録の読み込みを 2 つに分けるだけ。

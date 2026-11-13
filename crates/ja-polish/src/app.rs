@@ -46,10 +46,11 @@ pub fn run_polish(
     backend: &dyn Backend,
     dry_run: bool,
 ) -> PolishResult {
+    // 素通しの記録は「通した」とみなさない(関所は逆。`records::load_polished` の説明)。
     let known = env
         .records_path
         .as_deref()
-        .map(records::load)
+        .map(records::load_polished)
         .unwrap_or_default();
 
     let result = match style::load() {
