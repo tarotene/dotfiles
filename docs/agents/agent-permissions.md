@@ -170,7 +170,8 @@ git は worktree の cwd で `-C` なしに呼ぶ。`git -C *` のような広�
 `worklog add`(vault の journal)、`session-retrospective --retro-add`(`~/.local/state/claude/wrapup/retro`)、
 `issue-inbox --check-dup`(台帳の snapshot)。hook そのものは Claude Code が sandbox の外で動かすので影響しない。
 直し方は、`excludedCommands`(全権限で動く)ではなく、道具が所有する場所だけを `sandbox.filesystem.allowWrite` に宣言する:
-`~/.local/state/claude`(`claude.nix`)と、vault(`obsidian.nix` の `vaultPath`。vega だけが宣言する)。
+`~/.local/state/claude`(`claude.nix`)と、vault(`obsidian.nix` の `vaultPath`。vault を宣言した機体だけが足す。
+vega は `obsidian.nix`、会社の機体は private 側の宣言。2026-11-13 に arcturus の sandbox の書き込み許可に会社用 vault が入っていることを確かめた)。
 `dotfiles.claudePermissions.allowWrite` は各モジュールが足した値の和になる。
 
 **uv のキャッシュと PyPI の通信先(2026-10-29)**: Python のリポジトリで、sandbox の中の `uv sync` が、`~/.cache/uv` を書けず
