@@ -1,4 +1,4 @@
-# ADR-0000 — 個人と会社は、Slack の有無と GitHub アカウントの共用を除いて、対称な対にする
+# ADR-1573 — 個人と会社は、Slack の有無と GitHub アカウントの共用を除いて、対称な対にする
 
 - Status: Accepted
 - Date: 2026-11-13
