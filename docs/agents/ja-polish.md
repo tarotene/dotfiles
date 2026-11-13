@@ -84,6 +84,24 @@ scratchpad は git の外なので基点が無く、本文の全体が対象に�
 - 設定の `textlint = false`(home-manager は `dotfiles.jaPolish.textlint.enable`)で切れる。環境変数
   `JA_POLISH_TEXTLINT_BIN` で実行ファイルを、`JA_POLISH_PRH_FILE` で辞書を差し替えられる(テスト用)。
 
+## 測定(`ja-polish bench`)
+
+思考量・モデルを、速さだけで選ばず、同じ見本で時間と質の物差しを並べて選ぶ(ADR-1387 の D11・D15、
+`crates/ja-polish/src/bench.rs`)。
+
+```
+ja-polish bench crates/ja-polish/bench/samples.txt [--variants model[@level],…]
+```
+
+- 見本は `crates/ja-polish/bench/samples.txt` の 5 本(`<commit>:<path>`。commit を固定して、文書が変わっても測る対象が
+  動かない)。組の既定は、今の設定のモデルを「思考量の指定なし・minimal・low」で、それに予備のモデルを指定なしで 1 つ。
+  `--variants` で、カンマ区切りの `model` か `model@level` を指定できる。
+- 書き直しは記録を使わず(すべて未通過として扱う)、何も書き換えず、記録もしない。予備のモデルと textlint の前後段は
+  挟まない(モデル自身の出力を測る)。textlint は、指摘数を数えるためだけに使う(無ければ「未計測」)。
+- 表の物差し: 時間(秒)、書き直し・変更なし・素通し(かっこ内は混雑・時間切れによるもの。多い組は、混雑に左右された
+  比較なので、測り直す)、全角括弧の増減(文体規約に指定が無いのに半角を全角にする劣化の数)、冗長表現の指摘数の前後。
+- 1 組ごとに数十秒〜数分かかる。見本を入れ替えたときと、モデルが変わったときに、測り直す。
+
 ## 記録
 
 `~/.local/state/claude/ja-polish/records.jsonl`(`$XDG_STATE_HOME` があればその下)。1 行 1 段落:

@@ -112,6 +112,14 @@ Issue: No-Issue(`/grill-me` セッション中の依頼。依頼文の「ja-poli
 - 警告には、無料枠は混んだときに先に切り捨てられる枠で処理されること(推論)、有料枠は送った文面を製品の改善に使わず切り捨てられにくいこと、月の目安(推定)、この ADR の「有料の API キー・Vertex AI」を添える。
 - `ja-polish` の設定ファイルが無い機体(有効にしていない機体)では何も言わない。
 
+### D15: 思考量とモデルは、固定の見本を測る `ja-polish bench` で決める
+
+D11 の「測って決める」を、コマンドにする。`ja-polish bench <一覧> [--variants model[@level],…]` が、一覧(`crates/ja-polish/bench/samples.txt`。`<commit>:<path>` を 1 行 1 件)の見本を、「モデル × 思考量」の組ごとに書き直し、表で出す。何も書き換えず、記録もしない。予備のモデルと textlint の前後段は挟まない(モデル自身の出力を測る。混雑で予備に流れて、組の違いが見えなくなるのを避ける)。
+
+- 物差しは、時間(秒)、書き直し・変更なし・素通し(うち混雑・時間切れ)、全角括弧の増減、冗長表現の指摘数の前後(textlint)。全角括弧の増減は、2026-11-12 の観察(文体規約に指定が無いのに、半角括弧が全角になる)を数える。
+- 見本は 5 本(`docs/agents` の設計メモ。commit を固定する)。見本を入れ替えたとき、モデルが変わったときに、測り直す。
+- 測定の結果と、それで決めた既定の値は、この ADR の更新と、PR 本文に書く。
+
 ### 執行点
 
 - `crates/ja-polish/src/llm.rs` — 失敗の 3 種(`FailureKind`)と、標準エラーからの判定(`classify_stderr`)、`-o thinking_level` の受け渡し
@@ -124,6 +132,8 @@ Issue: No-Issue(`/grill-me` セッション中の依頼。依頼文の「ja-poli
 - `crates/ja-polish/src/style.rs` — prh の辞書の場所(`prh_path`、D13)
 - `crates/ja-polish/src/records.rs` — 期間内の、一時的な原因の素通しの割合(`transient_rate`、D14)
 - `crates/gate-failopen-advisory/src/main.rs` — 課金の検討の知らせ(`billing_line`、D14)
+- `crates/ja-polish/src/bench.rs` — 見本の測定(`measure`・`render_table`、D15)
+- `crates/ja-polish/bench/samples.txt` — 固定の見本の一覧(D15)
 
 ## Alternatives considered
 
@@ -180,3 +190,4 @@ Issue: No-Issue(`/grill-me` セッション中の依頼。依頼文の「ja-poli
 - D12: 素通しの段落を、`ja-polish` の次の実行で書き直しの対象に戻す。先行例なし: このリポジトリの記録まわりの設計(`docs/agents/ja-polish.md`、`docs/agents/gate-failopen-advisory.md`、取得 2026-11-12)だけを探し、同じ問題の扱いは見つからなかった。外部の例は探していない(未確認)。軸: 還元 — 記録の読み込みを 2 つに分けるだけ。
 - D13: Gemini の前後に textlint の自動修正を挟む。先行例: textlint, "CLI" https://textlint.org/docs/cli/ (取得 2026-11-12、調査の委譲先が `--fix` の説明を逐語で引いたもの)。差分: 一致 — `--fix` の自動修正をそのまま使う。設定は作業ツリーに置かず、ja-polish が実行のたびに作る。既存手段: 採用 — textlint(nixpkgs の固定版 15.7.1)。軸: 還元 — 定型の直しを、決定論の道具へ移す。
 - D14: 一時的な原因の素通しの率が閾値を超えたら、セッションの冒頭で知らせる。先行例: `crates/gate-failopen-advisory`(連続の fail-open を SessionStart で知らせる既存の仕組み、`docs/agents/gate-failopen-advisory.md`、取得 2026-11-12)。差分: 異なる — 連続回数でなく、期間内の率で判定し、件数の下限を持つ。軸: 検出のみ — 課金の判断は本人に残す。
+- D15: 思考量とモデルを、固定の見本の測定で決める。先行例なし: Nejumi Leaderboard 4・Japanese MT-Bench を探した(2026-11-12、本文は取得できず、未確認)。書き直しの前後を、規則の指摘数と括弧の幅で比べる先行例は見つからなかった。軸: 検出のみ — 品質の低下を測るだけで、防がない。

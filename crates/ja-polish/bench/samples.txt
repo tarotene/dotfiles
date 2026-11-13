@@ -1,0 +1,9 @@
+# ja-polish bench の見本(docs/agents/ja-polish.md「測定」、docs/adr/1387-ja-polish.md の D15)。
+# 1 行 1 件の `<commit>:<path>`。commit は固定する(文書が変わっても、測る対象が動かない)。
+# 選び方: 実際に書き直しを通す種類の文書(docs/agents の設計メモ)で、日本語の段落が数個〜十数個。
+# 見本を入れ替えるときは、組の比較が合わなくなるので、表を測り直す。
+1ed643c0:docs/agents/pkill-guard.md
+1ed643c0:docs/agents/test-output-guard.md
+1ed643c0:docs/agents/ci-wait-guard.md
+1ed643c0:docs/agents/gate-failopen-advisory.md
+1ed643c0:docs/agents/sandbox-compound-guard.md
