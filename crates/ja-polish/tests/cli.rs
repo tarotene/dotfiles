@@ -152,6 +152,93 @@ fn llm_failure_passes_through_records_skip_and_logs_fail_open() {
     assert!(out.contains("No key found"), "{out}");
     assert_eq!(std::fs::read_to_string(&file).unwrap(), SRC, "元のまま");
     assert!(sb.records().contains("\"state\":\"skipped\""));
+    assert!(
+        !sb.records().contains("transient"),
+        "キーの未設定は一時的な失敗ではない: {}",
+        sb.records()
+    );
+    assert!(sb.gate_events().contains("\"decision\":\"fail-open\""));
+}
+
+impl Sandbox {
+    /// 設定ファイル(`ja-polish.toml`)を置く。待ちは 0 にして、テストを待たせない。
+    fn config(&self, extra: &str) {
+        let p = self.path("config/dotfiles/ja-polish.toml");
+        std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+        std::fs::write(p, format!("retry_base_ms = 0\n{extra}")).unwrap();
+    }
+
+    /// 偽の `llm`: 最初の `busy_calls` 回は混雑のエラーで失敗し、その後は `body` を返す。
+    /// 呼ばれるたびに、`-m` のモデル名と `-o thinking_level` の値(無ければ `none`)を
+    /// `llm.args` に 1 行で残す(指示文は複数行なので、引数の全体は残さない)。
+    fn flaky_llm(&self, busy_calls: u32, body: &str) {
+        let script = format!(
+            "#!/bin/sh\ncat > /dev/null\nmodel=; level=none; prev=\nfor a in \"$@\"; do\n  [ \"$prev\" = \"-m\" ] && model=\"$a\"\n  [ \"$prev\" = \"thinking_level\" ] && level=\"$a\"\n  prev=\"$a\"\ndone\necho \"$model $level\" >> $0.args\nn=$(cat $0.count 2>/dev/null || echo 0)\nn=$((n+1))\necho $n > $0.count\nif [ \"$n\" -le {busy_calls} ]; then\n  echo 'Error: This model is currently experiencing high demand.' >&2\n  exit 1\nfi\nprintf '%s\\n' '{body}'\n"
+        );
+        let p = self.path("llm");
+        std::fs::write(&p, script).unwrap();
+        std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+
+    fn llm_args(&self) -> Vec<String> {
+        std::fs::read_to_string(self.path("llm.args"))
+            .unwrap_or_default()
+            .lines()
+            .map(str::to_string)
+            .collect()
+    }
+}
+
+#[test]
+fn busy_is_retried_and_the_thinking_level_is_passed_to_llm() {
+    let sb = Sandbox::new();
+    sb.config("thinking_level = \"minimal\"\nfallback_model = \"\"\n");
+    sb.flaky_llm(1, GOOD);
+    let file = sb.path("doc.md");
+    std::fs::write(&file, SRC).unwrap();
+
+    let (out, err, code) = text(&sb.cmd().arg(&file).output().unwrap());
+    assert_eq!(code, Some(0), "{out}{err}");
+    assert!(out.contains("書き直し 1 / 変更なし 0 / 素通し 0"), "{out}");
+    assert_eq!(std::fs::read_to_string(&file).unwrap(), "文章を直す。\n");
+    let args = sb.llm_args();
+    assert_eq!(
+        args,
+        vec!["gemini-3.6-flash minimal", "gemini-3.6-flash minimal"],
+        "混雑で 1 回失敗し、同じモデルへの再依頼で通った"
+    );
+    assert!(sb.gate_events().contains("\"decision\":\"pass\""));
+}
+
+#[test]
+fn busy_forever_falls_back_then_records_a_transient_skip() {
+    let sb = Sandbox::new();
+    sb.config("fallback_model = \"fb-model\"\nthinking_level = \"low\"\n");
+    sb.flaky_llm(99, GOOD);
+    let file = sb.path("doc.md");
+    std::fs::write(&file, SRC).unwrap();
+
+    let (out, _, code) = text(&sb.cmd().arg(&file).output().unwrap());
+    assert_eq!(code, Some(0), "素通しは失敗にしない");
+    assert!(out.contains("素通し 1"), "{out}");
+    assert!(out.contains("予備の fb-model も失敗"), "{out}");
+    assert_eq!(std::fs::read_to_string(&file).unwrap(), SRC, "元のまま");
+    let args = sb.llm_args();
+    assert_eq!(
+        args,
+        vec![
+            "gemini-3.6-flash low",
+            "gemini-3.6-flash low",
+            "gemini-3.6-flash low",
+            "fb-model none"
+        ],
+        "主を 3 回、予備を 1 回(予備には思考量を渡さない)"
+    );
+    assert!(
+        sb.records().contains("\"transient\":true"),
+        "{}",
+        sb.records()
+    );
     assert!(sb.gate_events().contains("\"decision\":\"fail-open\""));
 }
 

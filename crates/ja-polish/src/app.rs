@@ -2,11 +2,10 @@
 //! 利用者(Claude)に見せる報告の組み立て。CLI と統合テストが同じものを呼ぶ。
 
 use crate::config::Config;
-use crate::llm::Backend;
+use crate::llm::{Backend, LlmError, Request};
 use crate::polish::{polish, PolishResult, Status};
 use crate::{records, style};
 use std::path::PathBuf;
-use std::time::Duration;
 
 /// 実行の外部状態。テストでは一時ディレクトリを指す。
 pub struct Env {
@@ -25,12 +24,13 @@ impl Env {
     }
 }
 
-/// 基準が読めないとき、依頼を出さずに全段落を素通しにするための送り先。
+/// 基準が読めないとき、依頼を出さずに全段落を素通しにするための送り先。待っても直らない失敗として返す
+/// (再依頼も予備のモデルも使わない)。
 struct Refuse(String);
 
 impl Backend for Refuse {
-    fn complete(&self, _: &str, _: &str, _: &str, _: Duration) -> Result<String, String> {
-        Err(self.0.clone())
+    fn complete(&self, _: &Request) -> Result<String, LlmError> {
+        Err(LlmError::permanent(self.0.clone()))
     }
 }
 
@@ -53,24 +53,8 @@ pub fn run_polish(
         .unwrap_or_default();
 
     let result = match style::load() {
-        Ok(style) => polish(
-            text,
-            baseline,
-            &known,
-            &style,
-            &env.config.model,
-            env.config.timeout,
-            backend,
-        ),
-        Err(reason) => polish(
-            text,
-            baseline,
-            &known,
-            "",
-            &env.config.model,
-            env.config.timeout,
-            &Refuse(reason),
-        ),
+        Ok(style) => polish(text, baseline, &known, &style, &env.config, backend),
+        Err(reason) => polish(text, baseline, &known, "", &env.config, &Refuse(reason)),
     };
 
     if !dry_run && !result.paras.is_empty() {

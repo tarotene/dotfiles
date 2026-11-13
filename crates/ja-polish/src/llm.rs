@@ -13,41 +13,86 @@ use std::process::{Command, Stdio};
 use std::sync::OnceLock;
 use std::time::Duration;
 
-/// 依頼の送り先。テストでは差し替える。`Err` は人が読む短い理由。
-pub trait Backend {
-    fn complete(
-        &self,
-        model: &str,
-        system: &str,
-        user: &str,
-        timeout: Duration,
-    ) -> Result<String, String>;
+/// 依頼の失敗の種類。再依頼してよいかを、理由の文字列でなく型で持つ(判定は [`classify_stderr`] の 1 か所)。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FailureKind {
+    /// 応答が時間内に返らなかった。同じモデルを待ち直しても同じになりやすいので、再依頼せず予備のモデルへ移る。
+    Timeout,
+    /// 混雑・利用上限(429・503・`high demand` など)。少し待てば通ることがあるので、間を置いて再依頼する。
+    Busy,
+    /// キーが無い・`llm` が無い・モデル名が違う、など。待っても直らないので、再依頼しない。
+    Permanent,
 }
 
-/// `llm prompt -m <model> -s <system> --no-stream -n` に、標準入力で依頼文を渡す。
+/// 依頼の失敗。`reason` は人が読む短い理由。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LlmError {
+    pub kind: FailureKind,
+    pub reason: String,
+}
+
+impl LlmError {
+    pub fn new(kind: FailureKind, reason: impl Into<String>) -> Self {
+        LlmError {
+            kind,
+            reason: reason.into(),
+        }
+    }
+
+    pub fn permanent(reason: impl Into<String>) -> Self {
+        Self::new(FailureKind::Permanent, reason)
+    }
+
+    /// 混雑・時間切れのような、時間がたてば直りうる失敗か(記録の `transient` の印になる)。
+    pub fn is_transient(&self) -> bool {
+        self.kind != FailureKind::Permanent
+    }
+}
+
+/// 送り先への 1 回の依頼。
+#[derive(Debug, Clone, Copy)]
+pub struct Request<'a> {
+    pub model: &'a str,
+    /// llm-gemini の `-o thinking_level`。`None` なら渡さない。
+    pub thinking_level: Option<&'a str>,
+    pub system: &'a str,
+    pub user: &'a str,
+    pub timeout: Duration,
+}
+
+/// 依頼の送り先。テストでは差し替える。段落の束を並列に送るので、`Sync` を要る。
+pub trait Backend: Sync {
+    fn complete(&self, req: &Request) -> Result<String, LlmError>;
+}
+
+/// `llm prompt -m <model> -s <system> [-o thinking_level <level>] --no-stream -n` に、標準入力で依頼文を渡す。
 /// 実行ファイルは環境変数 `JA_POLISH_LLM_BIN` で差し替えられる(既定は PATH の `llm`)。
 pub struct LlmCli;
 
 impl Backend for LlmCli {
-    fn complete(
-        &self,
-        model: &str,
-        system: &str,
-        user: &str,
-        timeout: Duration,
-    ) -> Result<String, String> {
+    fn complete(&self, req: &Request) -> Result<String, LlmError> {
+        let Request {
+            model,
+            thinking_level,
+            system,
+            user,
+            timeout,
+        } = *req;
         let bin = std::env::var("JA_POLISH_LLM_BIN").unwrap_or_else(|_| "llm".to_string());
         let mut cmd = Command::new(&bin);
-        cmd.args(["prompt", "-m", model, "-s", system, "--no-stream", "-n"])
-            .stdin(Stdio::piped())
+        cmd.args(["prompt", "-m", model, "-s", system, "--no-stream", "-n"]);
+        if let Some(level) = thinking_level {
+            cmd.args(["-o", "thinking_level", level]);
+        }
+        cmd.stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
         let mut child = spawn_group(&mut cmd).map_err(|e| {
-            if e.kind() == std::io::ErrorKind::NotFound {
+            LlmError::permanent(if e.kind() == std::io::ErrorKind::NotFound {
                 format!("{bin} が見つかりません")
             } else {
                 format!("{bin} を起動できません: {e}")
-            }
+            })
         })?;
 
         let mut stdin = child.stdin.take().expect("piped stdin");
@@ -74,11 +119,39 @@ impl Backend for LlmCli {
         let _ = writer.join();
 
         match status {
-            None => Err(format!("{} 秒以内に応答がありません", timeout.as_secs())),
+            None => Err(LlmError::new(
+                FailureKind::Timeout,
+                format!("{} 秒以内に応答がありません", timeout.as_secs()),
+            )),
             Some(st) if st.success() => Ok(String::from_utf8_lossy(&out).into_owned()),
-            Some(st) => Err(failure_reason(&String::from_utf8_lossy(&err), st.code())),
+            Some(st) => Err(classify_stderr(&String::from_utf8_lossy(&err), st.code())),
         }
     }
+}
+
+/// 混雑・利用上限・通信の一時的な不調を表す語。`llm-gemini` は Google の応答の本文
+/// (`This model is currently experiencing high demand`・`RESOURCE_EXHAUSTED`・`UNAVAILABLE`)と
+/// HTTP の状態をそのまま標準エラーに出す。キーの未設定(`No key found`)や不明なモデル名は含まない。
+fn busy_re() -> &'static Regex {
+    static CELL: OnceLock<Regex> = OnceLock::new();
+    CELL.get_or_init(|| {
+        Regex::new(
+            r"(?i)high demand|overloaded|resource_exhausted|unavailable|rate.?limit|quota|too many requests|temporar(?:y|ily)|timed? ?out|connect(ion)? ?(error|refused|reset)|\b(429|500|502|503|504)\b",
+        )
+        .expect("valid regex")
+    })
+}
+
+/// 標準エラー出力から、失敗の種類と理由を決める。種類の判定は標準エラーの先頭 2000 字だけを見る
+/// (Python のトレースバックの深い所にたまたま入った語で、恒久的な失敗を一時的と読まないため)。
+pub fn classify_stderr(stderr: &str, code: Option<i32>) -> LlmError {
+    let head: String = stderr.chars().take(2000).collect();
+    let kind = if busy_re().is_match(&head) {
+        FailureKind::Busy
+    } else {
+        FailureKind::Permanent
+    };
+    LlmError::new(kind, failure_reason(stderr, code))
 }
 
 /// 標準エラー出力の先頭の意味のある 1 行(長ければ切る)。
@@ -209,6 +282,41 @@ mod tests {
         let p = system_prompt("# 規約\nR1. 常体で書く");
         assert!(p.contains("R1. 常体で書く"));
         assert!(p.contains("⟦P数字⟧"));
+    }
+
+    #[test]
+    fn classify_separates_busy_from_permanent_failures() {
+        let busy = [
+            "Error: This model is currently experiencing high demand. Spikes in demand are usually temporary.",
+            "Error: 429 RESOURCE_EXHAUSTED: quota exceeded",
+            "Error: 503 UNAVAILABLE",
+            "httpx.ConnectError: [Errno -3] Temporary failure in name resolution",
+            "httpx.ReadTimeout: timed out",
+        ];
+        for s in busy {
+            let e = classify_stderr(s, Some(1));
+            assert_eq!(e.kind, FailureKind::Busy, "{s}");
+            assert!(e.is_transient());
+        }
+        let permanent = [
+            "Error: No key found - add one using 'llm keys set gemini' or set the LLM_GEMINI_KEY environment variable",
+            "Error: 'gemini-9' is not a known model",
+            "Error: Unknown option: thinking_level",
+        ];
+        for s in permanent {
+            let e = classify_stderr(s, Some(1));
+            assert_eq!(e.kind, FailureKind::Permanent, "{s}");
+            assert!(!e.is_transient());
+        }
+    }
+
+    #[test]
+    fn classify_ignores_words_deep_in_a_traceback() {
+        let deep = format!(
+            "Error: bad option\n{}\n  timed out in unrelated frame",
+            "x".repeat(2500)
+        );
+        assert_eq!(classify_stderr(&deep, Some(1)).kind, FailureKind::Permanent);
     }
 
     #[test]
