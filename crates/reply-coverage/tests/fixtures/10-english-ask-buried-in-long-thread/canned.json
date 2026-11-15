@@ -1,0 +1,24 @@
+{
+  "asks": [
+    {
+      "id": "1",
+      "quote": "Would you be available for a 20-minute intro call on Thursday at 3pm or Friday at 11am?",
+      "by": "them",
+      "kind": "date",
+      "status": "unanswered",
+      "evidence": "",
+      "late": false
+    },
+    {
+      "id": "2",
+      "quote": "could you share your expected salary range?",
+      "by": "them",
+      "kind": "question",
+      "status": "answered",
+      "evidence": "My expected range is 120k-140k USD",
+      "late": false
+    }
+  ],
+  "apology_present": false,
+  "apology_evidence": ""
+}

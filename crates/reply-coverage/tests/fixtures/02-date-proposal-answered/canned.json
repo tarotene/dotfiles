@@ -1,0 +1,24 @@
+{
+  "asks": [
+    {
+      "id": "1",
+      "quote": "来週の火曜日 10 時、または水曜日 15 時はいかがでしょう。",
+      "by": "them",
+      "kind": "date",
+      "status": "answered",
+      "evidence": "来週の水曜日 15 時でお願いします",
+      "late": false
+    },
+    {
+      "id": "2",
+      "quote": "現在の働き方(リモートの頻度)について、ご希望を教えていただけますか。",
+      "by": "them",
+      "kind": "question",
+      "status": "answered",
+      "evidence": "リモートは週 4 日を希望しています",
+      "late": false
+    }
+  ],
+  "apology_present": false,
+  "apology_evidence": ""
+}

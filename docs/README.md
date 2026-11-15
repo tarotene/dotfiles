@@ -111,6 +111,7 @@ What runs automatically, when, and on which stack: see the [pipeline map](pipeli
 - [ADR-1529](adr/1529-issue-inflow-criterion.md) — Issue に置くのは、マージ後も残る状態を持ち、ほかに置き場が無いものだけにする
 - [ADR-1553](adr/1553-deploy-worker-action.md) — 静的サイトの配信を composite action `deploy-worker` に集め、private リポジトリの静的サイトは Workers に置く
 - [ADR-1573](adr/1573-personal-company-symmetric-pair.md) — 個人と会社は、Slack の有無と GitHub アカウントの共用を除いて、対称な対にする
+- [ADR-0000](adr/0000-reply-coverage.md) — 相手のいる会話への返信は、会話の全文を読み、相手の未決の依頼すべてに答えた証拠を残してから作る
 <!-- END GENERATED -->
 
 ## 運用・調査・設計(`docs/` 直下)
@@ -219,6 +220,7 @@ What runs automatically, when, and on which stack: see the [pipeline map](pipeli
 - [`agents/promotion-detect.md`](agents/promotion-detect.md) — promotion-detect — Q2 の昇格・降格候補を日次で検出する
 - [`agents/public-publish-guard.md`](agents/public-publish-guard.md) — public-publish-guard — 上流リポジトリへの配線(dotfiles 固有部分)
 - [`agents/record-layers.md`](agents/record-layers.md) — record-layers — 記録の層(L0〜L4)の宣言と、Write の拒否・日次のずれ検出
+- [`agents/reply-coverage.md`](agents/reply-coverage.md) — reply-coverage — 相手のいる会話への返信が、相手の未決の依頼すべてに答えているかを検査する
 - [`agents/repo-charter.md`](agents/repo-charter.md) — repo-charter: README charter スキーマの設計理由
 - [`agents/repo-create-guard.md`](agents/repo-create-guard.md) — repo-create-guard — `gh repo create` を作成時点で repo-charter 手順に載せる PreToolUse hook
 - [`agents/repo-structure-check.md`](agents/repo-structure-check.md) — repo-structure-check — リポジトリ構造の不変条件を、`cargo test` で検査する
