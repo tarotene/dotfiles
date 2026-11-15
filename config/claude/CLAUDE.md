@@ -166,6 +166,14 @@ sandbox の中と外の線引き(#1103。2026-10-28 に vega で実測した範�
   `--deny warnings` で `unnecessary_sort_by` が CI だけで落ち、上の段 4 本の積み直しになった。2026-10-30)。
   push の前に、CI と同じ derivation を `nix build .#checks.x86_64-linux.dotfiles-tools-clippy --no-link`
   (`flake.nix` の `checks`。単体で呼ぶ。2026-11-08 に vega で exit 0 で通ることを確かめた)で回す。
+- **sandbox の中と外で `TMPDIR` が違う。** 中は `/tmp/claude-1000`(ハーネスが決める)、外(除外コマンドと
+  `dangerouslyDisableSandbox`)は `/tmp`(2026-11-15 に vega で、`echo $TMPDIR` を中と外で 1 回ずつ実測)。外で作った
+  一時ファイルを、中の `python` などが読めない(2026-11-13 に、外で書いた `/tmp` 配下のファイルが中から
+  `/tmp/claude-1000/…` の形で見つからなかった)。**中と外の両方が読む一時ファイルは、システム指示が示す scratchpad の
+  絶対パスに置く**(`$TMPDIR` や `/tmp` の名前で書かない)。
+- **`.claude/skills`(と `.claude/hooks`・`.claude/settings*.json`)の下は、sandbox の中から書けない**(書き込み拒否の
+  一覧に入っている)。`sed -i` や `python` で直さず、`Edit`・`Write` ツールで編集する(2026-11-13 に、skill の文書を
+  中の `python` で書こうとして `Read-only file system` になり、`Edit` に替えた)。
 - **プロセスの存在確認(`ps`・`pgrep`)は sandbox の外で行う。** sandbox の中は PID namespace が隔離されていて、
   ホストのプロセス(Obsidian など)が見えず、自分のシェルの行にだけ当たって「動いていない」と誤判定する
   (2026-10-28 に `pgrep -f obsidian` で発生)。一覧が本物かは、ホスト側にしか無いプロセス(`cosmic-comp` など)の
