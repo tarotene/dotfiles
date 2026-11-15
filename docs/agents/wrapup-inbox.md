@@ -72,7 +72,8 @@ drop_reason: ""                 # dropped にしたときの閉じた理由(下)
   空の欄はノートに書かない(旧い気づきのノートの形は変わらない)。`signal` は語彙
   (`config/agents/codify-signals/vocabulary.json`)の id だけを受け付ける。再発しても最初の値を保つ。
 - `signal` を持つノートを `dropped` にするには、閉じた理由 `--reason`(`semantic-judgment` / `unobservable` /
-  `preference` / `one-off` / `existing-suffices` / `misread-signal`)が要る。ノートの `drop_reason` に残り、
+  `preference` / `one-off` / `existing-suffices` / `misread-signal` / `moved`)が要る。`moved` は、直す場所が別の
+  リポジトリなので、そのリポジトリの inbox へ `--add` して移したときの理由で、採用でも却下でもないので、日次の較正は数えない。ノートの `drop_reason` に残り、
   再発して `open` に戻ると消える。兆候ごとの採用・却下と理由は、日次の較正が数える(段 6)。
 
 - 再発は本文に 1 行足す(`O_APPEND`)。同じ日に同じ内容の行は足さない(冪等)。

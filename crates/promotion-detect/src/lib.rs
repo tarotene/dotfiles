@@ -333,6 +333,10 @@ pub struct SignalNote {
     pub first_seen: String,
 }
 
+/// 別のリポジトリの inbox へ移した気づきの却下の理由(`config/agents/codify-signals/vocabulary.json` の `drop_reasons`)。
+/// 較正の数えに入れない。
+const MOVED_REASON: &str = "moved";
+
 fn adjudicated(status: &str) -> bool {
     matches!(status, "fixed" | "issued" | "dropped")
 }
@@ -371,9 +375,12 @@ pub fn calibrate(notes: &[SignalNote], vocab: &Vocabulary) -> Vec<(String, Strin
     let mut out = Vec::new();
     let mut suffices = 0usize;
     for sig in &vocab.signals {
+        // 別のリポジトリの inbox へ移した(`moved`)ものは、この兆候の採用でも却下でもないので、数えない。
+        // 数えると、直す場所が別のリポジトリだっただけの気づきが、兆候の却下率を上げる。
         let mine: Vec<&SignalNote> = notes
             .iter()
             .filter(|n| n.signal == sig.id && n.first_seen.as_str() >= sig.since.as_str())
+            .filter(|n| !(n.status == "dropped" && n.drop_reason == MOVED_REASON))
             .collect();
         if sig.id == "unclassified" {
             // 採用・却下の較正の対象ではないので、裁定の済んだ(fixed・issued・dropped)ものと、
@@ -821,6 +828,23 @@ mod tests {
 
     fn titles(v: &[(String, String)]) -> Vec<&str> {
         v.iter().map(|(t, _)| t.as_str()).collect()
+    }
+
+    #[test]
+    fn moved_notes_are_neither_a_rejection_nor_an_adoption() {
+        let vocab = Vocabulary::get();
+        // 却下 3 件(one-off)に、移した 5 件が加わっても、却下率は変わらない(分母にも分子にも入れない)。
+        let mut notes = many(3, "form-check", "dropped", "one-off");
+        notes.extend(many(5, "form-check", "dropped", "moved"));
+        let found = calibrate(&notes, vocab);
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert!(found[0].1.contains("3 件が却下"), "{}", found[0].1);
+        assert!(!found[0].1.contains("moved"), "{}", found[0].1);
+        // 移しただけでは、却下の下限(3 件)に届かない。
+        assert!(calibrate(&many(9, "form-check", "dropped", "moved"), vocab).is_empty());
+        // 既存手段の探索の浅さの数にも入れない。
+        let moved_suffices = many(9, "form-check", "dropped", "moved");
+        assert!(calibrate(&moved_suffices, vocab).is_empty());
     }
 
     #[test]

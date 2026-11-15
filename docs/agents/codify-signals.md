@@ -78,6 +78,7 @@
 - `one-off`
 - `existing-suffices`
 - `misread-signal`
+- `moved`
 <!-- END GENERATED -->
 
 表を直すときは、語彙 JSON を直して `session-retrospective --retro-casebook` の出力を生成部に貼る
