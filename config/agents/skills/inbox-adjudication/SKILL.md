@@ -223,7 +223,7 @@ description: 溜まったメールの受信箱をまとめて処理する手順�
      反映する裁定だけが居る状態で、本人担当の項目を置くと、日をまたいだときに、本人担当か反映待ちかを機械が見分けられない
      (`worklog mail sweep` の検出。`docs/agents/mail-lifecycle.md`)。Issue の担当は本人、ラベルは `handoff:human` と、
      ボールのラベル `ball:me`(ボールのラベルはちょうど 1 つ)、題名は `life: <要旨>`、本文は、先頭の非空行に
-     `next: YYYY-MM-DD`(次に見る日)、続けて目的・出典の鍵・期限・完了条件。起票先は、個人の状態を持つ非公開のリポジトリ。
+     `next: YYYY-MM-DD`(次に見る日)、続けて目的・出典の鍵・期限・完了条件。起票先は、その机のハブ(`desk-hub` が解決する、状態を持つ非公開の person-state リポジトリ。個人の机なら個人側の、会社の机なら会社側の)。
      `gh issue create` は `issue-create-guard` が実行前に検査し、ボールのラベルと先頭行の `next:` が無いと拒否する
      (規則の正本は `docs/agents/issue-create-guard.md`)。期限があれば、期限の予定を足して `issue` 欄で Issue を指す
      (期限の日付は Issue に書かない)。枠を足したら、枠の日付が次の契機になるので、本文の `next:` の行を消す(台帳の検査の `枠`)。
@@ -293,10 +293,10 @@ description: 溜まったメールの受信箱をまとめて処理する手順�
 **完了報告(`report`)**、**差出人の扱い(`sender`。規則の無い差出人を、受信箱に残す・読み物・既読で保管・捨てる、のどれにするか。#1342)**がある。裁定のあとに残る「荷物は受け取れたか」「フィルタの反映は済んだか」のような確認は、
 チャットで 1 件ずつ聞かず、同じページの項目にして、本人がページを閉じる前に全部答えられるようにする(#1321)。
 **本人が行う作業の完了**も同じ受け口にする: 担当が本人で `handoff:human` の open な Issue は、毎回、`report` の項目として
-ページに出す(状態を持つ非公開のリポジトリで、`gh issue list --label handoff:human --assignee @me`)。鍵は Issue の番号から導く:
+ページに出す(机のハブのリポジトリで、`gh issue list --label handoff:human --assignee @me`)。鍵は Issue の番号から導く:
 `none:<owner>-<repo>-<番号>/issue`、項目の `id` は `i<番号>`、`title` は「<Issue の題>は済んだか」の形。本人が「済んだ」「やめた」
-「まだ」を押し、次の机が Issue を読み戻して閉じる(読む側の契約は、person-state リポジトリの
-`state/reviews/daily/mail-verdict-page.md`)。報告には、ページの URL を 1 本だけ添え、「Claude Code のウィンドウに書いて」とは書かない。
+「まだ」を押し、次の机が Issue を読み戻して閉じる(読む側の契約は、机のハブ(`desk-hub`)の
+`state/reviews/daily/mail-verdict-page.md`。個人側と会社側で同じ場所で、中身は側ごとに持つ。`FORMAT.md` の「読む側の契約は、側ごとの宣言」)。報告には、ページの URL を 1 本だけ添え、「Claude Code のウィンドウに書いて」とは書かない。
 チャットに残すのは、ページで表せない自由な相談だけにする。答えの写し方は `FORMAT.md` の「事実の確認と完了報告」。
 
 ## メール以外の多数項目の裁定にも、手順 3 のページの型を使う
