@@ -193,9 +193,11 @@ in
       # pipeline-node: agent-settings-reconcile
       run ${settingsReconcile} codex-config "$HOME/.codex/config.toml" ${lib.escapeShellArg codexConfigSpec}
     '';
-    home.file.".codex/rules/dotfiles.rules" = lib.mkIf (config.dotfiles.jaPolish.enable || config.dotfiles.replyCoverage.enable) {
-      text = codexRules;
-    };
+    home.file.".codex/rules/dotfiles.rules" =
+      lib.mkIf (config.dotfiles.jaPolish.enable || config.dotfiles.replyCoverage.enable)
+        {
+          text = codexRules;
+        };
     home.file.".codex/AGENTS.md".text =
       builtins.readFile (repoConfig + "/agents/AGENTS.md")
       + "\n"
