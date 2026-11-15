@@ -111,13 +111,7 @@ Codex 側の公式な設計指針の出典(OpenAI, ChatGPT Learn、公開日不�
 - 食い違わない: `approval_policy = "on-request"`、`approvals_reviewer = "auto_review"`、`default_permissions` の名前付き profile が
   `:workspace` を継承すること、`features.network_proxy = true`、秘密パスの deny、通信先の allow、旧 `sandbox_mode` を併用しない
   こと(reconciler が取り除く)。
-- 宣言する(`dotfiles.jaPolish.enable` の機体だけ): `~/.codex/rules/dotfiles.rules` の `prefix_rule` 1 つで、`ja-polish` を `allow`
-  (sandbox の外で、確認なしに動かす)にする。Claude 側の `excludedCommands` の `ja-polish *` と対(#1386)。公式文書 OpenAI, Codex Rules
-  (<https://learn.chatgpt.com/docs/agent-configuration/rules>、取得 2026-11-10)は、置き場を「`rules/` フォルダの `.rules` ファイル」、
-  `allow` を「Run the command outside the sandbox without prompting.」、再読み込みを「Restart Codex.」と書き、「Rules are experimental
-  and may change.」と明記する。`network_proxy`・`credential_masking` が sandbox の外のコマンドに掛かるかは、取得した資料に記述なし
-  (未確認)。それ以外のコマンドの `prefix_rule` は宣言しない(公式の例は、許可リストにある宛先のコマンドも確認に回す用途で、
-  Codex は Bash 前方一致の宣言を持たない、という上の表の判断は変えていない)。
+- 宣言しない: `ja-polish` の `allow`(`~/.codex/rules/dotfiles.rules` の `prefix_rule`)。#1517 で入れたが、Codex のファイルシステムの制限(秘密パスの deny)があると、`allow` の規則は、その制限を外す許可にならない(OpenAI Codex rust-v0.165.0、`codex-rs/core/src/tools/sandboxing.rs:255-256`、取得 2026-11-15: 「a command allow rule does not authorize removing filesystem restrictions」)。Codex から実行した `ja-polish` は、キーの置き場(`~/.config/io.datasette.llm`)を読めずに素通しになったので、規則を外した(`docs/agents/ja-polish.md`「Codex では動かない」)。公式文書 OpenAI, Codex Rules(<https://learn.chatgpt.com/docs/agent-configuration/rules>、取得 2026-11-10)は、`allow` を「Run the command outside the sandbox without prompting.」と書くが、制限のあるファイルシステムでの例外は書いていない(取得した資料に記述なし)。それ以外のコマンドの `prefix_rule` も、宣言しない(公式の例は、許可リストにある宛先のコマンドも確認に回す用途で、Codex は Bash 前方一致の宣言を持たない、という上の表の判断は変えていない)。`reply-coverage` の規則は、別の仕組み(`docs/agents/reply-coverage.md`)が持つ。同じ制限が掛かるかは未確認。
 - 取得した 2 ページに記述なし: `features.credential_masking`、hook の層。
 
 Claude Code の sandbox が起動に要るコマンド（`socat`、Linux は `bubblewrap`）は、対話の Claude では `home.packages` で PATH に載る。

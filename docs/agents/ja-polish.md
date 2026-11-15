@@ -33,11 +33,28 @@ scratchpad は git の外なので基点が無く、本文の全体が対象に�
 直すと「通していない段落」に戻る)。
 
 `ja-polish` は `llm` を呼び、キーと Google への通信に届く必要があるので、Claude の sandbox の外で
-動かす(`home/modules/claude.nix` の `excludedCommands` に `ja-polish *`)。Codex の sandbox では
-通信できず、段落は「素通し」になっていた(下の「失敗したとき」)ので、Codex の rules
-(`~/.codex/rules/dotfiles.rules` の `prefix_rule`、`home/modules/codex.nix`)で `ja-polish` を `allow`
-(sandbox の外で、確認なしに動かす)にする。`dotfiles.jaPolish.enable` の機体だけに置く。rules は公式文書で
-「experimental」とされている(`docs/agents/agent-permissions.md`)。反映は `hms` の適用と Codex の再起動のあと。
+動かす(`home/modules/claude.nix` の `excludedCommands` に `ja-polish *`)。**Codex からは動かない**。
+Codex の sandbox では通信できず、キーの置き場も読めないので、段落は「素通し」になる(下の
+「Codex では動かない」)。
+
+### Codex では動かない
+
+Codex のセッションで `ja-polish` を実行すると、許可の確認は出ないが、段落は素通しになる(2026-11-15、vega)。
+
+- 失敗の連鎖(Codex、`ja-polish --dry-run <ファイル>` を実行): まず `sqlite3.OperationalError: unable to open
+  database file`(llm の履歴 DB。#1605 で `-d :memory:` を足して避けた)、次に
+  `PermissionError: [Errno 13] Permission denied: '~/.config/io.datasette.llm/aliases.json'`(出力はホームの絶対パス)。
+  どちらも、`llm` のユーザーディレクトリ(API キーの置き場)が、Codex から実行したプロセスに対して拒否されている。
+- 原因: Codex の設定(`home/modules/codex.nix` の `secretPaths`)が、このディレクトリを読めないように宣言している。
+  Codex 0.165.0 のソースに、コマンドの `allow` の規則は、ファイルシステムの制限を外す許可にならない、とある:
+  「Only actual approval of an explicit escalation may widen the filesystem; a command allow rule does not
+  authorize removing filesystem restrictions.」(`codex-rs/core/src/tools/sandboxing.rs:255-256`、OpenAI Codex
+  rust-v0.165.0、取得 2026-11-15)。#1517 で入れた `allow` の規則(sandbox の外で動かす)は、拒否の宣言がある
+  限り効かないので、外した。
+- 決定(本人、2026-11-15): Codex では `ja-polish` を使わない。キーの拒否は、既存の方針どおり維持する。
+  キーの置き場を Codex の拒否の外に作ると、無料枠の個人キーを Codex のエージェントが読めるようになるので、採らない。
+- 影響: Codex で書いた文書は、書き直されない(素通し)。文書は壊れない。Claude 側で通したいときは、Claude の
+  セッションで `ja-polish <ファイル>` を実行する。
 
 ## メール・メッセージの基準(`--message`)
 
