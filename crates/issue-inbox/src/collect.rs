@@ -96,6 +96,125 @@ pub fn diff_population(old: &[Pop], new: &[Pop]) -> Vec<String> {
     out
 }
 
+/// open な PR 1 件(番号・題・head ブランチ・更新日時・変えるファイル)。計画の根拠にした文書を、別のセッションが
+/// 書き換える PR が、Issue の更新日時にも default branch の先頭にも現れない(まだ入っていない)ことへの備え(#1561)。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Pr {
+    pub number: u64,
+    pub title: String,
+    pub head: String,
+    pub updated_at: String,
+    pub files: Vec<String>,
+}
+
+/// `gh pr list --json number,title,headRefName,updatedAt,files` の応答を、番号順の一覧にする。
+pub fn parse_prs(json_text: &str) -> Result<Vec<Pr>, String> {
+    let v: Value =
+        serde_json::from_str(json_text).map_err(|e| format!("PR の一覧を読めない: {e}"))?;
+    let arr = v.as_array().ok_or("PR の一覧が配列でない")?;
+    let mut out: Vec<Pr> = arr
+        .iter()
+        .filter_map(|p| {
+            Some(Pr {
+                number: p["number"].as_u64()?,
+                title: p["title"].as_str()?.to_string(),
+                head: p["headRefName"].as_str().unwrap_or("").to_string(),
+                updated_at: p["updatedAt"].as_str().unwrap_or("").to_string(),
+                files: p["files"]
+                    .as_array()
+                    .map(|fs| {
+                        fs.iter()
+                            .filter_map(|f| f["path"].as_str().map(str::to_string))
+                            .collect()
+                    })
+                    .unwrap_or_default(),
+            })
+        })
+        .collect();
+    out.sort_by_key(|p| p.number);
+    Ok(out)
+}
+
+/// 保存する形(`prs.json`)。
+pub fn prs_json(prs: &[Pr]) -> Value {
+    Value::Array(
+        prs.iter()
+            .map(|p| {
+                json!({
+                    "number": p.number, "title": p.title, "headRefName": p.head,
+                    "updatedAt": p.updated_at,
+                    "files": p.files.iter().map(|f| json!({"path": f})).collect::<Vec<_>>(),
+                })
+            })
+            .collect(),
+    )
+}
+
+/// 保存した `prs.json` を読み戻す(形は `gh pr list` の応答と同じ)。
+pub fn read_prs(v: &Value) -> Result<Vec<Pr>, String> {
+    parse_prs(&v.to_string())
+}
+
+/// open な PR の差分(出力の行)。増えた `+`、消えた `-`(マージか close)、更新日時か変えるファイルが変わった `~`。
+pub fn diff_prs(old: &[Pr], new: &[Pr]) -> Vec<String> {
+    let mut out = Vec::new();
+    for n in new {
+        match old.iter().find(|o| o.number == n.number) {
+            None => out.push(format!("+ PR #{} {}(head: {})", n.number, n.title, n.head)),
+            Some(o) if o.updated_at != n.updated_at || o.files != n.files => out.push(format!(
+                "~ PR #{} {}({} -> {})",
+                n.number, n.title, o.updated_at, n.updated_at
+            )),
+            Some(_) => {}
+        }
+    }
+    for o in old {
+        if !new.iter().any(|n| n.number == o.number) {
+            out.push(format!("- PR #{} {}", o.number, o.title));
+        }
+    }
+    out
+}
+
+/// `touches`(計画が触るパス。ファイルか、`/` で終わるディレクトリ)と重なるファイルを変える PR を、
+/// 重なったファイルつきの行にする。ディレクトリは、その下のすべてに当たる。
+pub fn overlapping(prs: &[Pr], touches: &[String]) -> Vec<String> {
+    let hit = |file: &str, t: &str| -> bool {
+        let t = t.trim();
+        if t.is_empty() {
+            return false;
+        }
+        file == t
+            || (t.ends_with('/') && file.starts_with(t))
+            || file.starts_with(&format!("{}/", t.trim_end_matches('/')))
+    };
+    prs.iter()
+        .filter_map(|p| {
+            let files: Vec<&str> = p
+                .files
+                .iter()
+                .filter(|f| touches.iter().any(|t| hit(f, t)))
+                .map(String::as_str)
+                .collect();
+            (!files.is_empty()).then(|| {
+                let shown: Vec<&str> = files.iter().take(5).copied().collect();
+                let more = if files.len() > shown.len() {
+                    format!(" ほか {} 件", files.len() - shown.len())
+                } else {
+                    String::new()
+                };
+                format!(
+                    "! PR #{} {}(head: {})が、計画の触るファイルを変える: {}{more}",
+                    p.number,
+                    p.title,
+                    p.head,
+                    shown.join(", ")
+                )
+            })
+        })
+        .collect()
+}
+
 /// 気づき 1 件(題・repo・再発の回数)。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Finding {
@@ -504,5 +623,86 @@ mod tests {
             schema["properties"]["format_version"]["const"],
             FORMAT_VERSION
         );
+    }
+
+    fn pr(n: u64, updated: &str, files: &[&str]) -> Pr {
+        Pr {
+            number: n,
+            title: format!("pr{n}"),
+            head: format!("b{n}"),
+            updated_at: updated.into(),
+            files: files.iter().map(|f| f.to_string()).collect(),
+        }
+    }
+
+    #[test]
+    fn parse_prs_reads_files_and_sorts_by_number_and_round_trips() {
+        let text = r#"[
+          {"number": 9, "title": "nine", "headRefName": "b9", "updatedAt": "t", "files": [{"path": "a.md"}, {"path": "d/b.rs"}]},
+          {"number": 2, "title": "two", "headRefName": "b2", "updatedAt": "t", "files": []},
+          {"title": "no number"}
+        ]"#;
+        let prs = parse_prs(text).unwrap();
+        assert_eq!(prs.iter().map(|p| p.number).collect::<Vec<_>>(), vec![2, 9]);
+        assert_eq!(prs[1].files, vec!["a.md", "d/b.rs"]);
+        assert_eq!(read_prs(&prs_json(&prs)).unwrap(), prs);
+        assert!(parse_prs("not json").is_err());
+    }
+
+    #[test]
+    fn diff_prs_reports_new_gone_and_moved() {
+        let old = vec![
+            pr(1, "t1", &["a"]),
+            pr(2, "t1", &["a"]),
+            pr(3, "t1", &["a"]),
+        ];
+        let new = vec![
+            pr(1, "t1", &["a"]),
+            pr(2, "t2", &["a"]),
+            pr(4, "t1", &["b"]),
+        ];
+        let d = diff_prs(&old, &new);
+        assert_eq!(d.len(), 3, "{d:?}");
+        assert!(d.iter().any(|l| l.starts_with("~ PR #2 ")));
+        assert!(d.iter().any(|l| l.starts_with("+ PR #4 ")));
+        assert!(d.iter().any(|l| l.starts_with("- PR #3 ")));
+        // 更新日時が同じでも、変えるファイルが変われば `~`。
+        let moved = diff_prs(&[pr(1, "t", &["a"])], &[pr(1, "t", &["a", "b"])]);
+        assert_eq!(moved.len(), 1);
+        assert!(diff_prs(&old, &old).is_empty());
+    }
+
+    #[test]
+    fn overlapping_matches_files_and_directories_but_not_prefix_lookalikes() {
+        let prs = vec![
+            pr(
+                1,
+                "t",
+                &["docs/agents/ja-polish.md", "crates/ja-polish/src/gate.rs"],
+            ),
+            pr(
+                2,
+                "t",
+                &["docs/agents/ja-polish.mdx", "crates/ja-polish-x/a.rs"],
+            ),
+            pr(3, "t", &["README.md"]),
+        ];
+        let t = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        // ファイル 1 つ・ディレクトリ(末尾の `/` の有無を問わない)。
+        assert_eq!(
+            overlapping(&prs, &t(&["docs/agents/ja-polish.md"])).len(),
+            1
+        );
+        assert_eq!(overlapping(&prs, &t(&["crates/ja-polish/"])).len(), 1);
+        assert_eq!(overlapping(&prs, &t(&["crates/ja-polish"])).len(), 1);
+        // 前方一致だけの別物(`.mdx`・`ja-polish-x`)には当たらない。空の語も当たらない。
+        let hits = overlapping(&prs, &t(&["docs/agents/ja-polish.md", "crates/ja-polish"]));
+        assert_eq!(hits.len(), 1);
+        assert!(
+            hits[0].contains("PR #1 ") && hits[0].contains("gate.rs"),
+            "{hits:?}"
+        );
+        assert!(overlapping(&prs, &t(&[""])).is_empty());
+        assert!(overlapping(&prs, &[]).is_empty());
     }
 }

@@ -1087,6 +1087,32 @@ fn fetch_population(repo: &str) -> Result<Vec<collect::Pop>, String> {
     }
 }
 
+/// open な PR の一覧(変えるファイルつき)。`--limit` と同数が返ったら、打ち切りの可能性があるので倍にして取り直す。
+fn fetch_prs(repo: &str) -> Result<Vec<collect::Pr>, String> {
+    let mut limit = 100usize;
+    loop {
+        let text = github_command::exec::gh_ok(&[
+            "pr",
+            "list",
+            "-R",
+            repo,
+            "--state",
+            "open",
+            "--limit",
+            &limit.to_string(),
+            "--json",
+            "number,title,headRefName,updatedAt,files",
+        ])
+        .ok_or_else(|| format!("gh pr list -R {repo} が失敗した(認証・ネットワーク)"))?;
+        let prs = collect::parse_prs(&text)?;
+        if prs.len() >= limit && limit < 1600 {
+            limit *= 2;
+            continue;
+        }
+        return Ok(prs);
+    }
+}
+
 /// 収集の入力(repo と保存先)を解く。repo は `--repo` か、作業ディレクトリの remote。
 fn collect_target(args: &[String]) -> Result<(String, std::path::PathBuf), String> {
     let Flags { pos, repo, .. } = split_flags(args);
@@ -1130,10 +1156,13 @@ fn collect_cmd(args: &[String]) -> Code {
             &collect::population_json(&pop),
         )?;
         write_json(&dir.join("findings.json"), &open_rows_json(&rows))?;
+        let prs = fetch_prs(&repo)?;
+        write_json(&dir.join("prs.json"), &collect::prs_json(&prs))?;
         println!(
-            "collected: {} issue(s), {} finding(s) -> {}",
+            "collected: {} issue(s), {} finding(s), {} open PR(s) -> {}",
             pop.len(),
             rows.len(),
+            prs.len(),
             dir.display()
         );
         Ok(())
@@ -1147,11 +1176,30 @@ fn collect_cmd(args: &[String]) -> Code {
     }
 }
 
-/// `--collect-diff <dir> [--repo R]`: 取り直して、保存した結果との差分だけを出す。差分が無ければ
-/// `no changes`(終了コード 0)、あれば差分の行(終了コード 1)。保存した結果は書き換えない。
+/// `--collect-diff <dir> [--repo R] [--touches PATH]…`: 取り直して、保存した結果との差分だけを出す。差分が
+/// 無ければ `no changes`(終了コード 0)、あれば差分の行(終了コード 1)。保存した結果は書き換えない。
+///
+/// 差分は、Issue・気づきに加えて、open な PR(`prs.json`が保存してあれば)の増減と更新を含む。
+/// `--touches` は、計画が触るファイル(`/` で終わるか、中にファイルがあるディレクトリでもよい)で、それを
+/// 変える open な PR を `!` の行で出す(別のセッションの PR や、前日の未マージの積みが、同じ文書を書き換えている
+/// ことは、Issue の更新日時にも default branch の先頭にも現れない。#1561)。
 fn collect_diff_cmd(args: &[String]) -> Code {
     let run = || -> Result<bool, String> {
-        let (repo, dir) = collect_target(args)?;
+        let mut touches: Vec<String> = Vec::new();
+        let mut rest: Vec<String> = Vec::new();
+        let mut it = args.iter();
+        while let Some(a) = it.next() {
+            match a.as_str() {
+                "--touches" => touches.push(
+                    it.next()
+                        .filter(|v| !v.starts_with("--"))
+                        .ok_or("--touches には、計画が触るパスを渡す")?
+                        .clone(),
+                ),
+                _ => rest.push(a.clone()),
+            }
+        }
+        let (repo, dir) = collect_target(&rest)?;
         let old_pop = collect::read_population(&read_json(&dir.join("population.json"))?)?;
         let old_findings = collect::read_findings(&read_json(&dir.join("findings.json"))?)?;
         let new_pop = fetch_population(&repo)?;
@@ -1159,6 +1207,12 @@ fn collect_diff_cmd(args: &[String]) -> Code {
         let new_findings = collect::read_findings(&open_rows_json(&rows))?;
         let mut lines = collect::diff_population(&old_pop, &new_pop);
         lines.extend(collect::diff_findings(&old_findings, &new_findings));
+        let new_prs = fetch_prs(&repo)?;
+        // 保存した PR の一覧が無い(PR の収集を足す前の保存)ときは、PR の増減は出さない(重なりだけ見る)。
+        if let Ok(old) = read_json(&dir.join("prs.json")) {
+            lines.extend(collect::diff_prs(&collect::read_prs(&old)?, &new_prs));
+        }
+        lines.extend(collect::overlapping(&new_prs, &touches));
         if lines.is_empty() {
             println!("no changes");
             return Ok(false);

@@ -21,7 +21,12 @@ impl Env {
         let bin = tmp.path().join("bin");
         fs::create_dir_all(&bin).unwrap();
         let gh = bin.join("gh");
-        fs::write(&gh, "#!/bin/sh\ncat \"$GH_STUB_JSON\"\n").unwrap();
+        // `gh pr list` には PR の一覧、それ以外(`gh issue list`)には Issue の一覧を返す。
+        fs::write(
+            &gh,
+            "#!/bin/sh\nif [ \"$1\" = pr ]; then cat \"$GH_STUB_PRS\"; else cat \"$GH_STUB_JSON\"; fi\n",
+        )
+        .unwrap();
         fs::set_permissions(&gh, fs::Permissions::from_mode(0o755)).unwrap();
         Env { tmp }
     }
@@ -30,6 +35,13 @@ impl Env {
     }
     fn issues(&self, json: &str) {
         fs::write(self.p("issues.json"), json).unwrap();
+        // PR の一覧は、既定で空(PR を使う試験だけが `prs` で書く)。
+        if !self.p("prs.json").exists() {
+            self.prs("[]");
+        }
+    }
+    fn prs(&self, json: &str) {
+        fs::write(self.p("prs.json"), json).unwrap();
     }
     fn finding(&self, name: &str, rows: usize) {
         fs::create_dir_all(self.p("vault/inbox")).unwrap();
@@ -48,6 +60,7 @@ impl Env {
             .env("HOME", "/nonexistent-home")
             .env("PATH", format!("{}:/usr/bin:/bin", self.p("bin").display()))
             .env("GH_STUB_JSON", self.p("issues.json"))
+            .env("GH_STUB_PRS", self.p("prs.json"))
             .env("OBSIDIAN_VAULT", self.p("vault"))
             .env("WRAPUP_STATE_DIR", self.p("state"))
             .env_remove("XDG_CONFIG_HOME")
@@ -255,4 +268,69 @@ fn a_classification_word_outside_the_vocabulary_is_an_error_and_writes_no_items(
     assert_eq!(r.status.code(), Some(1));
     assert!(String::from_utf8_lossy(&r.stderr).contains("語彙の外"));
     assert!(!e.p("snap/items.json").exists());
+}
+
+#[test]
+fn open_prs_are_saved_diffed_and_checked_against_the_files_the_plan_touches() {
+    let e = Env::new();
+    e.issues(ISSUES);
+    e.prs(
+        r#"[{"number": 7, "title": "doc edit", "headRefName": "b7", "updatedAt": "t1",
+             "files": [{"path": "docs/agents/ja-polish.md"}]}]"#,
+    );
+    let d = dir(&e);
+    let c = e.run(&["--collect", &d, "--repo", "o/r"]);
+    assert!(c.status.success(), "{}", String::from_utf8_lossy(&c.stderr));
+    assert!(out(&c).contains("1 open PR(s)"), "{}", out(&c));
+    assert!(fs::read_to_string(e.p("snap/prs.json"))
+        .unwrap()
+        .contains("ja-polish.md"));
+
+    // PR が動いていなければ差分は無い。触るパスが重なれば、`!` の行だけが出る。
+    assert_eq!(
+        out(&e.run(&["--collect-diff", &d, "--repo", "o/r"])).trim(),
+        "no changes"
+    );
+    let hit = e.run(&[
+        "--collect-diff",
+        &d,
+        "--repo",
+        "o/r",
+        "--touches",
+        "docs/agents/",
+    ]);
+    assert_eq!(hit.status.code(), Some(1));
+    let text = out(&hit);
+    assert!(
+        text.contains("! PR #7 ") && text.contains("ja-polish.md"),
+        "{text}"
+    );
+    // 重ならないパスは、何も出さない。
+    let miss = e.run(&[
+        "--collect-diff",
+        &d,
+        "--repo",
+        "o/r",
+        "--touches",
+        "crates/",
+    ]);
+    assert_eq!(out(&miss).trim(), "no changes");
+
+    // 別のセッションの PR が増え、既存の PR が更新された。
+    e.prs(
+        r#"[{"number": 7, "title": "doc edit", "headRefName": "b7", "updatedAt": "t2",
+             "files": [{"path": "docs/agents/ja-polish.md"}]},
+            {"number": 8, "title": "new", "headRefName": "b8", "updatedAt": "t2", "files": []}]"#,
+    );
+    let moved = e.run(&["--collect-diff", &d, "--repo", "o/r"]);
+    assert_eq!(moved.status.code(), Some(1));
+    let text = out(&moved);
+    assert!(
+        text.contains("~ PR #7 ") && text.contains("+ PR #8 "),
+        "{text}"
+    );
+
+    // --touches に値が無いのは、使い方の誤り。
+    let bad = e.run(&["--collect-diff", &d, "--repo", "o/r", "--touches"]);
+    assert_eq!(bad.status.code(), Some(2));
 }

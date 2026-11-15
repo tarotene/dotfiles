@@ -129,10 +129,15 @@ SessionEnd で何かを起票させる案は、ドキュメント上の制約で
   `--json` には `signal`・`mechanism`・`existing`(無ければ空文字)も出る。
 - `--collect <dir> [--repo R]` — `/my-cleanup` の収集(#1421)。除外ラベル(`blocked-by-upstream`)を除いた open な Issue
   (番号・題・更新日時)を `<dir>/population.json` に、open な気づき(`--list-open --json` と同じ形)を `<dir>/findings.json` に
-  保存する。`gh issue list` が `--limit` と同数を返したら、limit を倍にして取り直す。
-  `--collect-diff <dir> [--repo R]` は、取り直して、保存した結果との差分だけを出す(`+` 増えた、`-` 消えた、`~` 更新日時が変わった、
-  気づきは再発の回数の変化)。差分が無ければ `no changes`(終了コード 0)、あれば差分の行(1)、取得の失敗は 2。保存した結果は
-  書き換えない。`--adjudication-items <dir> [--classify <file>] [--rec <file>] [--label L]` は、保存した 2 つの JSON から、
+  保存する。open な PR(番号・題・head・更新日時・変えるファイル)も `<dir>/prs.json` に保存する(#1561)。`gh issue list` が
+  `--limit` と同数を返したら、limit を倍にして取り直す(`gh pr list` も同じ)。
+  `--collect-diff <dir> [--repo R] [--touches PATH]…` は、取り直して、保存した結果との差分だけを出す(`+` 増えた、`-` 消えた、
+  `~` 更新日時が変わった、気づきは再発の回数の変化。open な PR は `PR #N` つきで、増減と、更新日時か変えるファイルの変化)。
+  `--touches` は、計画が触るファイルかディレクトリ(`docs/agents/` のように、その下のすべてに当たる。繰り返せる)で、それを変える
+  open な PR を `! PR #N …が、計画の触るファイルを変える: <ファイル>` の行で出す。別のセッションが、計画の根拠にした文書を書き換える
+  PR を出していても、Issue の更新日時にも default branch の先頭にも現れない(まだ入っていない)ので、その見落としを防ぐ。差分が無ければ
+  `no changes`(終了コード 0)、あれば差分の行(1)、取得の失敗・`--touches` の値が無いのは 2。保存した結果は書き換えない
+  (`prs.json` が無い保存では、PR の増減は出さず、重なりだけを見る)。`--adjudication-items <dir> [--classify <file>] [--rec <file>] [--label L]` は、保存した 2 つの JSON から、
   裁定ページの入力(`<dir>/items.json`。`reference/verdict-page/` の `build.sh --data` に渡す)を作る。推奨・根拠は、
   `--classify`(在庫の分類。項目の id → `{disposition, automatable?, bundle?, why?, when?}`)か、`--rec`(項目の id →
   `{rec_option, rec, why, when}` を直接)で渡す。`--classify` の処分は閉じた語彙で、`implement`(`automatable: true` は
