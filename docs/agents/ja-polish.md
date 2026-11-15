@@ -128,6 +128,12 @@ ja-polish bench crates/ja-polish/bench/samples.txt [--variants model[@level],…
 - 通すもの: 設定ファイルが無い機体、本文に `No-Attribution:` の行がある(本人の文の代理投稿)、
   環境変数 `SKIP_JA_POLISH_GATE=1`(ja-polish が壊れたときの逃げ道)、本文が取れないもの(`--body-file` が
   読めない、知らない形の MCP 入力)。判定不能を拒否に変えない。
+- **`gh issue edit` / `gh pr edit` は、いまの本文を基点にする**(ADR-1387 の D5 の「変更した段落だけ」を、git の外の
+  本文に広げた): 本文は git の外にあって基点が無く、長い Issue の本文(確認の台帳など)に 1 行足すだけでも、承認済みの
+  段落ぜんぶの通過を求めていた。未通過の段落があるときだけ、`gh <issue|pr> view <番号> [-R <repo>] --json body --jq .body`
+  でいまの本文を引き(上限 4 秒。CRLF は LF にそろえる)、そこにある段落は数えない。足した・変えた段落だけが対象になる。
+  引けないとき(認証・ネットワーク・時間切れ)と、番号を省いた形(現在のブランチの PR)は、基点なしの従来の判定のまま。
+  `create`・`comment`・`review` は、いまの本文が無いので引かない。`gh api` の本文の更新も引かない(未実装)。
 - **ja-polish が動けない間も通す**(Stop の関所も同じ): 記録(`records.jsonl`)の直近 5 件がすべて素通し(`skipped`)で、
   最後の 1 件が 1 時間以内なら、動けないとみなす(API キーが無い、LLM に届かない、など。`records::unavailable`)。
   本文を書いて `ja-polish` を通して出し直す往復を求めても、結果は全部素通しで、書き直しは 1 件も起きないからである
