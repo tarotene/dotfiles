@@ -4,26 +4,29 @@
 //! 使い方:
 //!   reply-coverage import --id <媒体:id> --file <ファイル> [--format raw|normalized] [--message-id <id>]…
 //!                                     会話の全文を保存する(ブラウザの snapshot など)
+//!   reply-coverage import-gmail --file <get_thread の結果の JSON>
+//!                                     get_thread の結果がファイルに保存されたとき、正規の形に直して保存する
 //!   reply-coverage check --thread <媒体:id> --draft <ファイル> [--model <m>] [--me <手がかり>]
 //!                                     下書きが、会話の相手の依頼すべてに応答しているかを検査し、記録する
 //!                                     (終了コード 0=合格、1=不合格、2=検査できない)
 //!   reply-coverage verify --thread <媒体:id> --draft <ファイル>
 //!                                     検査に合格した最終稿かを記録で照会する(0=合格、1=不合格・未検査)
-//!   reply-coverage bench --cases <dir>… [--variants m1,m2] [--me <手がかり>]
+//!   reply-coverage bench --cases <dir>… [--variants m1,m2] [--repeat N] [--me <手がかり>]
 //!                                     見本でモデルごとの質と時間を測る(書き換えず、記録もしない)
 //!   reply-coverage sweep              期限(60 日)を過ぎた会話の全文と記録を消す
 
 use reply_coverage::backend::ClaudeCli;
 use reply_coverage::store::{self, Store, StoredThread};
-use reply_coverage::{bench, check, verify};
+use reply_coverage::{bench, check, gate, verify};
 use std::path::PathBuf;
 use std::process::ExitCode;
 
 const USAGE: &str = "使い方:
   reply-coverage import --id <媒体:id> --file <ファイル> [--format raw|normalized] [--message-id <id>]…
+  reply-coverage import-gmail --file <get_thread の結果の JSON>
   reply-coverage check --thread <媒体:id> --draft <ファイル> [--model <m>] [--me <手がかり>]
   reply-coverage verify --thread <媒体:id> --draft <ファイル>
-  reply-coverage bench --cases <dir>… [--variants m1,m2] [--me <手がかり>]
+  reply-coverage bench --cases <dir>… [--variants m1,m2] [--repeat N] [--me <手がかり>]
   reply-coverage sweep";
 
 /// 引数の解析結果: 1 回だけの `--flag value` の表と、何回でも指定できる `--flag value` の並び。
@@ -104,6 +107,31 @@ fn run(args: &[String]) -> Result<ExitCode, String> {
             println!("保存しました: {}({} 字)", t.id, t.text.chars().count());
             Ok(ExitCode::SUCCESS)
         }
+        "import-gmail" => {
+            // `get_thread` の結果が大きいと、ツールの結果がファイルに保存され、hook は応答を受け取れない。
+            // そのファイル(JSON)を、hook と同じ関数で正規の形に直して保存する(エージェントが書き写さない)。
+            let Args { single: s, .. } = parse(rest, &["file"], &[])?;
+            let text = read(need(&s, "file")?)?;
+            let response: serde_json::Value =
+                serde_json::from_str(&text).map_err(|e| format!("JSON として読めません: {e}"))?;
+            let id = response["id"]
+                .as_str()
+                .ok_or("会話の id(トップレベルの id)がありません")?
+                .to_string();
+            let store = open_store()?;
+            match gate::snapshot_from_get_thread(
+                &store,
+                &serde_json::json!({ "threadId": id }),
+                &response,
+                store::now(),
+            ) {
+                Some(saved) => {
+                    println!("保存しました: {saved}");
+                    Ok(ExitCode::SUCCESS)
+                }
+                None => Err("get_thread の応答として読めません(messages が無い)".to_string()),
+            }
+        }
         "check" => {
             let Args { single: s, .. } = parse(rest, &["thread", "draft", "model", "me"], &[])?;
             let store = open_store()?;
@@ -157,7 +185,7 @@ fn run(args: &[String]) -> Result<ExitCode, String> {
             let Args {
                 single: s,
                 multi: m,
-            } = parse(rest, &["variants", "me"], &["cases"])?;
+            } = parse(rest, &["variants", "me", "repeat"], &["cases"])?;
             let mut dirs: Vec<PathBuf> = m.into_iter().map(|(_, v)| PathBuf::from(v)).collect();
             if let Some(d) = process_env::var_nonempty("REPLY_COVERAGE_PRIVATE_CASES") {
                 dirs.push(PathBuf::from(d));
@@ -185,12 +213,21 @@ fn run(args: &[String]) -> Result<ExitCode, String> {
                 cases.len(),
                 models.len()
             );
+            let repeat: usize = match s.get("repeat") {
+                Some(v) => v
+                    .parse()
+                    .ok()
+                    .filter(|n| (1..=10).contains(n))
+                    .ok_or("--repeat は 1〜10 の整数です")?,
+                None => 1,
+            };
             let rows = bench::run(
                 &cases,
                 &models,
                 &ClaudeCli,
                 &cwd,
                 s.get("me").map(String::as_str),
+                repeat,
             );
             print!("{}", bench::render(&rows));
             Ok(ExitCode::SUCCESS)

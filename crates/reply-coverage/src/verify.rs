@@ -16,10 +16,7 @@ pub enum Failure {
     /// この下書き(とこの全文)の検査の記録が無い。
     Unchecked,
     /// 検査したが不合格だった。
-    Failed {
-        unanswered: Vec<String>,
-        apology_missing: bool,
-    },
+    Failed { unanswered: Vec<String> },
 }
 
 impl Failure {
@@ -28,8 +25,9 @@ impl Failure {
         match self {
             Failure::NoThread => format!(
                 "会話 {thread_id} の全文が保存されていません。返信の下書きの前に、会話を最初から読んでください\
-                 (Gmail は get_thread を呼ぶと自動で保存されます。ブラウザの媒体は browser_snapshot の filename で\
-                 保存し、reply-coverage import で取り込みます)。"
+                 (Gmail は get_thread を呼ぶと自動で保存されます。結果が大きくてファイルに保存されたときは、\
+                 `reply-coverage import-gmail --file <そのファイル>` で取り込みます。ブラウザの媒体は browser_snapshot の\
+                 filename で保存し、reply-coverage import で取り込みます)。"
             ),
             Failure::StaleThread { age_secs } => format!(
                 "会話 {thread_id} の保存済みの全文は {} 時間前のものです(24 時間まで有効)。\
@@ -41,18 +39,12 @@ impl Failure {
                  ファイルに書き、`reply-coverage check --thread {thread_id} --draft <ファイル>` を実行して、\
                  合格した本文のまま作成してください。"
             ),
-            Failure::Failed {
-                unanswered,
-                apology_missing,
-            } => {
+            Failure::Failed { unanswered } => {
                 let mut s = format!(
                     "この下書きは、会話 {thread_id} の相手の依頼に答え漏れがあり、検査で不合格でした。"
                 );
                 for q in unanswered {
                     s.push_str(&format!("\n- 未回答: 「{q}」"));
-                }
-                if *apology_missing {
-                    s.push_str("\n- 前の返信が落としていた依頼に答えるのに、軽い詫びがありません。");
                 }
                 s.push_str("\n直してから、もう一度 `reply-coverage check` を実行してください。");
                 s
@@ -83,7 +75,6 @@ pub fn verify(
         Some(r) if r.verdict == "pass" => Ok(()),
         Some(r) => Err(Failure::Failed {
             unanswered: r.unanswered,
-            apology_missing: r.apology_missing,
         }),
     }
 }
@@ -173,9 +164,8 @@ mod tests {
             .contains("reply-coverage check"));
         let m = Failure::Failed {
             unanswered: vec!["日程の候補".to_string()],
-            apology_missing: true,
         }
         .message("gmail:t");
-        assert!(m.contains("日程の候補") && m.contains("詫び"));
+        assert!(m.contains("日程の候補") && m.contains("reply-coverage check"));
     }
 }

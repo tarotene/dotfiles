@@ -18,6 +18,9 @@ pub struct Expected {
     pub verdict: String,
     #[serde(default)]
     pub unanswered: Vec<String>,
+    /// 合否に入れない助言(`apology`: 前の返信が落とした依頼に今回初めて答えるので、詫びを勧める)。
+    #[serde(default)]
+    pub advice: Vec<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -93,10 +96,14 @@ pub fn run(
     backend: &dyn Backend,
     cwd: &Path,
     me_hint: Option<&str>,
+    repeat: usize,
 ) -> Vec<Row> {
     let mut rows = Vec::new();
     for model in models {
-        for c in cases {
+        for c in cases
+            .iter()
+            .flat_map(|c| std::iter::repeat_n(c, repeat.max(1)))
+        {
             let start = Instant::now();
             let res = check::detect(backend, cwd, model, &c.conversation, &c.draft, me_hint);
             let secs = start.elapsed().as_secs_f64();
@@ -255,7 +262,7 @@ mod tests {
             r#"{"asks":[{"id":"1","quote":"火曜か水曜はどうですか","by":"them","kind":"date","status":"unanswered","evidence":"","late":false}],"apology_present":false,"apology_evidence":""}"#
                 .to_string(),
         );
-        let rows = run(&cases, &["m1".to_string()], &canned, dir.path(), None);
+        let rows = run(&cases, &["m1".to_string()], &canned, dir.path(), None, 1);
         let table = render(&rows);
         assert!(table.contains("fine\tm1\t不一致"), "{table}");
         assert!(table.contains("missed\tm1\t一致\t1/1"), "{table}");
