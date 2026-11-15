@@ -32,8 +32,13 @@ pub const LIBRARIES: &[&str] = &[
     // 同じ目的の共有 crate
     "agent-observations",
     "backup-runtime",
+    // 機体の契約の側(`verify_from_env`)。CLI と `repo-scope` が同じ読み方を使う。
+    "dotfiles-identity",
     "hub-resolve",
     "model-catalog",
+    // 機体の契約の側と持ち主の表から、読んでよいリポジトリかを決める判定。`repo-scope-guard` と、
+    // 持ち主を横断して数える道具(`pr-hygiene-check`)が共有する。
+    "repo-scope",
     // 他リポジトリの CI が 1 crate ずつ sparse-checkout する、依存ゼロの crate(`manifest::ZERO_DEPENDENCY_CRATES`)
     "pr-contract-check",
     "pr-title-check",

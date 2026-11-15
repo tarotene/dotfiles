@@ -57,6 +57,11 @@ unix 秒と暦日の変換は `civil-time` が持つ。Howard Hinnant の変換�
 `resolve_under(home)`(検査済みの `HOME` を使う)。各機能の永続状態のパス(`<基準>/claude/wrapup` など)は、機能が持つ。
 `crates/repo-structure-check` の `process_env` の検査が、XDG の変数名の文字列と、補助関数の複写を、例外を除いて落とす。
 
+機体の Claude の契約の側（個人 / 会社）は `dotfiles-identity::verify_from_env` が持ち、その側と持ち主の表（GitHub の
+ログイン名 → 側）・リポジトリの可視性（`gh api repos/<o>/<r>`、1 日の写しつき）から「読んでよいリポジトリか」を決める判定は
+`repo-scope`（`Policy::check_repo`・`check_owner`）が持つ。`repo-scope-guard`（拒否）と、持ち主を横断して数える道具が共有する
+（`docs/agents/repo-scope-guard.md`）。どちらも責務表の 10 ライブラリの外の「同じ目的の共有 crate」（`deps::LIBRARIES`）である。
+
 `command-inspection::simple_shell` は旧 hook-io の保守的な分割器、`command-inspection::shell` は
 旧 guard-core のシェル解析器である。前者は解釈できない入力を返さず、後者は guard の検査範囲を切り出す。
 同じ名前の関数でも戻り値の意味を揃えない。

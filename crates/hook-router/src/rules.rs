@@ -150,6 +150,14 @@ pub static RULES: &[Rule] = &[
         budget: S10,
         run: |agent, raw| ci_wait_guard::hook(agent, raw),
     },
+    // gh を呼ぶ(リポジトリの公開/非公開。1 日の写しがあり、引けなければ閉じる側に倒す)ので 10 秒で足りる。
+    Rule {
+        node: "repo-scope-guard",
+        event: Event::Pre,
+        tools: Tools::Bash,
+        budget: S10,
+        run: |agent, raw| repo_scope_guard::hook(agent, raw),
+    },
     Rule {
         node: "sandbox-compound-guard",
         event: Event::Pre,
