@@ -1,0 +1,15 @@
+[package]
+name = "desk-github-gate"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "机の段 3a(GitHub 通知の消化)の関門: この機体の identity と通知ツールの範囲が一致したときだけ、通知に触れてよい"
+
+[dependencies]
+process-control = { version = "0.1.0", path = "../process-control" }
+process-env = { version = "0.1.0", path = "../process-env" }
+serde_json.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
