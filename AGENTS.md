@@ -318,6 +318,14 @@ Preserve the compatibility contracts and removal conditions in the migration doc
   `docs-rust` uses (`cargo doc --no-deps --workspace` with `RUSTDOCFLAGS=-D warnings`). A local
   `cargo doc --document-private-items` is a different condition and does not reproduce an
   `unresolved link` failure.
+- **Before pushing a Rust change, run the three conditions CI fails on** (#1564's rustdoc link and #1567's
+  dependency-graph test were red only in CI, because only clippy had been run by hand, 2026-11-12):
+  `cargo test --workspace --no-fail-fast`, `nix build .#checks.x86_64-linux.dotfiles-tools-clippy --no-link`
+  and the `dotfiles-tools-doc` build above, plus `cargo fmt --all --check`. `nix flake check` contains the
+  nix checks (clippy, doc, fmt, the host builds) but **no tests**: `flake.nix` sets `doCheck = false`, and the
+  tests run in CI's `rust` job through `nix develop`. So the repo-structure and dependency-graph tests are
+  reproduced only by `cargo test --workspace`. Inside the sandbox it shows known reds (sockets, gpg-agent;
+  see `config/claude/CLAUDE.md`), so read which crates failed, not the exit code.
 - `nix build .#homeConfigurations.<host>.activationPackage --no-link` — build a host.
 - `hms` — canonical apply (pushed main); `hms .` applies the current
   checkout/worktree for pre-push verification (wraps switch + daemon-reload +
