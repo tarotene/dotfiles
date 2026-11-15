@@ -423,3 +423,20 @@ fn project_overrides_are_rejected_but_unrelated_worktree_state_is_ignored() {
         Some(23)
     );
 }
+
+/// 版固定(`reviewed.toml`)と対にする宣言。Codex 自身の更新の確認を止めないと、起動時の更新の画面から
+/// Codex が自分で新しい版へ更新し、このラッパーが「未レビューの版」として起動を拒否する
+/// (2026-11-15、0.165.0 → 0.169.0)。宣言は `home/modules/codex.nix` が `~/.codex/config.toml` へ
+/// 反映する。コメントの行では満たされないよう、コメントでない行だけを見る。
+#[test]
+fn codex_self_update_check_stays_declared_off() {
+    let nix = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../home/modules/codex.nix");
+    let text = fs::read_to_string(&nix).expect("home/modules/codex.nix");
+    assert!(
+        text.lines()
+            .any(|l| l.trim() == "check_for_update_on_startup = false;"),
+        "home/modules/codex.nix が check_for_update_on_startup = false を宣言していません。\
+         起動ラッパーが版を固定しているので、Codex 自身の更新の確認は止める必要があります\
+         (docs/codex-plan.md「起動ラッパーの版固定」)"
+    );
+}

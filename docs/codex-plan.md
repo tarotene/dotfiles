@@ -475,7 +475,21 @@ JSON-RPC エラーを返し、接続と他の要求は継続する。TUI が Git
 レビュー済みの版より**古い**ときは、直し方が `codex update`(レビュー済みの版を入れ直す)
 なので、stderr がそれを先に案内する(2026-11-10 に vega で、古い版のまま止まり、案内が
 下の 1〜3 だけで、本人が自力で直せなかった)。版は `X.Y.Z` を数として比べ、新しいときと
-読めないときは `codex update` を案内しない。新しい版を受け入れるときの直し方は次の順である。
+読めないときは `codex update` を案内しない。
+
+**Codex 自身の更新は止める**。固定が効くのは、ラッパーが起動する前の版の確認だけで、
+Codex 自身が起動時に更新を確認して、更新の画面から新しい版へ自分で更新する経路は、固定の外にある
+(2026-11-15 に vega で、0.165.0 のまま起動すると Codex が 0.169.0 へ自己更新し、次の起動でラッパーが
+「未レビューの版」として拒否した)。この経路は、`home/modules/codex.nix` が
+`check_for_update_on_startup = false` を宣言して閉じる(`hms` のたびに `~/.codex/config.toml` へ反映される。
+上流の記述: 「Set to `false` only if your Codex updates are centrally managed」。`config_toml.rs` と
+`tui/src/updates.rs` の `get_upgrade_version`・`get_upgrade_version_for_popup` を、rust-v0.165.0 と
+rust-v0.169.0 の両方で読んだ。取得 2026-11-15)。宣言が外れると
+`crates/codex-launcher/tests/cli.rs` の `codex_self_update_check_stays_declared_off` が落ちる。
+
+すでに新しすぎる版が入ってしまったときの直し方は `codex update` で、レビュー済みの版を入れ直す
+(`main.rs` は `update` を版の確認より先に処理するので、新しい版が入っていても使える)。新しい版を
+受け入れたいときは、下の 1〜3 の順でレビューしてから `reviewed.toml` を更新する。
 
 1. 検出した版の OpenAI *Codex* のソース（`codex-rs/core/src/config/mod.rs` の設定と、
    起動引数の定義）を読み、`lib.rs` の語彙の表（`// Closed vocabulary` 以下）との差を確かめる。

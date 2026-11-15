@@ -69,6 +69,16 @@ let
     # Native feature notices only; runtime protection failures remain visible.
     # OpenAI rust-v0.164.0 core/src/config/mod.rs:1162 (retrieved 2026-10-27).
     suppress_unstable_features_warning = true;
+    # Codex 自身の起動時の更新確認と更新の画面を止める。起動ラッパー(codex-launcher)が
+    # レビュー済みの版(crates/codex-launcher/reviewed.toml)に固定しているので、更新は
+    # `codex update` が一元管理する。止めないと、起動時の更新の画面から Codex 自身が新しい版へ
+    # 更新し、ラッパーが「未レビューの版」として起動を拒否する(2026-11-15、0.165.0 → 0.169.0)。
+    # OpenAI rust-v0.165.0 / rust-v0.169.0(取得 2026-11-15):
+    #   codex-rs/config/src/config_toml.rs(`check_for_update_on_startup: Option<bool>`、
+    #   「Set to `false` only if your Codex updates are centrally managed」)
+    #   codex-rs/tui/src/updates.rs の get_upgrade_version と get_upgrade_version_for_popup
+    #   (28・153 行目。`false` のとき `None` を返し、更新の画面を出さない)
+    check_for_update_on_startup = false;
     "tui.terminal_title" = [
       "activity"
       "context-used"
