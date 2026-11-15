@@ -298,6 +298,13 @@
     # carries no performance-hub. Same marker-file/env-var indirection as the two
     # above. docs/agents/my-desk.md has the design.
     "desk-hub"
+    # desk-github-gate: the my-desk step-3a gate (ADR-523, #1575) — succeeds, printing
+    # the notification tool's scope report, only when this machine's identity and the
+    # tool's [github] side agree and its cache is current. The tool's name is never
+    # written here: a marker file or env var names it (ADR-0034). The same gate serves
+    # the personal and the work desk. Rust, from crates/desk-github-gate via
+    # pkgs.dotfiles-tools; docs/agents/my-desk.md has the design.
+    "desk-github-gate"
     # dotfiles-identity: `verify` succeeds only when this machine's declared
     # identity (DOTFILES_IDENTITY) and the Claude account actually logged in
     # (DOTFILES_CLAUDE_ACCOUNT, set from `dotfiles.identity` in
