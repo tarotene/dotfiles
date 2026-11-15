@@ -1,0 +1,15 @@
+{
+  "asks": [
+    {
+      "id": "1",
+      "quote": "30 分ほどお電話できますか。火曜日 10 時はいかがでしょう。",
+      "by": "them",
+      "kind": "date",
+      "status": "unanswered",
+      "evidence": "",
+      "late": false
+    }
+  ],
+  "apology_present": false,
+  "apology_evidence": ""
+}

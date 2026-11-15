@@ -1,0 +1,24 @@
+{
+  "asks": [
+    {
+      "id": "1",
+      "quote": "選考に進むにあたり、最新の職務経歴書を PDF でお送りください。",
+      "by": "them",
+      "kind": "document",
+      "status": "unanswered",
+      "evidence": "",
+      "late": false
+    },
+    {
+      "id": "2",
+      "quote": "あわせて、希望する勤務地があれば教えてください。",
+      "by": "them",
+      "kind": "question",
+      "status": "answered",
+      "evidence": "勤務地は東京近郊を希望します",
+      "late": false
+    }
+  ],
+  "apology_present": false,
+  "apology_evidence": ""
+}

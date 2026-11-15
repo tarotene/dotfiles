@@ -1,0 +1,33 @@
+{
+  "asks": [
+    {
+      "id": "1",
+      "quote": "1. 現在の在籍企業の業種は何ですか。",
+      "by": "them",
+      "kind": "question",
+      "status": "answered",
+      "evidence": "業種は SaaS です",
+      "late": false
+    },
+    {
+      "id": "2",
+      "quote": "2. 転職の希望時期はいつ頃ですか。",
+      "by": "them",
+      "kind": "question",
+      "status": "answered",
+      "evidence": "転職の時期は来年の春ごろを考えています",
+      "late": false
+    },
+    {
+      "id": "3",
+      "quote": "3. 現在の年収の目安を教えてください。",
+      "by": "them",
+      "kind": "question",
+      "status": "unanswered",
+      "evidence": "",
+      "late": false
+    }
+  ],
+  "apology_present": false,
+  "apology_evidence": ""
+}

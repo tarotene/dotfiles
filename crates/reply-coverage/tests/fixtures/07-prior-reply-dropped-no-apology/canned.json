@@ -1,0 +1,15 @@
+{
+  "asks": [
+    {
+      "id": "1",
+      "quote": "来週の月曜日 11 時、または木曜日 16 時にお電話できますか。",
+      "by": "them",
+      "kind": "date",
+      "status": "answered",
+      "evidence": "月曜日 11 時でお願いします",
+      "late": true
+    }
+  ],
+  "apology_present": false,
+  "apology_evidence": ""
+}

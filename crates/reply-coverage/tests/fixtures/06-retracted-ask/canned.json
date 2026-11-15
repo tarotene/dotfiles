@@ -1,0 +1,15 @@
+{
+  "asks": [
+    {
+      "id": "1",
+      "quote": "職務経歴書を送っていただけますか。",
+      "by": "them",
+      "kind": "document",
+      "status": "retracted",
+      "evidence": "すでにいただいていたため、職務経歴書は不要です。",
+      "late": false
+    }
+  ],
+  "apology_present": false,
+  "apology_evidence": ""
+}

@@ -62,6 +62,7 @@ node = [
   { id = "codex-launcher", label = "codex launcher", lane = "manual", stack = "rust", pipelines = ["implement-to-pr"], entity = "crates/codex-launcher", doc = "docs/agents/agent-permissions.md", auto = false },
   { id = "pr-checks-wait", label = "pr-checks-wait", lane = "manual", stack = "rust", pipelines = ["implement-to-pr"], entity = "crates/pr-gate", doc = "docs/agents/pr-gate.md", auto = false },
   { id = "ja-polish", label = "ja-polish", lane = "manual", stack = "rust", llm = true, pipelines = ["implement-to-pr", "host-hygiene"], entity = "crates/ja-polish", doc = "docs/agents/ja-polish.md", auto = false },
+  { id = "reply-coverage", label = "reply-coverage", lane = "manual", stack = "rust", llm = true, pipelines = ["implement-to-pr"], entity = "crates/reply-coverage", doc = "docs/agents/reply-coverage.md", auto = false },
   # --- SessionStart: 文脈の注入と前提の整備
   { id = "session-wrapup-start", label = "session-wrapup-start", lane = "session-start", group = "session-context", stack = "rust", pipelines = ["wrapup-to-issue", "implement-to-pr"], entity = "crates/session-wrapup", doc = "docs/agents/wrapup-inbox.md", auto = true },
   { id = "issue-index", label = "issue-index", lane = "session-start", group = "session-context", stack = "rust", pipelines = ["implement-to-pr"], entity = "crates/issue-index", doc = "docs/agents/issue-index.md", auto = true },
