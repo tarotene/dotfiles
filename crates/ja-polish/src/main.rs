@@ -6,6 +6,8 @@
 //!                                               ファイルをその場で書き直す。`--trace` は、`llm` への依頼と応答を
 //!                                               DIR に 1 依頼 1 ファイルで書く(原因の調査用。既定では書かない)
 //!   ja-polish --check [--no-baseline] FILE…|-   未通過の日本語の段落を一覧する(あれば終了コード 1)
+//!   ja-polish --message …                       メール・メッセージの下書き用。文体規約に例文集を足した基準で書き直す
+//!                                               (--check も、メッセージの基準で通した段落だけを通過とみなす)
 //!   ja-polish stop-gate                         Stop hook: 標準入力の Stop の入力を読み、通していない
 //!                                               文書があれば {"decision":"block"} を出す(常に終了コード 0)
 //!   ja-polish bench LIST [--variants A,B,…]     固定の見本(LIST の `<commit>:<path>`)で、モデル × 思考量の
@@ -17,7 +19,7 @@
 //! 分かるので書き換えない。通せなかった段落は元のまま残し(素通し)、理由を報告する。
 //! 終了コードは、素通しがあっても 0(止めない設計。後から知らせる経路は gate イベント)。
 
-use ja_polish::app::{self, Env};
+use ja_polish::app::{self, Env, Kind};
 use ja_polish::llm::LlmCli;
 use ja_polish::textlint::{Fixer, NoFixer, Textlint};
 use ja_polish::{baseline, bench, config, polish, records};
@@ -29,6 +31,7 @@ const USAGE: &str = "使い方:
   ja-polish --stdin [--dry-run]
   ja-polish [--dry-run] [--no-baseline] [--trace DIR] FILE…
   ja-polish --check [--no-baseline] FILE…|-
+  ja-polish --message …   (メール・メッセージの下書き。例文集つきの基準。上のどの形にも付けられる)
   ja-polish stop-gate   (Stop hook。標準入力の JSON を読む)
   ja-polish bench LIST [--variants model[@level],…]   (固定の見本で測る。書き換えない)";
 
@@ -40,6 +43,7 @@ struct Opts {
     no_baseline: bool,
     /// `--trace <dir>`: 依頼と応答を、この置き場に 1 依頼 1 ファイルで書く(`llm::TRACE_ENV` と同じ)。
     trace: Option<String>,
+    message: bool,
     inputs: Vec<String>,
 }
 
@@ -56,6 +60,7 @@ fn parse(args: &[String]) -> Result<Opts, String> {
                 Some(d) if !d.is_empty() && !d.starts_with("--") => o.trace = Some(d.clone()),
                 _ => return Err("--trace には、記録を書く置き場を渡してください".to_string()),
             },
+            "--message" => o.message = true,
             "-h" | "--help" => return Err(String::new()),
             s if s.starts_with("--trace=") && s.len() > "--trace=".len() => {
                 o.trace = Some(s["--trace=".len()..].to_string());
@@ -119,6 +124,11 @@ fn main() -> ExitCode {
         cfg.model = m;
     }
     let env = Env::from_environment(cfg);
+    let kind = if opts.message {
+        Kind::Message
+    } else {
+        Kind::Document
+    };
 
     if opts.check {
         return check(&env, &opts);
@@ -140,7 +150,7 @@ fn main() -> ExitCode {
                 return ExitCode::from(1);
             }
         };
-        let result = app::run_polish(&env, &text, None, &LlmCli, fixer, opts.dry_run);
+        let result = app::run_polish(&env, &text, None, &LlmCli, fixer, opts.dry_run, kind);
         print!("{}", result.text);
         if !result.paras.is_empty() {
             eprint!("{}", app::report("標準入力", &result));
@@ -164,7 +174,15 @@ fn main() -> ExitCode {
         } else {
             baseline::baseline_for(&path)
         };
-        let result = app::run_polish(&env, &text, base.as_deref(), &LlmCli, fixer, opts.dry_run);
+        let result = app::run_polish(
+            &env,
+            &text,
+            base.as_deref(),
+            &LlmCli,
+            fixer,
+            opts.dry_run,
+            kind,
+        );
         if result.paras.is_empty() {
             println!("ja-polish: {input}: 書き直す日本語の段落はありません");
             continue;
@@ -327,7 +345,11 @@ fn check(env: &Env, opts: &Opts) -> ExitCode {
     let known = env
         .records_path
         .as_deref()
-        .map(records::load)
+        .map(if opts.message {
+            records::load_message
+        } else {
+            records::load
+        })
         .unwrap_or_default();
     let mut any = false;
     for input in &opts.inputs {

@@ -35,6 +35,17 @@ impl Backend for Refuse {
     }
 }
 
+/// 書き直しの基準の種類。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Kind {
+    /// 文書(文体規約だけを基準にする)。
+    #[default]
+    Document,
+    /// メール・メッセージの下書き(文体規約に、例文集と、例文を保つ指示を足す)。通した段落には、記録に
+    /// `message` の印が付く。
+    Message,
+}
+
 /// 文書を書き直す。`dry_run` なら記録も gate イベントも書かない。
 ///
 /// 通せなかった段落があれば、gate イベントに `fail-open`(`gate-failopen-advisory` が、
@@ -47,15 +58,24 @@ pub fn run_polish(
     backend: &dyn Backend,
     fixer: &dyn Fixer,
     dry_run: bool,
+    kind: Kind,
 ) -> PolishResult {
-    // 素通しの記録は「通した」とみなさない(関所は逆。`records::load_polished` の説明)。
+    // 素通しの記録は「通した」とみなさない(関所は逆。`records::load_polished` の説明)。メッセージの基準では、
+    // 文書の基準で通した段落も、例文集つきの基準でもう一度対象にする。
     let known = env
         .records_path
         .as_deref()
-        .map(records::load_polished)
+        .map(match kind {
+            Kind::Document => records::load_polished,
+            Kind::Message => records::load_message_polished,
+        })
         .unwrap_or_default();
 
-    let result = match style::load() {
+    let style = match kind {
+        Kind::Document => style::load(),
+        Kind::Message => style::load_message(),
+    };
+    let mut result = match style {
         Ok(style) => polish(text, baseline, &known, &style, &env.config, backend, fixer),
         Err(reason) => polish(
             text,
@@ -67,6 +87,12 @@ pub fn run_polish(
             fixer,
         ),
     };
+    if kind == Kind::Message {
+        result.entries = std::mem::take(&mut result.entries)
+            .into_iter()
+            .map(|e| e.with_message(true))
+            .collect();
+    }
 
     if !dry_run && !result.paras.is_empty() {
         if let Some(path) = &env.records_path {

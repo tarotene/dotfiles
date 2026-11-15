@@ -21,6 +21,7 @@ ja-polish --stdin              標準入力の本文を書き直して標準出�
 ja-polish --dry-run …          書き換えも記録もせず、差分だけ見る
 ja-polish --check <ファイル>…  未通過の日本語の段落を一覧する(あれば終了コード 1)
 ja-polish --no-baseline …      基点を使わず、文書全体を対象にする
+ja-polish --message …          メール・メッセージの下書き用。文体規約に例文集を足した基準で書き直す
 ```
 
 投稿の本文・下書き・コミットメッセージは、本文を scratchpad のファイルに書き、`ja-polish <そのファイル>`
@@ -37,6 +38,18 @@ scratchpad は git の外なので基点が無く、本文の全体が対象に�
 (`~/.codex/rules/dotfiles.rules` の `prefix_rule`、`home/modules/codex.nix`)で `ja-polish` を `allow`
 (sandbox の外で、確認なしに動かす)にする。`dotfiles.jaPolish.enable` の機体だけに置く。rules は公式文書で
 「experimental」とされている(`docs/agents/agent-permissions.md`)。反映は `hms` の適用と Codex の再起動のあと。
+
+## メール・メッセージの基準(`--message`)
+
+Gmail・Slack の下書きや LinkedIn などの送信文は、`ja-polish --message <ファイル>` で通す。文書の基準との違いは 3 つ。
+
+- 指示文に、ハブの例文集(`docs/style/messages.toml`)と、例文どおりの言い回しを保つ指示が足される(上の「何が起きるか」の 4)。
+- 通した段落の記録に、`"message":true` の印が付く(`records.rs` の `Entry::message`)。印の無い古い記録は、文書の基準で通した段落として読む。
+- Gmail・Slack の下書きの関所(`ja-polish-gate`)は、この印のある段落(素通しも含む)だけを通す。文書の基準で通した段落は、例文どおりの
+  言い回しを保つ指示を受けていないので、下書きとしては通さない。拒否の理由は、`ja-polish --message <そのファイル>` を案内する。
+  GitHub の本文・コミットメッセージ・Claude Docs は、文書の基準で通した段落でよい。
+- 書き直しは、文書の基準で通した段落も、メッセージの基準でもう一度対象にする(`records::load_message_polished`)。
+  `--check --message` は、メッセージの基準で通した段落だけを通過とみなす。
 
 ## 何が起きるか
 
@@ -55,6 +68,9 @@ scratchpad は git の外なので基点が無く、本文の全体が対象に�
    `## 要確認` のように、別の検査が見出しの語で節を探すものがあるため。
 4. `writing-style-hub` が指す `docs/style/writing.md`(private の文体規約)をその場で読み、指示文に
    載せる。写しは持たない。ハブが解決できないときは、基準なしでは送らず、段落を素通しにする。
+   `--message` のときは、同じハブの `docs/style/messages.toml`(外に送る文章の例文集)も読んで指示文に足し、
+   「例文どおりの言い回しは、意味が通るかぎり変えない。補助動詞は仮名。半角と全角の間に空白を入れない」を指示する。
+   例文集が読めないときも、基準なしと同じく送らず、素通しにする(文書の基準だけで書き直すと、例文どおりの言い回しを書き換えるため)。
 5. 対象の段落を `chunk_paras`(既定 8)個ずつの束に分け、最大 `parallel`(既定 3)本を同時に送る。
    各束は、その段落と前後の段落(参考。書き換えない)を、`llm prompt -m <model> -s <指示文>
    [-o thinking_level <値>] --no-stream -n` に標準入力で渡す。`-n` で llm の履歴 DB に残さない。

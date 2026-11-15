@@ -26,6 +26,10 @@ pub struct Entry {
     /// キーの未設定のような恒久的な原因や、照合の外れでは立てない。古い記録には無いので `false`。
     #[serde(default, skip_serializing_if = "is_false")]
     pub transient: bool,
+    /// メール・メッセージの基準(文体規約に例文集を足したもの。`ja-polish --message`)で通した段落か。
+    /// 文書の基準で通した段落(古い記録も)は `false`。メール・Slack の下書きの関所は、この印のある段落だけを通す。
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub message: bool,
 }
 
 fn is_false(b: &bool) -> bool {
@@ -41,6 +45,7 @@ impl Entry {
             model: model.to_string(),
             reason: None,
             transient: false,
+            message: false,
         }
     }
 
@@ -52,12 +57,19 @@ impl Entry {
             model: model.to_string(),
             reason: Some(reason.to_string()),
             transient: false,
+            message: false,
         }
     }
 
     /// 素通しの原因が一時的なもの([`Entry::transient`])だと印を付ける。
     pub fn with_transient(mut self, transient: bool) -> Self {
         self.transient = transient;
+        self
+    }
+
+    /// メール・メッセージの基準で通した段落([`Entry::message`])だと印を付ける。
+    pub fn with_message(mut self, message: bool) -> Self {
+        self.message = message;
         self
     }
 }
@@ -97,6 +109,20 @@ pub fn load(path: &Path) -> HashSet<String> {
 /// 文面を変えない限り二度と書き直されない(2026-11-12 に、時間切れで素通しにした 10 段落で実測した)。
 pub fn load_polished(path: &Path) -> HashSet<String> {
     load_where(path, |e| e.state == "polished")
+}
+
+/// メール・メッセージの基準で通した(`message` の印がある)段落の `sha` の集合。書き直した段落も、素通しの
+/// 段落も含む。**メール・Slack の下書きの関所が使う**: 文書の基準で通した段落は、例文どおりの言い回しを保つ指示を
+/// 受けていないので、下書きとしては通さない。素通しも通したとみなすのは、[`load`] と同じ理由(動けない間に止めない)。
+pub fn load_message(path: &Path) -> HashSet<String> {
+    load_where(path, |e| e.message)
+}
+
+/// メール・メッセージの基準で書き直した(`message` の印があり、`state` が `polished`)段落の `sha` の集合。
+/// **`ja-polish --message` の書き直しが使う**: 文書の基準で通した段落も、素通しの段落も、例文集つきの基準でもう一度
+/// 対象にする([`load_polished`] と同じ見方を、メッセージの基準で)。
+pub fn load_message_polished(path: &Path) -> HashSet<String> {
+    load_where(path, |e| e.message && e.state == "polished")
 }
 
 fn load_where(path: &Path, keep: impl Fn(&Entry) -> bool) -> HashSet<String> {
@@ -235,7 +261,41 @@ mod tests {
             model: "m".to_string(),
             reason: None,
             transient: false,
+            message: false,
         }
+    }
+
+    #[test]
+    fn message_flag_is_written_only_when_set_and_load_message_keeps_only_marked_paragraphs() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("r.jsonl");
+        append(
+            &path,
+            &[
+                Entry::polished("doc".into(), "m"),
+                Entry::polished("msg".into(), "m").with_message(true),
+                Entry::skipped("msg-skip".into(), "m", "時間切れ").with_message(true),
+            ],
+        )
+        .unwrap();
+        let text = std::fs::read_to_string(&path).unwrap();
+        let lines: Vec<&str> = text.lines().collect();
+        assert!(!lines[0].contains("message"), "{}", lines[0]);
+        assert!(lines[1].contains("\"message\":true"), "{}", lines[1]);
+        // 下書きの関所の見方: メッセージの基準で通した段落(素通しも)だけ。文書の基準で通した段落は通さない。
+        let passed = load_message(&path);
+        assert!(passed.contains("msg") && passed.contains("msg-skip") && !passed.contains("doc"));
+        // 書き直しの見方: メッセージの基準で書き直した段落だけを数え、素通しはもう一度対象にする。
+        let polished = load_message_polished(&path);
+        assert!(
+            polished.contains("msg") && !polished.contains("msg-skip") && !polished.contains("doc")
+        );
+        // 印を持たない古い行は、文書の基準で通した段落として読める。
+        let old: Entry = serde_json::from_str(
+            "{\"ts_unix\":1,\"sha\":\"x\",\"state\":\"polished\",\"model\":\"m\"}",
+        )
+        .unwrap();
+        assert!(!old.message);
     }
 
     #[test]

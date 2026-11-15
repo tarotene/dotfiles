@@ -924,7 +924,9 @@ Slack への返信・GitHub 以外への Issue/PR コメント相当の外部発
   段落だけがその場で書き直される。
 - GitHub の本文・コメント、Gmail・Slack の下書き、Claude Docs、コミットメッセージは、本文を scratchpad
   のファイルに書き、`ja-polish <そのファイル>` で書き直す。直したファイルを読み、その内容を
-  `--body-file` や `-F` に渡す(または下書きのツールにそのまま貼る)。`ja-polish` は単体で呼ぶ:
+  `--body-file` や `-F` に渡す(または下書きのツールにそのまま貼る)。**メール・メッセージ(Gmail・Slack の
+  下書き。LinkedIn などの送信文)は、`ja-polish --message <そのファイル>`**: 文体規約に、外に送る文章の例文集
+  (ハブの `docs/style/messages.toml`)を足した基準で書き直し、例文どおりの言い回しを保つ。`ja-polish` は単体で呼ぶ:
   `<`・`>` のリダイレクトや `$(…)` を足すと、呼び出し全体が sandbox の中に残り、キーに届かない
   (`sandbox-compound-guard`)。標準入力を使う `--stdin` は、人が端末で使う形。
 - **出力の差分は必ず読む。** 意味・数値・主張の強さがずれていたら、出力を手で直さず、下書きを直して
@@ -937,7 +939,8 @@ Slack への返信・GitHub 以外への Issue/PR コメント相当の外部発
   送り先は、要件を確かめてから足す。
 
 形式検査は 2 つ。`ja-polish-gate`(PreToolUse、`hook-router` の規則)は、`gh` の本文・`git commit` のメッセージ・
-Gmail と Slack の下書き・Claude Docs の本文に、通していない日本語の段落があると、実行前に拒否する。
+Gmail と Slack の下書き・Claude Docs の本文に、通していない日本語の段落があると、実行前に拒否する。Gmail と Slack の
+下書きは、`--message` で通した段落だけを通す。
 `ja-polish stop-gate`(Stop)は、触れた文書ファイルに通していない段落が残っていると、終わる前に差し戻す。
 gate に当たる前に自発的に通すこと — gate は漏れを拾うためのもので、一次的な手段ではない。
 
