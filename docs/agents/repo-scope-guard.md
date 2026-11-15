@@ -1,6 +1,6 @@
 # repo-scope-guard — 個人の契約の機体は、別の側の持ち主の非公開リポジトリを読まない
 
-設計の正本は `docs/adr/0000-repo-scope-by-machine-contract.md`。この文書は、
+設計の正本は `docs/adr/1608-repo-scope-by-machine-contract.md`。この文書は、
 `crates/repo-scope`(判定の規則)と `crates/repo-scope-guard`(`gh` のコマンドの解析と拒否)の
 中身、見ないもの、運用をまとめる。共有の規範の節は `config/agents/AGENTS.md`「機体の契約の外にある
 非公開リポジトリを読まない」。
