@@ -7,6 +7,7 @@
 //! - `detect`: 検出の指示文・出力スキーマ・照合(`judge`)
 //! - `backend`: 検出の送り先(文脈を切った `claude -p`)
 //! - `check`: 1 回の検査(検出 → 照合 → 記録)と報告
+//! - `gate`・`hook`: 下書きの作成口の関所(PreToolUse)と、会話の全文の保存(PostToolUse)。hook-router が呼ぶ
 //! - `verify`: 照会(記録を引くだけ。関所と裁定ページの生成が呼ぶ)
 //! - `bench`: 見本でモデルごとの質と時間を測る
 
@@ -14,6 +15,8 @@ pub mod backend;
 pub mod bench;
 pub mod check;
 pub mod detect;
+pub mod gate;
+pub mod hook;
 pub mod store;
 pub mod text;
 pub mod verify;

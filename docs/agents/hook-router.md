@@ -31,8 +31,8 @@ Claude Code の hook は、検査 1 つごとに別々の登録だった(`claude
 
 | イベント | 検査 |
 |---|---|
-| PreToolUse | attribution-guard、ci-wait-guard、decision-colocation-guard、external-send-guard、feedback-target-guard、git-stash-guard、issue-create-guard、ja-polish-gate、ja-polish-snapshot、main-checkout-guard-pre、new-tool-guard、pkexec-guard、pkill-guard、plan-precedent-gate、plan-scope-gate、pr-followup-guard、pr-title-guard、record-layer-guard、repo-create-guard、routines-write-guard、rulesets-write-guard、sandbox-compound-guard、stack-base-guard、test-output-guard、worktree-create-guard、worktree-lease |
-| PostToolUse | adr-number、cmd-hash-log、gh-edit-allow-record、new-tool-guard-record |
+| PreToolUse | attribution-guard、ci-wait-guard、decision-colocation-guard、external-send-guard、feedback-target-guard、git-stash-guard、issue-create-guard、ja-polish-gate、ja-polish-snapshot、main-checkout-guard-pre、new-tool-guard、pkexec-guard、pkill-guard、plan-precedent-gate、plan-scope-gate、pr-followup-guard、pr-title-guard、record-layer-guard、repo-create-guard、reply-coverage-gate、routines-write-guard、rulesets-write-guard、sandbox-compound-guard、stack-base-guard、test-output-guard、worktree-create-guard、worktree-lease |
+| PostToolUse | adr-number、cmd-hash-log、gh-edit-allow-record、new-tool-guard-record、reply-thread-snapshot |
 
 載せる検査が満たす条件(載せるかどうかは、検査ごとにこの 4 つで決める):
 

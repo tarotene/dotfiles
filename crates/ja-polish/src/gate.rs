@@ -211,7 +211,7 @@ fn str_field<'a>(input: &'a Value, key: &str) -> Option<&'a str> {
 }
 
 /// MCP ツールの入力から、人が読む本文を取り出す。対象のツールでない・取れないなら `None`。
-fn mcp_text(tool: &str, input: &Value) -> Option<(&'static str, String)> {
+pub fn mcp_text(tool: &str, input: &Value) -> Option<(&'static str, String)> {
     let suffix_is = |names: &[&str]| names.iter().any(|n| tool.ends_with(&format!("__{n}")));
     if tool.contains("Gmail")
         && suffix_is(&[

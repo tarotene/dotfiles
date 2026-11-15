@@ -93,3 +93,22 @@ PreToolUse の規則が、本文の sha・会話の同一性・保存済みの�
 - D8: 先行例: dotfiles の `docs/agents/ja-polish.md`「測定」、`config/agents/skills/test-grounding/SKILL.md` §5(取得 2026-11-15)。差分: 異なる — 見本の置き場が別の非公開リポジトリで、負例を必ず持つ。軸: 表現不可能。
 - D9: 先行例なし: dotfiles の `docs/adr/`・`docs/agents/`・`config/agents/skills/*/SKILL.md` を「詫び」「抜け」「答え漏れ」で検索(取得 2026-11-15)。軸: 検出のみ。
 - D10: 先行例: dotfiles の `config/claude/commands/resolve-pr-threads.md`(`comments(first: 1)`。取得 2026-11-15)。差分: 異なる — 取得件数と表示を改める。軸: 表現不可能。
+
+## Amendment (2026-11-15 — 段2: 関所と会話の全文の保存を配線した)
+
+D2 と D5 を、実体にした。
+
+- 保存: PostToolUse の規則 `reply-thread-snapshot` が、Gmail の `get_thread` の応答(実機で確かめた形: `messages[]` に `id`・`sender`・`date`・`labelIds`・本文)から、会話の全文を機体ローカルの状態に保存する。メッセージの id の索引も持つ。
+- 関所: PreToolUse の規則 `reply-coverage-gate` が、Gmail の `create_draft`・`update_draft`・`reply` のうち返信先(`replyToMessageId`)を持つ呼び出しを、会話を読んでいない・検査していない・検査のあとに本文を直した・保存した全文が古い(24 時間)のどれかで拒否する。新規の下書き・送信・転送は対象外。
+- 本文の取り出しは `ja-polish` の `mcp_text`(単一の正本)を、hook-router が渡す。`reply-coverage` は ja-polish に依存しない。
+- 有効化: 目印 `~/.config/dotfiles/reply-coverage`(`home/modules/reply-coverage.nix`、既定で有効)がある機体だけで働く。逃げ道は `SKIP_REPLY_COVERAGE_GATE=1`(`agent_session::escape` の表に登録)。
+- 実機の確認(2026-11-15、`hms .` を適用した vega): `get_thread` の実際の応答から全文が保存された、会話を読んでいない返信は拒否された、読んだが検査していない返信は `check` の実行を案内して拒否された、`check` の合格のあと `verify` が通った。`reply-coverage *` は、sandbox の無効化を指定せずに動いた(除外の登録が効いている)。
+
+### 執行点
+
+- `crates/reply-coverage/src/gate.rs`
+- `crates/reply-coverage/src/hook.rs`
+- `crates/hook-router/src/rules.rs`
+- `crates/hook-router/tests/cli.rs`
+- `crates/agent-session/src/escape.rs`
+- `home/modules/reply-coverage.nix`

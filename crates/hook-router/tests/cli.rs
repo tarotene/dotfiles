@@ -390,3 +390,164 @@ fn a_write_in_a_repository_without_a_declaration_is_not_judged_by_record_layers(
     let text = String::from_utf8_lossy(&out.stdout);
     assert!(!text.contains("記録の層の宣言"), "{text}");
 }
+
+// ---- reply-coverage(返信の下書きの関所と、会話の全文の保存)
+
+mod reply_coverage_through_the_router {
+    use super::*;
+    use reply_coverage::store::{Record, Store};
+    use reply_coverage::text;
+    use serde_json::{json, Value};
+    use std::path::Path;
+
+    const CREATE: &str = "mcp__claude_ai_Gmail__create_draft";
+    const GET_THREAD: &str = "mcp__claude_ai_Gmail__get_thread";
+    const DRAFT: &str = "水曜日 15 時でお願いします。";
+
+    fn run_in(home: &Path, env: &[(&str, &str)], args: &[&str], stdin: &str) -> Output {
+        let mut cmd = Command::new(BIN);
+        cmd.args(args)
+            .env_clear()
+            .env("PATH", std::env::var_os("PATH").unwrap_or_default())
+            .env("HOME", home)
+            .env("XDG_STATE_HOME", home.join("state"))
+            .env("XDG_CONFIG_HOME", home.join("config"));
+        for (k, v) in env {
+            cmd.env(k, v);
+        }
+        let mut child = cmd
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap();
+        child
+            .stdin
+            .take()
+            .unwrap()
+            .write_all(stdin.as_bytes())
+            .unwrap();
+        child.wait_with_output().unwrap()
+    }
+
+    fn enable(home: &Path) {
+        let dir = home.join("config/dotfiles");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("reply-coverage"), "enabled\n").unwrap();
+    }
+
+    fn store(home: &Path) -> Store {
+        Store::at(home.join("state/claude/reply-coverage"))
+    }
+
+    fn post_get_thread() -> String {
+        json!({
+            "hook_event_name": "PostToolUse", "session_id": "s1", "tool_name": GET_THREAD,
+            "tool_input": {"threadId": "t1"},
+            "tool_response": {"content": [{"type": "text", "text": json!({"messages":[
+                {"id":"m1","sender":"a@example.invalid","date":"2026-11-01","labelIds":["INBOX"],
+                 "plaintextBody":"来週の火曜日 10 時、または水曜日 15 時はいかがでしょう。"}]}).to_string()}]},
+            "cwd": "/tmp"
+        })
+        .to_string()
+    }
+
+    fn pre_create(reply_to: Option<&str>, body: &str) -> String {
+        let mut input = json!({"body": body, "to": ["a@example.invalid"]});
+        if let Some(m) = reply_to {
+            input["replyToMessageId"] = Value::String(m.to_string());
+        }
+        json!({"hook_event_name":"PreToolUse","session_id":"s1","tool_name":CREATE,"tool_input":input,"cwd":"/tmp"})
+            .to_string()
+    }
+
+    fn denied(out: &Output) -> Option<String> {
+        let v: Value = serde_json::from_slice(&out.stdout).ok()?;
+        (v["hookSpecificOutput"]["permissionDecision"] == "deny").then(|| {
+            v["hookSpecificOutput"]["permissionDecisionReason"]
+                .as_str()
+                .unwrap()
+                .to_string()
+        })
+    }
+
+    #[test]
+    fn a_reply_is_denied_until_the_thread_was_read_then_until_checked_then_allowed() {
+        let home = tempfile::tempdir().unwrap();
+        enable(home.path());
+
+        // 会話を読んでいない(get_thread を呼んでいない)返信の下書きは、拒否される。
+        let out = run_in(home.path(), &[], &["pre"], &pre_create(Some("m1"), DRAFT));
+        assert!(out.status.success());
+        let reason = denied(&out).expect("deny");
+        assert!(reason.contains("get_thread"), "{reason}");
+
+        // get_thread の応答が保存される(PostToolUse。出力は無い)。
+        let out = run_in(home.path(), &[], &["post"], &post_get_thread());
+        assert!(out.status.success());
+        let t = store(home.path()).load_thread("gmail:t1").expect("saved");
+        assert!(t.text.contains("水曜日 15 時はいかがでしょう"));
+        assert_eq!(t.message_ids, ["m1"]);
+
+        // 会話は読んだが、検査していない → 拒否(次の一手が書かれている)。
+        let out = run_in(home.path(), &[], &["pre"], &pre_create(Some("m1"), DRAFT));
+        let reason = denied(&out).expect("deny");
+        assert!(reason.contains("reply-coverage check"), "{reason}");
+
+        // 検査に合格した最終稿 → 通る。
+        store(home.path())
+            .append_record(&Record {
+                ts_unix: reply_coverage::store::now(),
+                thread: t.id.clone(),
+                thread_sha: text::sha(&t.text),
+                draft_sha: text::sha(DRAFT),
+                verdict: "pass".to_string(),
+                model: "m".to_string(),
+                asks: 1,
+                unanswered: vec![],
+                apology_missing: false,
+            })
+            .unwrap();
+        let out = run_in(home.path(), &[], &["pre"], &pre_create(Some("m1"), DRAFT));
+        assert!(
+            denied(&out).is_none(),
+            "{}",
+            String::from_utf8_lossy(&out.stdout)
+        );
+
+        // 検査のあとに 1 字直した本文は、拒否に戻る。
+        let out = run_in(
+            home.path(),
+            &[],
+            &["pre"],
+            &pre_create(Some("m1"), "水曜日 15 時でお願いします!"),
+        );
+        assert!(denied(&out).is_some());
+    }
+
+    #[test]
+    fn new_drafts_and_machines_without_the_marker_and_the_escape_hatch_are_left_alone() {
+        let home = tempfile::tempdir().unwrap();
+        // 目印が無い機体では、返信でも何もしない。保存もしない。
+        let out = run_in(home.path(), &[], &["pre"], &pre_create(Some("m1"), DRAFT));
+        assert!(denied(&out).is_none());
+        run_in(home.path(), &[], &["post"], &post_get_thread());
+        assert!(store(home.path()).load_thread("gmail:t1").is_none());
+
+        enable(home.path());
+        // 返信でない新規の下書きは通す。
+        let out = run_in(home.path(), &[], &["pre"], &pre_create(None, DRAFT));
+        assert!(denied(&out).is_none());
+        // 逃げ道(セッションの環境変数)で、返信も通る。
+        let out = run_in(
+            home.path(),
+            &[("SKIP_REPLY_COVERAGE_GATE", "1")],
+            &["pre"],
+            &pre_create(Some("m1"), DRAFT),
+        );
+        assert!(denied(&out).is_none());
+        // 同じ呼び出しでも、逃げ道が無ければ拒否される(逃げ道が効いているのであって、素通りではない)。
+        let out = run_in(home.path(), &[], &["pre"], &pre_create(Some("m1"), DRAFT));
+        assert!(denied(&out).is_some());
+    }
+}

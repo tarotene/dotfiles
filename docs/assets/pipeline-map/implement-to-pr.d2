@@ -273,6 +273,11 @@ n_agent_session: "Agent session (Claude / Codex / Copilot)" {
       style.stroke: "#D55E00"
       style.stroke-width: 4
     }
+    n_reply_coverage_gate: "reply-coverage-gate" {
+      class: s_rust
+      style.stroke: "#D55E00"
+      style.stroke-width: 4
+    }
     n_ja_polish_snapshot: "ja-polish-snapshot" {
       class: s_rust
     }
@@ -318,6 +323,9 @@ n_agent_session: "Agent session (Claude / Codex / Copilot)" {
       class: s_rust
     }
     n_adr_number: "adr-number" {
+      class: s_rust
+    }
+    n_reply_thread_snapshot: "reply-thread-snapshot" {
       class: s_rust
     }
   }
@@ -446,6 +454,12 @@ n_agent_session.l_plan_approval.n_new_tool_guard_record -> n_agent_session.l_too
   class: e_file
 }
 l_manual.n_ja_polish -> n_agent_session.l_tool_call.n_ja_polish_gate: "records.jsonl (polished paragraphs)" {
+  class: e_file
+}
+n_agent_session.l_tool_call.n_reply_thread_snapshot -> n_agent_session.l_tool_call.n_reply_coverage_gate: "threads/ (full conversation text)" {
+  class: e_file
+}
+l_manual.n_reply_coverage -> n_agent_session.l_tool_call.n_reply_coverage_gate: "records.jsonl (checked drafts)" {
   class: e_file
 }
 n_agent_session.l_tool_call.n_ja_polish_snapshot -> n_agent_session.l_stop.n_ja_polish_stop_gate: "base snapshots / touched docs" {

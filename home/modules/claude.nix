@@ -344,7 +344,12 @@ in
       # domain). It runs outside the sandbox and sends only the paragraphs it is given. Excluded
       # only where it is installed (dotfiles.jaPolish.enable, home/modules/ja-polish.nix): an
       # excluded pattern for a command that is not there is a hole with nothing behind it.
-      ++ lib.optional config.dotfiles.jaPolish.enable "ja-polish *";
+      ++ lib.optional config.dotfiles.jaPolish.enable "ja-polish *"
+      # reply-coverage calls `claude -p`, which needs the network and the credentials the sandbox hides
+      # (measured 2026-11-15: inside the sandbox `claude -p` fails with `Not logged in` and the
+      # network-outbound to api.anthropic.com is denied). Excluded only where it is installed
+      # (dotfiles.replyCoverage.enable, home/modules/reply-coverage.nix).
+      ++ lib.optional config.dotfiles.replyCoverage.enable "reply-coverage *";
       description = "Command patterns that run outside the sandbox (sandbox.excludedCommands).";
     };
   };
