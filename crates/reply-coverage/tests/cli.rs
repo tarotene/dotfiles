@@ -252,3 +252,59 @@ fn sweep_and_usage_errors() {
     assert_eq!(code(&sb.run(&["nope"])), 2);
     assert_eq!(code(&sb.run(&["check", "--thread", "x"])), 2);
 }
+
+#[test]
+fn import_gmail_normalizes_a_saved_get_thread_result_so_that_the_gate_can_find_it() {
+    let sb = Sandbox::new();
+    // get_thread の結果が大きくて、ツールがファイルに保存した形(トップレベルが会話のオブジェクト)。
+    let result = sb.write(
+        "get_thread.json",
+        r#"{"id":"t9","messages":[
+            {"id":"m1","sender":"a@example.invalid","date":"2026-11-01T10:00:00Z","labelIds":["INBOX"],"plaintextBody":"来週の火曜日 10 時にお電話できますか。"},
+            {"id":"m2","sender":"me@example.invalid","date":"2026-11-01T12:00:00Z","labelIds":["SENT"],"plaintextBody":"火曜日で大丈夫です。"}]}"#,
+    );
+    let o = sb.run(&["import-gmail", "--file", &result]);
+    assert_eq!(code(&o), 0, "{}", text(&o.stderr));
+    assert!(text(&o.stdout).contains("gmail:t9"), "{}", text(&o.stdout));
+
+    // 保存できたので、verify は「会話を読んでいない」でなく「検査していない」と言う。
+    let d = sb.write("d.draft", "x");
+    let o = sb.run(&["verify", "--thread", "gmail:t9", "--draft", &d]);
+    assert_eq!(code(&o), 1);
+    assert!(
+        text(&o.stderr).contains("reply-coverage check"),
+        "{}",
+        text(&o.stderr)
+    );
+
+    // 読めない結果は、保存せずに失敗する。
+    let bad = sb.write("bad.json", r#"{"id":"t8"}"#);
+    assert_eq!(code(&sb.run(&["import-gmail", "--file", &bad])), 2);
+}
+
+#[test]
+fn bench_repeat_runs_each_case_that_many_times_and_rejects_a_bad_count() {
+    let sb = Sandbox::new();
+    let cases = sb.path("cases");
+    let c = cases.join("c1");
+    std::fs::create_dir_all(&c).unwrap();
+    std::fs::write(c.join("conversation.thread"), THREAD).unwrap();
+    std::fs::write(c.join("draft.draft"), "前向きに検討します。").unwrap();
+    std::fs::write(
+        c.join("expected.json"),
+        r#"{"verdict":"fail","unanswered":[]}"#,
+    )
+    .unwrap();
+    sb.fake_claude(FAIL_DETECTION, false);
+    let dir = cases.to_str().unwrap();
+    let o = sb.run(&["bench", "--cases", dir, "--variants", "m1", "--repeat", "3"]);
+    assert_eq!(code(&o), 0, "{}", text(&o.stderr));
+    let out = text(&o.stdout);
+    assert_eq!(out.matches("c1\tm1\t").count(), 3, "{out}");
+    // 集計は 3 回分(判定の一致 3/3)。
+    assert!(out.contains("m1\t3/3\t"), "{out}");
+    for bad in ["0", "11", "x"] {
+        let o = sb.run(&["bench", "--cases", dir, "--repeat", bad]);
+        assert_eq!(code(&o), 2, "--repeat {bad}");
+    }
+}

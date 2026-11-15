@@ -129,3 +129,21 @@ D1・D6・D10 を実体化した。
 - `config/agents/skills/inbox-adjudication/reference/verdict-page/items.schema.json`
 - `config/claude/commands/resolve-pr-threads.md`
 - `crates/issue-inbox/src/collect.rs`
+
+## Amendment (2026-11-15 — 段4: 実物の見本で測り、指示文を直し、詫びを助言にした)
+
+D8 を実体にし、実測の結果で、D4 の指示文と D9 を改めた。**D9 は承認済みの計画から変えた**: 計画は「詫びが無ければ不合格」だったが、「助言(合否に入れない)」にした。
+
+- 計測: 実物の見本 14 件(非公開リポジトリ。紹介会社の担当者との実際のやり取りから作った)と架空の見本 11 件で、`bench --repeat 3`(75 回)。結果は `docs/agents/reply-coverage.md`。既定のモデルは `claude-sonnet-5-5`(判定一致 73/75、不合格の検出 28/30、誤検出 0、平均 5.7 秒)。
+- 実物の見本で、改訂前の指示文が、合格のはずの下書きを止める(誤検出)ことが分かった。2 モデルとも、実物 14 件を 1 回測って、判定一致は 10/14(誤検出 4)だった。原因は、返信で触れなくてよい依頼(「ご一読ください」)を未回答にしたこと、保留を落とした依頼と読んだこと、会話の中で応じ終えた依頼を未回答にしたこと。指示文を直した(D4)。
+- **D9 の変更(計画からの差し替え)**: 詫びが無いことを、不合格でなく助言にした。理由は、(1) 本人の言葉が「軽く詫びてもよい」で、必須ではない、(2) 前の返信が落とした依頼(`late`)かどうかは検出の判断で、実物の計測で、保留を落としたと読む誤りが出た。誤りで正しい下書きを止めるより、助言として報告に出す。計画に書いた文は「`late` で答えていない依頼があった下書きは、冒頭の軽い詫びを要求する。詫びが無ければ「不合格」にする」。
+- `get_thread` の結果が大きいと、ツールの結果がファイルに保存され、PostToolUse の hook は応答を受け取れない(8 通で約 14 万字・16 通で約 59 万字の会話で確かめた)。段2 の保存が働かない穴だったので、`reply-coverage import-gmail` を足した。
+- 残る限界(文書に明記した): 依頼の言い方が穏やかなものは、見落としうる(`claude-sonnet-5-5` で 2/30)。実物の見本は紹介会社の定型に偏り、ほかの種類の会話は未計測。
+
+### 執行点
+
+- `crates/reply-coverage/src/detect.rs`
+- `crates/reply-coverage/src/bench.rs`
+- `crates/reply-coverage/src/main.rs`
+- `crates/reply-coverage/tests/cli.rs`
+- `crates/reply-coverage/tests/fixtures.rs`

@@ -31,6 +31,12 @@ fn a_correct_detection_gives_the_expected_verdict_with_nothing_dropped() {
     for c in cases() {
         let v = judge(&canned(&c), &c.conversation, &c.draft);
         assert_eq!(v.pass, c.expected.verdict == "pass", "{}: {v:?}", c.id);
+        assert_eq!(
+            v.apology_missing(),
+            c.expected.advice.iter().any(|a| a == "apology"),
+            "{}: 詫びの助言が期待と違う",
+            c.id
+        );
         assert_eq!(v.dropped, 0, "{}: 引用が会話に逐語でない", c.id);
         assert!(
             v.asks.iter().all(|a| !a.downgraded),
