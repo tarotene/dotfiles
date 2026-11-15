@@ -94,6 +94,14 @@ fn positive(x: &str) -> bool {
     !x.is_empty() && x.bytes().all(|b| b.is_ascii_digit()) && x.parse::<u64>().is_ok_and(|n| n > 0)
 }
 
+/// ローカルの HEAD が、このブランチでマージ済みの PR の head(`headRefOid`)のどれかと同じか。
+fn head_is_merged_pr_head(project: &Path, nwo: &str, branch: &str) -> bool {
+    let Some(head) = repo::git_ok(project, &["rev-parse", "HEAD"]).filter(|h| !h.is_empty()) else {
+        return false;
+    };
+    gh::merged_head_oids(nwo, branch).is_some_and(|oids| oids.contains(&head))
+}
+
 /// PR がまだ無いブランチ: G_unpushed → G_pr。
 ///
 /// G_push は open PR の headRefOid が無いと判定できない。以前はここで
@@ -103,6 +111,13 @@ fn positive(x: &str) -> bool {
 fn no_pr(st: &State, sid: &str, project: &Path, nwo: &str, branch: &str) -> Option<StopOutcome> {
     let unpushed = repo::unpushed_count(project, branch);
     let default_br = git_repository::default_branch(project).unwrap_or_default();
+    // いまの HEAD が、このブランチでマージ済みの PR の head と同じなら、push するものは無い。squash
+    // マージのあと、ローカルに元の commit が残り、upstream(origin/<default>)との差では「未 push・
+    // PR 無し」に数えられて block する誤検知(2026-11-15 に同じセッションで 3 回)を避ける。gh が
+    // 失敗したときは、判定できないので従来どおり数える。
+    if positive(&unpushed) && head_is_merged_pr_head(project, nwo, branch) {
+        return None;
+    }
     if positive(&unpushed) {
         let hygiene = join_lines(&[
             repo::stale_base_line(project, &default_br),

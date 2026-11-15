@@ -161,6 +161,42 @@ fn g_unpushed_silent_when_every_commit_is_on_a_lower_stack_branch() {
 }
 
 #[test]
+fn g_unpushed_silent_when_head_is_the_head_of_a_merged_pr() {
+    // squash マージのあと、ローカルに元の commit が残る。upstream(origin/main)との差では 2 件
+    // 「未 push」だが、HEAD はマージ済みの PR の head と同じなので、push するものは無い。
+    let fx = Fx::new();
+    fx.set_upstream(&fx.rev("HEAD~2"));
+    let head = fx.real_head.clone();
+    let r = fx.stop(
+        "gu-merged-sid",
+        &[
+            ("PR_GATE_STUB_NO_PR", "1"),
+            ("PR_GATE_STUB_MERGED_HEAD_OID", head.as_str()),
+        ],
+    );
+    assert_eq!(r.code, 0, "{}", r.all()); // ok   HEAD がマージ済み PR の head: block しない
+    assert!(!has(&r.stderr, "未 push")); // ok   HEAD がマージ済み PR の head: 未 push と数えない
+}
+
+#[test]
+fn g_unpushed_blocks_when_a_merged_pr_head_is_not_the_current_head() {
+    // 同じ名前のブランチで以前の PR がマージ済みでも、いまの HEAD がその head と違えば、
+    // 積んだ commit はまだ push していない。
+    let fx = Fx::new();
+    fx.set_upstream(&fx.rev("HEAD~2"));
+    let older = fx.rev("HEAD~1");
+    let r = fx.stop(
+        "gu-merged-older-sid",
+        &[
+            ("PR_GATE_STUB_NO_PR", "1"),
+            ("PR_GATE_STUB_MERGED_HEAD_OID", older.as_str()),
+        ],
+    );
+    assert_eq!(r.code, 2); // ok   マージ済み PR の head が今の HEAD と違う: exit 2
+    assert!(has(&r.stderr, "未 push の commit が 2 件")); // ok   従来どおり件数が出る
+}
+
+#[test]
 fn g_unpushed_silent_when_all_pushed() {
     let fx = Fx::new();
     fx.set_upstream(&fx.real_head);

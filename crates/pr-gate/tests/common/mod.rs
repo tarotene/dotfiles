@@ -34,6 +34,7 @@ use std::process::{Command, Stdio};
 ///   PR_GATE_STUB_DRAFT              : gh pr list が返す isDraft(既定 false)
 ///   PR_GATE_STUB_HANDOFF_STATE / _FAIL : gh issue view の応答 / 失敗
 ///   PR_GATE_STUB_ALL_STATE          : gh pr list --state all が返す state
+///   PR_GATE_STUB_MERGED_HEAD_OID    : gh pr list --state merged が返す PR の headRefOid(未指定なら [])
 pub const STUB_GH: &str = r#"#!/usr/bin/env bash
 jqbin="$(command -v jq)"
 [[ -n "${PR_GATE_STUB_LOG:-}" ]] && echo "$*" >> "$PR_GATE_STUB_LOG"
@@ -44,6 +45,12 @@ case "$1" in
         if [[ "$*" == *"--state all"* ]]; then
           if [[ -n "${PR_GATE_STUB_ALL_STATE:-}" ]]; then
             "$jqbin" -n --arg s "${PR_GATE_STUB_ALL_STATE}" '[{state:$s}]'
+          else
+            echo '[]'
+          fi
+        elif [[ "$*" == *"--state merged"* ]]; then
+          if [[ -n "${PR_GATE_STUB_MERGED_HEAD_OID:-}" ]]; then
+            "$jqbin" -n --arg h "${PR_GATE_STUB_MERGED_HEAD_OID}" '[{headRefOid:$h}]'
           else
             echo '[]'
           fi

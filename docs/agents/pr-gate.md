@@ -118,6 +118,15 @@ Stop と違って「単独では終了を止めない」という制約自体が
 PR がある場合は既存の `G_push` がより正確に見るので、`G_unpushed` は
 `pr_num` が空のときだけ動く。二重に block することはない。
 
+**squash マージのあとの誤検知を避ける。** PR を squash マージすると、default branch には別の SHA の
+commit が入り、ローカルには元の commit が残る。upstream が `origin/<default>` のブランチでは、
+その commit が差として数えられ、「未 push・PR 無し」と block していた（2026-11-15 に同じセッションで
+3 回。そのたびに `git rebase origin/main` で重複を外す往復が要った）。そこで、いまの `HEAD` が、
+同じ head ブランチでマージ済みの PR の `headRefOid`（`gh pr list --state merged`、新しい順に最大
+10 件）のどれかと同じなら、push するものは無いので数えない。`gh` が失敗したときは、判定できないので
+従来どおり数える。以前の PR の head と今の `HEAD` が違えば（同じ名前のブランチに新しい commit を
+積んだとき）、従来どおり block する。
+
 この「PR を作るべきかには踏み込まない」という判断は、`G_pr`（次節）の導入で
 上書きした。`G_unpushed` はそのまま残し、push の事実だけを見る役割に留める。
 
