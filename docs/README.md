@@ -215,6 +215,7 @@ What runs automatically, when, and on which stack: see the [pipeline map](pipeli
 - [`agents/pr-description.md`](agents/pr-description.md) — pr-description スキル
 - [`agents/pr-followup-guard.md`](agents/pr-followup-guard.md) — pr-followup-guard — PR 本文に未チェック task list を残さず、人の確認は Issue へ払い出す
 - [`agents/pr-gate.md`](agents/pr-gate.md) — PR completion barrier — Stop の 1 点だけで CI 待ち・push 忘れを弾く
+- [`agents/pr-hygiene-check.md`](agents/pr-hygiene-check.md) — pr-hygiene-check — 自分の open PR の汚れを、決定論で見つける
 - [`agents/pr-title-contract.md`](agents/pr-title-contract.md) — pr-title-contract — PR タイトルを commit-message 契約として機械強制する
 - [`agents/precedent-grounding.md`](agents/precedent-grounding.md) — precedent-grounding — 「敵対的レビュー」の都度指示を、先行例接地 + 監査に置き換える
 - [`agents/presentation-authoring.md`](agents/presentation-authoring.md) — presentation-authoring スキル

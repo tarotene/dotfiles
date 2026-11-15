@@ -253,6 +253,12 @@
     # `gh pr checks --watch` の代わりに run_in_background で呼ぶ(config/claude/CLAUDE.md
     # 「待ち方」)。PATH で解決される実行可能ファイルなので ~/.local/bin に置く。
     "pr-checks-wait"
+    # pr-hygiene-check: 自分の open PR の汚れ(衝突・済んだコミットの混入・base の消失・
+    # merge commit・遅れ)を見つけるだけの CLI(crates/pr-hygiene-check、
+    # docs/agents/pr-hygiene-check.md)。母集団は、この機体の契約の側と同じ側の持ち主だけ
+    # (docs/agents/repo-scope-guard.md)。直す手順は stacked-pr スキル §4。朝の机の段 5 が呼ぶ
+    # ので PATH に置く。
+    "pr-hygiene-check"
     # worktree-lease: 同じ linked worktree を別のセッションが使っている印を見る・外す CLI
     # (crates/worktree-lease、docs/agents/worktree-lease.md)。判定はルータが呼ぶので hook の
     # 登録は無い。deny されたとき、ユーザーが `! worktree-lease release` で外すために PATH に置く。
