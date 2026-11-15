@@ -23,7 +23,7 @@ const CONTEXT_CHARS: usize = 400;
 /// 未通過の日本語の段落。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Pending {
-    /// 段落の番号(0 始まり、[`blocks::split`] の並び)。
+    /// 段落の番号(0 始まり)。基点があるときは [`blocks::split_with_items`]、なければ [`blocks::split`] の並び。
     pub index: usize,
     /// 段落の本文。
     pub text: String,
@@ -39,8 +39,9 @@ fn pending_indexes(
     baseline: Option<&str>,
     records: &HashSet<String>,
 ) -> Vec<usize> {
+    // 基点は、文書と同じ単位(箇条書き・番号付きは項目ごと)で分ける。
     let base: Option<HashSet<String>> = baseline.map(|b| {
-        blocks::split(b)
+        blocks::split_with_items(b)
             .iter()
             .map(|x| blocks::hash(&x.text))
             .collect()
@@ -49,18 +50,49 @@ fn pending_indexes(
         .iter()
         .enumerate()
         .filter(|(_, b)| !b.verbatim)
-        .filter(|(_, b)| blocks::jp_count(&mask::mask(&b.text).text) >= MIN_JP_CHARS)
+        .filter(|(_, b)| is_japanese(&b.text))
         .filter(|(_, b)| {
-            let h = blocks::hash(&b.text);
-            !records.contains(&h) && !base.as_ref().is_some_and(|s| s.contains(&h))
+            !is_recorded(b, records)
+                && !base
+                    .as_ref()
+                    .is_some_and(|s| s.contains(&blocks::hash(&b.text)))
         })
         .map(|(i, _)| i)
         .collect()
 }
 
+/// 伏せ字を除いて、日本語の字が [`MIN_JP_CHARS`] 以上ある段落か。
+fn is_japanese(text: &str) -> bool {
+    blocks::jp_count(&mask::mask(text).text) >= MIN_JP_CHARS
+}
+
+/// 記録にある段落か。箇条書き・番号付きの段落(基点なしで、項目に分けていないもの)は、段落全体の記録のほか、
+/// 日本語の項目がすべて記録にあれば、記録にあるとみなす(基点つきで項目ごとに書き直した文書を、基点なしで
+/// 見る関所が、同じ箇条書きをもう一度求めないため)。
+fn is_recorded(b: &Block, records: &HashSet<String>) -> bool {
+    if records.contains(&blocks::hash(&b.text)) {
+        return true;
+    }
+    let items = blocks::split_items(vec![b.clone()]);
+    items.len() > 1
+        && items
+            .iter()
+            .all(|i| !is_japanese(&i.text) || records.contains(&blocks::hash(&i.text)))
+}
+
+/// 文書を段落に分ける。基点があるときは、箇条書き・番号付きを項目ごとの段落にする
+/// (項目を足しただけで、承認済みの項目まで書き直しの対象になるのを避ける)。
+fn split_for(text: &str, baseline: Option<&str>) -> Vec<Block> {
+    if baseline.is_some() {
+        blocks::split_with_items(text)
+    } else {
+        blocks::split(text)
+    }
+}
+
 /// 未通過の日本語の段落の一覧。空なら、この文書は通っている。
 pub fn pending(text: &str, baseline: Option<&str>, records: &HashSet<String>) -> Vec<Pending> {
-    let blocks = blocks::split(text);
+    let blocks = split_for(text, baseline);
     pending_indexes(&blocks, baseline, records)
         .into_iter()
         .map(|index| Pending {
@@ -378,7 +410,7 @@ pub fn polish(
     backend: &dyn Backend,
     fixer: &dyn Fixer,
 ) -> PolishResult {
-    let mut blocks = blocks::split(text);
+    let mut blocks = split_for(text, baseline);
     let idxs = pending_indexes(&blocks, baseline, records);
     if idxs.is_empty() {
         return PolishResult {
@@ -884,6 +916,73 @@ mod tests {
             "理由(モデル fb。応答の先頭: 「a⏎⏎b」)"
         );
         assert_eq!(annotate("理由".to_string(), "fb", None), "理由(モデル fb)");
+    }
+
+    const LIST: &str = "- 承認済みの一つ目の項目です。\n- 承認済みの二つ目の項目です。\n";
+    const ADDED: &str = "- 新しく足した三つ目の項目です。\n";
+
+    #[test]
+    fn a_baseline_compares_list_items_one_by_one() {
+        // 承認済みの 2 項目に 1 項目を足した。基点があれば、足した項目だけが対象。
+        let text = format!("{LIST}{ADDED}");
+        let p = pending(&text, Some(LIST), &HashSet::new());
+        assert_eq!(
+            p.iter().map(|x| x.text.as_str()).collect::<Vec<_>>(),
+            vec!["- 新しく足した三つ目の項目です。"]
+        );
+        assert_eq!(p[0].index, 2, "項目ごとの段落の並びでの番号");
+        // 基点なしは、従来どおり段落全体(箇条書きは 1 段落)。
+        let p = pending(&text, None, &HashSet::new());
+        assert_eq!(p.len(), 1);
+        assert!(p[0].text.contains("承認済みの一つ目") && p[0].text.contains("新しく足した"));
+    }
+
+    #[test]
+    fn polish_sends_only_the_added_item_and_keeps_approved_items_verbatim() {
+        let text = format!("## 課題\n\n{LIST}{ADDED}\nThe next paragraph is English.\n");
+        let fake = Fake::new(vec![ok(
+            "<para n=\"1\">- 新しく足した三つ目の項目だ。</para>",
+        )]);
+        let c = cfg();
+        let r = polish(
+            &text,
+            Some(LIST),
+            &HashSet::new(),
+            "# 規約",
+            &c,
+            &fake,
+            &NoFixer,
+        );
+        let sent = fake.calls()[0].user.clone();
+        assert_eq!(texts_in(&sent).len(), 1, "依頼は足した項目だけ: {sent}");
+        // 隣の項目は文脈として見せるが、本文(`<text>`)には入れない。一つ目は隣でもない。
+        assert!(!sent.contains("承認済みの一つ目"), "{sent}");
+        assert_eq!(
+            r.text,
+            format!("## 課題\n\n{LIST}- 新しく足した三つ目の項目だ。\n\nThe next paragraph is English.\n")
+        );
+        assert_eq!(r.paras.len(), 1);
+        assert_eq!(r.entries.len(), 1);
+        assert_eq!(
+            r.entries[0].sha,
+            blocks::hash("- 新しく足した三つ目の項目だ。")
+        );
+    }
+
+    #[test]
+    fn a_list_whose_items_are_all_recorded_passes_without_a_baseline() {
+        // 基点つきで項目ごとに通した記録(項目のハッシュ)だけがある。基点なしで見ても、同じ箇条書きを求めない。
+        let text = format!("{LIST}{ADDED}");
+        let mut rec = HashSet::new();
+        for item in [
+            "- 承認済みの一つ目の項目です。",
+            "- 承認済みの二つ目の項目です。",
+        ] {
+            rec.insert(blocks::hash(item));
+        }
+        assert_eq!(pending(&text, None, &rec).len(), 1, "足した項目が未記録");
+        rec.insert(blocks::hash("- 新しく足した三つ目の項目です。"));
+        assert!(pending(&text, None, &rec).is_empty());
     }
 
     /// 依頼の `<para n="K">…<text>本文</text>…` から、各段落の本文を取り出す。
