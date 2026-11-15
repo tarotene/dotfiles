@@ -1,5 +1,5 @@
 {
-  "format_version": 6,
+  "format_version": 7,
   "run_label": "テスト回",
   "alert": {
     "title": "期限が近い項目があります",
@@ -81,7 +81,14 @@
       "name": "架空の会社 B への断り",
       "note": "元の画面に貼る",
       "key": "linkedin:conv0002=/20260101T0900",
-      "text": "お世話になっております。\nご連絡ありがとうございます。\n今回は見送らせてください。"
+      "text": "お世話になっております。\nご連絡ありがとうございます。\n今回は見送らせてください。",
+      "thread": "linkedin:conv0002",
+      "asks": [
+        {
+          "quote": "来週の火曜日 10 時、または水曜日 15 時はいかがでしょう。",
+          "status": "answered"
+        }
+      ]
     }
   ],
   "excluded": [

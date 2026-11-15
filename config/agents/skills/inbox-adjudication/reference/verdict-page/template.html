@@ -93,6 +93,7 @@ label.note .warn { color: var(--warn); font-size: 0.8rem; }
 .guidance { background: var(--panel); border: 1px solid var(--rule); border-radius: 6px; padding: 14px 16px; display: grid; gap: 8px; }
 .saved { font-size: 0.78rem; color: var(--muted); font-family: var(--font-mono); }
 .draft { background: var(--panel); border: 1px solid var(--rule); border-radius: 6px; padding: 14px 16px; display: grid; gap: 10px; min-width: 0; }
+.draft .asks { margin: 0; padding-left: 1.2em; font-size: 0.85rem; display: grid; gap: 4px; overflow-wrap: anywhere; }
 .draft pre { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font-family: var(--font-body); font-size: 0.9rem; background: var(--ground); border-radius: 4px; padding: 12px; }
 .item .draft { background: var(--ground); border-style: dashed; }
 .item .draft pre { background: var(--panel); }
@@ -174,9 +175,17 @@ function settled(s) {
   return s.verdict === "decide" || s.verdict === "pass";
 }
 
+/* 検査の報告にある、相手の依頼の処分(reply-coverage。未回答は検査に合格しないので出ない)。 */
+const ASK_STATUS = { answered: "答える", declined: "断る", deferred: "保留", answered_before: "先に答え済み", retracted: "取り下げ済み" };
+
 function draftNode(d) {
   const c = el("div", "draft");
   c.append(el("div", "title", d.name), el("p", "why", d.note));
+  const asks = d.asks || [];
+  const ul = el("ul", "asks");
+  for (const a of asks) ul.append(el("li", null, "「" + a.quote + "」→ " + (ASK_STATUS[a.status] || a.status)));
+  c.append(el("p", "why", asks.length ? "相手の依頼 " + asks.length + " 件への処分(検査済み)" : "相手の依頼は見つからなかった(検査済み)"));
+  if (asks.length) c.append(ul);
   const pre = el("pre", null, d.text); pre.setAttribute("contenteditable", "true"); pre.spellcheck = false;
   const bar = el("div", "bar"); const b = el("button", null, "コピー"); b.type = "button";
   const st = el("span", "status");

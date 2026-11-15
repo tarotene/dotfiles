@@ -1,5 +1,5 @@
 {
-  "format_version": 6,
+  "format_version": 7,
   "run_label": "</script><script>alert(1)</script>",
   "alert": {
     "title": "<!-- コメント開始のような文字列",
@@ -23,7 +23,9 @@
       "name": "</script>",
       "note": "<!--",
       "key": "none:thread0009/msg0009",
-      "text": "</script><script>document.title = 'x'</script>"
+      "text": "</script><script>document.title = 'x'</script>",
+      "thread": "none:thread0009",
+      "asks": []
     }
   ]
 }

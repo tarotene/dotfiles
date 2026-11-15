@@ -92,6 +92,24 @@
 - 形式を 5 から 6 に上げた(`items.schema.json` の `const`、`fixtures/` の入力、公開する Artifact の description の `形式 v6`、
   `crates/issue-inbox/src/collect.rs` の `FORMAT_VERSION`)。
 
+### 返信の下書きは、検査済みの最終稿だけ(形式 7、#1577)
+
+Gmail の外の媒体(LinkedIn・LAPRAS・Findy)の返信は、下書きをこのページに載せ、本人が元の画面に貼る。hook で止められる口が
+無いので、**ページの生成で止める**。`drafts[]` の各下書きに、次の 2 つが必須になった。
+
+- `thread`: 返信先の会話の id(`<媒体>:<会話の印>`)。`reply-coverage check` に渡したものと同じ。`build.sh` が、下書きごとに
+  `reply-coverage verify --thread <thread> --draft <text>` を呼び、会話の全文を読んだうえで、相手の依頼すべてへの応答を検査した
+  最終稿であることを確かめる。検査していない下書き、検査のあとに直した下書き、保存した全文が 24 時間より古い下書きは、
+  ページを作らない(`docs/agents/reply-coverage.md`)。`reply-coverage` が無い機体は、`drafts[]` のあるページを作れない。
+  実行ファイルは環境変数 `REPLY_COVERAGE_BIN` で差し替えられる(`--selftest` が偽物を使う)。
+- `asks`: 検査の報告にある、相手の依頼と処分(`answered`・`declined`・`deferred`・`answered_before`・`retracted`)の一覧。
+  本人が、答え漏れが無いかを画面で確かめる(依頼ごとの引用と処分が、下書きの上に出る)。依頼が無い会話は空の配列。未回答は
+  検査に合格しないので、値に無い。
+
+本人がページ上で本文を直したときは、本人が見て決めたものとして扱い、再検査しない。保存先の形(`verdicts.schema.json`)は変えない
+(決まり (a) の、読む側の契約の更新は要らない)。形式を 6 から 7 に上げた(`items.schema.json` の `const`、`fixtures/` の入力、
+`crates/issue-inbox/src/collect.rs` の `FORMAT_VERSION`。公開する Artifact の `label` は、次の公開で `形式 v7` にする)。
+
 ## ページの並べ方
 
 - 項目は `items[].kind` ごとに 1 つの枠(pane)にまとまる。枠の順と見出しは `options.json` の `kinds` の順と `pane`。

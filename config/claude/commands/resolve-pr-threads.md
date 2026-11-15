@@ -47,8 +47,9 @@ Query all review threads (resolved and unresolved) via GraphQL:
         nodes {
           id
           isResolved
-          comments(first: 1) {
-            nodes { body path line originalLine }
+          comments(first: 100) {
+            totalCount
+            nodes { author { login } body path line originalLine createdAt }
           }
         }
       }
@@ -60,7 +61,12 @@ Query all review threads (resolved and unresolved) via GraphQL:
 **Rendering MUST:**
 - Group threads by `path`, sorted alphabetically.
 - Within each path, sort by `line` ascending.
-- Display the thread node ID, `isResolved` status, and the first comment's body.
+- Display the thread node ID, `isResolved` status, and **every comment in order** (author login, then body). A reviewer's follow-up
+  inside a thread (a question after your reply, a rejection of your fix) is an ask too: reading only the first comment made a thread
+  look settled when the reviewer had answered back (#1577). If `totalCount` exceeds the 100 fetched, say so and fetch the rest
+  before triaging.
+- Mark a thread **"ball on you"** when its last comment is not from you (the PR author running this command) and not from the thread's
+  own reply template (`Addressed in …`, `Won't fix — …`, `Filed as a separate issue: …`). List those first.
 - Attempt to show the file:line excerpt using `git show HEAD:<path>` or `sed -n '<line>p' <path>`.
 
 ### Phase 2: Per-Thread Triage
@@ -69,7 +75,7 @@ For each **unresolved** thread (or a specific thread if `THREAD_ID` is provided)
 
 ```
 Question: "How do you want to handle this review comment?"
-  (path:line — comment excerpt)
+  (path:line — the thread's comments in order, the last one in full; say how many there are)
 
 Options:
   accept  — Adopt the suggestion as-is; I will make the code change and commit.
@@ -188,6 +194,10 @@ Claude MUST NOT emit freeform replies. The reply body MUST match one of:
 - `Won't fix — <rationale>` (reject)
 
 Claude SHOULD generate the description by summarising the diff of the commit that addressed the thread.
+
+When the reviewer wrote more than once in the thread (a follow-up after an earlier reply, an objection to a fix), the one-line
+description or rationale MUST answer the **latest** ask and not contradict an earlier one that is still open. Triage `accept` /
+`partial` / `reject` for the thread as a whole, after reading every comment (#1577).
 
 ### Idempotent Unresolve
 

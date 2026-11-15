@@ -112,3 +112,20 @@ D2 と D5 を、実体にした。
 - `crates/hook-router/tests/cli.rs`
 - `crates/agent-session/src/escape.rs`
 - `home/modules/reply-coverage.nix`
+
+## Amendment (2026-11-15 — 段3: 搬送路と共有の原則を足した)
+
+D1・D6・D10 を実体化した。
+
+- 原則: 共有 AGENTS.md に、「相手のいる会話へ返すときは、会話の全文を読み、相手の未決の依頼すべてに処分を付ける」を追加した。媒体を問わず(メール、Web のメッセージ、Slack、日程調整、カレンダーの招待、GitHub、esa・Claude Docs)、Claude と Codex の両方に配られる。
+- ブラウザの媒体: 裁定ページの形式を 6 から 7 に上げ、`drafts[]` に `thread` と `asks` を必須とした。`build.sh` が下書きごとに `reply-coverage verify` を呼び、検査していない下書きを含むページを作らない。全文は `browser_snapshot` の `filename` で、ツール自身に書かせる。代行送信の直前の確認に、依頼と処分の表を追加した。
+- 日程調整・カレンダー招待: `slot-availability` に、候補を読む前に会話の全文を読む手順と、招待の説明欄を読んでから返答する手順を追加した。機械で止める口はなく、手順だけが担う(検出のみ)。
+- GitHub のレビュー: `resolve-pr-threads` が、スレッドの全コメントを取得して表示し、最後のコメントが他者のスレッドを先に扱う。新しい GraphQL(`comments(first: 100)`)は、実在の複数コメントのスレッド(公開リポジトリの PR、コメント 2 件)で、有効な応答を返すことを 2026-11-15 に確認した。
+
+### 執行点
+
+- `config/agents/AGENTS.md`
+- `config/agents/skills/inbox-adjudication/reference/verdict-page/build.sh`
+- `config/agents/skills/inbox-adjudication/reference/verdict-page/items.schema.json`
+- `config/claude/commands/resolve-pr-threads.md`
+- `crates/issue-inbox/src/collect.rs`
