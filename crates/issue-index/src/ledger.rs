@@ -324,6 +324,257 @@ pub fn pr_states_query(owner: &str, name: &str, prs: &[u64]) -> String {
     )
 }
 
+/// 台帳の本文への書き換え 1 件。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Op {
+    /// 未了の行を、`needle` を含むちょうど 1 行で見つけて `- [x]` にし、行末に結果を足す。
+    Mark { needle: String, result: String },
+    /// 新しい確認の行を、見出し `### <section>` の節に足す(節が無ければ作る)。
+    Add { section: String, line: String },
+}
+
+/// 行の中身(改行を除いたもの)と、その行末(`\n`・`\r\n`・無し)。
+fn split_eol(line: &str) -> (&str, &str) {
+    if let Some(c) = line.strip_suffix("\r\n") {
+        (c, "\r\n")
+    } else if let Some(c) = line.strip_suffix('\n') {
+        (c, "\n")
+    } else {
+        (line, "")
+    }
+}
+
+/// 結果・行の文は 1 行(改行を含まない)。台帳の本文の行の形を壊さないため。
+fn one_line(what: &str, s: &str) -> Result<String, String> {
+    let t = s.trim();
+    if t.is_empty() {
+        return Err(format!("{what}が空です"));
+    }
+    if t.contains(['\n', '\r']) {
+        return Err(format!("{what}は 1 行で書いてください(改行を含みます)"));
+    }
+    Ok(t.to_string())
+}
+
+/// 未了の行(`- [ ] `)のうち `needle` を含むちょうど 1 行を、`- [x] ` にして、行末に ` — 結果: <result>` を足す。
+/// 行頭のインデントと行末の改行(CRLF を含む)は保つ。当たる行が無い・複数ある場合は、直すための手がかり付きの `Err`。
+pub fn mark_done(body: &str, needle: &str, result: &str) -> Result<String, String> {
+    let needle = one_line("行を探す語", needle)?;
+    let result = one_line("結果", result)?;
+    let lines: Vec<&str> = body.split_inclusive('\n').collect();
+    let hits: Vec<usize> = lines
+        .iter()
+        .enumerate()
+        .filter(|(_, l)| {
+            let (c, _) = split_eol(l);
+            c.trim_start().starts_with("- [ ] ") && c.contains(&needle)
+        })
+        .map(|(i, _)| i)
+        .collect();
+    match hits.as_slice() {
+        [] => Err(format!("未了の行に「{needle}」を含むものがありません")),
+        [i] => {
+            let mut out = String::with_capacity(body.len() + result.len() + 16);
+            for (k, l) in lines.iter().enumerate() {
+                if k != *i {
+                    out.push_str(l);
+                    continue;
+                }
+                let (c, eol) = split_eol(l);
+                let indent = &c[..c.len() - c.trim_start().len()];
+                let rest = c
+                    .trim_start()
+                    .strip_prefix("- [ ] ")
+                    .unwrap_or("")
+                    .trim_end();
+                out.push_str(&format!("{indent}- [x] {rest} — 結果: {result}{eol}"));
+            }
+            Ok(out)
+        }
+        many => {
+            let heads: Vec<String> = many
+                .iter()
+                .map(|i| {
+                    let (c, _) = split_eol(lines[*i]);
+                    c.trim_start().chars().take(60).collect::<String>()
+                })
+                .collect();
+            Err(format!(
+                "「{needle}」を含む未了の行が {} 行あります。1 行に絞ってください:\n  {}",
+                many.len(),
+                heads.join("\n  ")
+            ))
+        }
+    }
+}
+
+/// 項目の行(`- [ ] ` の有無は問わない)を、台帳の形(`after:#<PR> <machine|human> — …`)に合うか確かめて、
+/// `- [ ] ` つきの 1 行にする。形に合わなければ `Err`。
+fn item_line(line: &str) -> Result<String, String> {
+    let t = one_line("項目の行", line)?;
+    let rest = t.strip_prefix("- [ ] ").unwrap_or(&t).trim();
+    if parse_item(rest).is_none() {
+        return Err(format!(
+            "項目の形に合いません(`after:#<PR> <machine|human> — <何を確かめるか>`): {rest}"
+        ));
+    }
+    Ok(format!("- [ ] {rest}"))
+}
+
+/// 新しい確認の行を、見出し `### <section>`(その語を含む見出しのうち、ちょうど 1 つ)の節に足す。
+/// 節に項目があれば最後の項目の次の行に、無ければ見出しの後の空行の次に入れる。節が無ければ、本文の末尾
+/// (署名の行 `🤖 Generated with` があればその前)に、見出しごと作る。
+pub fn add_item(body: &str, section: &str, line: &str) -> Result<String, String> {
+    let section = one_line("節の名前", section)?;
+    let item = item_line(line)?;
+    let eol = if body.contains("\r\n") { "\r\n" } else { "\n" };
+    let mut lines: Vec<String> = body.split_inclusive('\n').map(str::to_string).collect();
+    let is_heading = |l: &str| split_eol(l).0.trim_start().starts_with("### ");
+    let hits: Vec<usize> = lines
+        .iter()
+        .enumerate()
+        .filter(|(_, l)| is_heading(l) && split_eol(l).0.contains(&section))
+        .map(|(i, _)| i)
+        .collect();
+    let with_eol = |s: &str| format!("{s}{eol}");
+    match hits.as_slice() {
+        [] => {
+            // 節を作る。署名の前(無ければ末尾)に、見出し・空行・項目・空行。
+            let at = lines
+                .iter()
+                .position(|l| split_eol(l).0.starts_with("🤖 Generated with"))
+                .unwrap_or(lines.len());
+            if at == lines.len() {
+                if let Some(last) = lines.last_mut() {
+                    if !last.ends_with('\n') {
+                        last.push_str(eol);
+                    }
+                }
+            }
+            let block = [
+                with_eol(&format!("### {section}")),
+                with_eol(""),
+                with_eol(&item),
+                with_eol(""),
+            ];
+            lines.splice(at..at, block);
+        }
+        [h] => {
+            // 節の終わり(次の見出し、または末尾)までで、最後の項目の行を探す。
+            let end = lines[h + 1..]
+                .iter()
+                .position(|l| split_eol(l).0.trim_start().starts_with('#'))
+                .map_or(lines.len(), |p| h + 1 + p);
+            let last_item = (h + 1..end)
+                .rev()
+                .find(|&i| split_eol(&lines[i]).0.trim_start().starts_with("- ["));
+            let at = match last_item {
+                Some(i) => i + 1,
+                // 項目が無い節: 見出しの次の空行の次。
+                None => (h + 1..end)
+                    .find(|&i| split_eol(&lines[i]).0.trim().is_empty())
+                    .map_or(h + 1, |i| i + 1),
+            };
+            // 最後の行に改行が無いとき(本文の末尾の節)は、足してから次の行を置く。
+            if at > 0 && !lines[at - 1].ends_with('\n') {
+                lines[at - 1].push_str(eol);
+            }
+            lines.insert(at, with_eol(&item));
+        }
+        many => {
+            let heads: Vec<String> = many
+                .iter()
+                .map(|i| split_eol(&lines[*i]).0.chars().take(60).collect::<String>())
+                .collect();
+            return Err(format!(
+                "「{section}」を含む見出しが {} 個あります。1 つに絞ってください:\n  {}",
+                many.len(),
+                heads.join("\n  ")
+            ));
+        }
+    }
+    Ok(lines.concat())
+}
+
+/// `issue-index ledger` の引数(機体・書き換え・書き出し先)。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EditArgs {
+    pub host: String,
+    pub ops: Vec<Op>,
+    pub out: String,
+}
+
+/// `<host> [--mark <語> --result <結果>]… [--add <行> --section <節>]… --out <ファイル>` を読む。
+/// `--result` は直前の `--mark` の結果、`--section` は直前の `--add` の節。組が揃わない・書き換えが 0 件・
+/// `--out` が無いのは `Err`。
+pub fn parse_edit_args(args: &[String]) -> Result<EditArgs, String> {
+    let mut host = None;
+    let mut out = None;
+    let mut ops = Vec::new();
+    let mut mark: Option<String> = None;
+    let mut add: Option<String> = None;
+    let mut it = args.iter();
+    let value = |flag: &str, it: &mut std::slice::Iter<String>| -> Result<String, String> {
+        it.next()
+            .filter(|v| !v.starts_with("--"))
+            .cloned()
+            .ok_or_else(|| format!("{flag} には値を渡してください"))
+    };
+    while let Some(a) = it.next() {
+        match a.as_str() {
+            "--mark" | "--add" if mark.is_some() || add.is_some() => {
+                return Err("--mark は --result と、--add は --section と組にしてください".into());
+            }
+            "--mark" => mark = Some(value("--mark", &mut it)?),
+            "--add" => add = Some(value("--add", &mut it)?),
+            "--result" => {
+                let needle = mark
+                    .take()
+                    .ok_or("--result は --mark の後に書いてください")?;
+                let result = value("--result", &mut it)?;
+                ops.push(Op::Mark { needle, result });
+            }
+            "--section" => {
+                let line = add
+                    .take()
+                    .ok_or("--section は --add の後に書いてください")?;
+                let section = value("--section", &mut it)?;
+                ops.push(Op::Add { section, line });
+            }
+            "--out" => out = Some(value("--out", &mut it)?),
+            s if s.starts_with("--") => return Err(format!("知らない引数です: {s}")),
+            s if host.is_none() => host = Some(s.to_string()),
+            s => return Err(format!("機体の名前が 2 つあります: {s}")),
+        }
+    }
+    if mark.is_some() || add.is_some() {
+        return Err("--mark は --result と、--add は --section と組にしてください".into());
+    }
+    if ops.is_empty() {
+        return Err(
+            "書き換え(--mark/--result か --add/--section)を 1 件以上指定してください".into(),
+        );
+    }
+    Ok(EditArgs {
+        host: host.ok_or("機体の名前を指定してください")?,
+        ops,
+        out: out.ok_or("--out(書き出し先のファイル)を指定してください")?,
+    })
+}
+
+/// 書き換えを順に当てる。1 件でも失敗したら、全体を `Err`(本文は変えない)。
+pub fn apply(body: &str, ops: &[Op]) -> Result<String, String> {
+    let mut cur = body.to_string();
+    for (n, op) in ops.iter().enumerate() {
+        cur = match op {
+            Op::Mark { needle, result } => mark_done(&cur, needle, result),
+            Op::Add { section, line } => add_item(&cur, section, line),
+        }
+        .map_err(|e| format!("{} 件目の書き換え: {e}", n + 1))?;
+    }
+    Ok(cur)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -498,5 +749,200 @@ mod tests {
     fn ledger_title_matches_the_prefix() {
         assert_eq!(ledger_title("altair"), "verify-ledger: altair");
         assert!(ledger_title("vega").starts_with(LEDGER_TITLE_PREFIX));
+    }
+
+    const EDIT_BODY: &str = "台帳の説明。\n\n### 元 #1 一つ目の節\n\n- [ ] after:#10 machine — 一つ目 — check: `true`\n- [x] after:#11 machine — 済み — 結果: exit 0\n- [ ] after:#12 human — 三つ目を本人が確かめる\n\n### 元 #2 空の節\n\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n";
+
+    #[test]
+    fn mark_done_checks_the_one_matching_open_line_and_appends_the_result() {
+        let out = mark_done(EDIT_BODY, "after:#10 machine", "exit 0(2026-11-15、vega)").unwrap();
+        assert!(out.contains(
+            "- [x] after:#10 machine — 一つ目 — check: `true` — 結果: exit 0(2026-11-15、vega)\n"
+        ));
+        // ほかの行・見出し・署名は 1 バイトも変わらない。
+        let diff: Vec<_> = EDIT_BODY
+            .lines()
+            .zip(out.lines())
+            .filter(|(a, b)| a != b)
+            .collect();
+        assert_eq!(diff.len(), 1);
+        assert_eq!(parse(&out).done, parse(EDIT_BODY).done + 1);
+        assert_eq!(parse(&out).open.len(), parse(EDIT_BODY).open.len() - 1);
+        assert!(out.ends_with("claude-code)\n"));
+    }
+
+    #[test]
+    fn mark_done_rejects_no_match_many_matches_done_lines_and_multiline_text() {
+        // 当たる行が無い。済みの行(`- [x]`)には当たらない。
+        assert!(mark_done(EDIT_BODY, "存在しない語", "ok")
+            .unwrap_err()
+            .contains("ありません"));
+        assert!(mark_done(EDIT_BODY, "済み", "ok").is_err());
+        // 複数に当たる: 候補の頭を添えて、絞らせる。
+        let e = mark_done(EDIT_BODY, "after:#1", "ok").unwrap_err();
+        assert!(
+            e.contains("2 行") && e.contains("after:#10") && e.contains("after:#12"),
+            "{e}"
+        );
+        // 結果・語が空、結果が複数行。
+        assert!(mark_done(EDIT_BODY, "after:#10", "  ").is_err());
+        assert!(mark_done(EDIT_BODY, "", "ok").is_err());
+        assert!(mark_done(EDIT_BODY, "after:#10", "a\nb")
+            .unwrap_err()
+            .contains("1 行"));
+    }
+
+    #[test]
+    fn mark_done_keeps_crlf_indent_and_a_missing_final_newline() {
+        let crlf = "- [ ] after:#1 machine — a\r\n  - [ ] after:#2 machine — b";
+        let out = mark_done(crlf, "after:#1 ", "ok").unwrap();
+        assert_eq!(
+            out,
+            "- [x] after:#1 machine — a — 結果: ok\r\n  - [ ] after:#2 machine — b"
+        );
+        let out = mark_done(crlf, "after:#2 ", "ok").unwrap();
+        assert_eq!(
+            out,
+            "- [ ] after:#1 machine — a\r\n  - [x] after:#2 machine — b — 結果: ok"
+        );
+    }
+
+    #[test]
+    fn add_item_appends_after_the_last_item_of_the_section() {
+        let line = "after:#20 machine — 新しい確認 — check: `true`";
+        let out = add_item(EDIT_BODY, "元 #1", line).unwrap();
+        let want = "- [ ] after:#12 human — 三つ目を本人が確かめる\n- [ ] after:#20 machine — 新しい確認 — check: `true`\n\n### 元 #2";
+        assert!(out.contains(want), "{out}");
+        assert_eq!(parse(&out).open.len(), parse(EDIT_BODY).open.len() + 1);
+        // `- [ ] ` つきで渡しても同じ。
+        assert_eq!(
+            add_item(EDIT_BODY, "元 #1", &format!("- [ ] {line}")).unwrap(),
+            out
+        );
+    }
+
+    #[test]
+    fn add_item_to_an_empty_section_and_to_a_new_section_before_the_footer() {
+        let line = "after:- human — 空の節に足す";
+        let out = add_item(EDIT_BODY, "元 #2", line).unwrap();
+        assert!(
+            out.contains("### 元 #2 空の節\n\n- [ ] after:- human — 空の節に足す\n"),
+            "{out}"
+        );
+        // 見出しが無ければ、署名の前に節ごと作る。
+        let out = add_item(EDIT_BODY, "PR #99 の適用後", "after:#99 machine — x").unwrap();
+        assert!(
+            out.contains(
+                "\n### PR #99 の適用後\n\n- [ ] after:#99 machine — x\n\n🤖 Generated with"
+            ),
+            "{out}"
+        );
+        // 署名の無い本文の末尾(改行なし)にも作れる。
+        let out = add_item("- [x] a", "新", "after:- human — y").unwrap();
+        assert_eq!(out, "- [x] a\n### 新\n\n- [ ] after:- human — y\n\n");
+    }
+
+    #[test]
+    fn add_item_rejects_a_malformed_line_and_an_ambiguous_section() {
+        assert!(add_item(EDIT_BODY, "元 #1", "after:#1 robot — 形が違う").is_err());
+        assert!(add_item(EDIT_BODY, "元 #1", "ただの文").is_err());
+        assert!(add_item(EDIT_BODY, "元 #1", "after:#1 machine — a\nb").is_err());
+        let e = add_item(EDIT_BODY, "元 #", "after:- human — x").unwrap_err();
+        assert!(
+            e.contains("2 個") && e.contains("元 #1") && e.contains("元 #2"),
+            "{e}"
+        );
+    }
+
+    fn v(a: &[&str]) -> Vec<String> {
+        a.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn parse_edit_args_pairs_marks_with_results_and_adds_with_sections() {
+        let a = parse_edit_args(&v(&[
+            "vega",
+            "--mark",
+            "after:#1 ",
+            "--result",
+            "exit 0",
+            "--add",
+            "after:- human — x",
+            "--section",
+            "新",
+            "--out",
+            "/t/o.md",
+        ]))
+        .unwrap();
+        assert_eq!(a.host, "vega");
+        assert_eq!(a.out, "/t/o.md");
+        assert_eq!(
+            a.ops,
+            vec![
+                Op::Mark {
+                    needle: "after:#1 ".into(),
+                    result: "exit 0".into()
+                },
+                Op::Add {
+                    section: "新".into(),
+                    line: "after:- human — x".into()
+                },
+            ]
+        );
+        // 組が揃わない・順が逆・値が無い・書き換えが 0 件・出力先が無い・機体が無い。
+        for bad in [
+            v(&["vega", "--mark", "a", "--out", "o"]),
+            v(&["vega", "--result", "r", "--out", "o"]),
+            v(&[
+                "vega",
+                "--mark",
+                "a",
+                "--add",
+                "l",
+                "--section",
+                "s",
+                "--out",
+                "o",
+            ]),
+            v(&["vega", "--mark", "--result", "r", "--out", "o"]),
+            v(&["vega", "--out", "o"]),
+            v(&["vega", "--mark", "a", "--result", "r"]),
+            v(&["--mark", "a", "--result", "r", "--out", "o"]),
+            v(&[
+                "vega", "altair", "--mark", "a", "--result", "r", "--out", "o",
+            ]),
+            v(&["vega", "--nope", "--out", "o"]),
+        ] {
+            assert!(parse_edit_args(&bad).is_err(), "{bad:?}");
+        }
+    }
+
+    #[test]
+    fn apply_runs_ops_in_order_and_fails_as_a_whole() {
+        let ops = vec![
+            Op::Mark {
+                needle: "after:#10 ".into(),
+                result: "exit 0".into(),
+            },
+            Op::Add {
+                section: "元 #1".into(),
+                line: "after:#30 machine — 追加".into(),
+            },
+        ];
+        let out = apply(EDIT_BODY, &ops).unwrap();
+        let p = parse(&out);
+        assert_eq!(p.done, 2);
+        assert!(p.open.iter().any(|i| i.pr == Some(30)));
+        // 2 件目が失敗したら、全体を Err にして、件の番号を添える。
+        let bad = vec![
+            ops[0].clone(),
+            Op::Mark {
+                needle: "無い".into(),
+                result: "x".into(),
+            },
+        ];
+        assert!(apply(EDIT_BODY, &bad)
+            .unwrap_err()
+            .starts_with("2 件目の書き換え"));
     }
 }

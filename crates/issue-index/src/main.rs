@@ -154,7 +154,105 @@ fn parse(raw: &str) -> Value {
     serde_json::from_str(raw).unwrap_or(Value::Null)
 }
 
+const LEDGER_USAGE: &str = "使い方: issue-index ledger <機体> [--mark <語> --result <結果>]… [--add <行> --section <節>]… --out <ファイル>
+  確認の台帳(verify-ledger: <機体>)の本文を読み、書き換えを当てた本文を <ファイル> に書く(Issue は変えない)。
+  --mark <語> --result <結果>  未了の行のうち <語> を含むちょうど 1 行を `- [x]` にして、行末に `— 結果: <結果>` を足す
+  --add <行> --section <節>    新しい確認の行(`after:#<PR> <machine|human> — <何を確かめるか>`)を、<節>(見出しに含む語)の節に足す
+  書き出したら、gh issue edit <番号> --body-file <ファイル> で反映する(gh の認証が要るので、sandbox の外で実行する)";
+
+/// `issue-index ledger …`: 台帳の本文の書き換え(`pr-description` §6 の手順 5 の、確かめた行を `- [x]` にする変換)。
+/// 取得と書き出しだけを行い、Issue は変えない。失敗は終了コード 1(hook の縮退と違い、人とエージェントが読む)。
+fn ledger_cmd(args: &[String]) -> i32 {
+    if args.iter().any(|a| a == "-h" || a == "--help") {
+        println!("{LEDGER_USAGE}");
+        return 0;
+    }
+    let parsed = match ledger::parse_edit_args(args) {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("issue-index ledger: {e}\n{LEDGER_USAGE}");
+            return 2;
+        }
+    };
+    let project = std::env::var_os("CLAUDE_PROJECT_DIR")
+        .filter(|p| !p.is_empty())
+        .map(PathBuf::from)
+        .or_else(|| std::env::current_dir().ok());
+    let Some(project) = project else {
+        eprintln!("issue-index ledger: 作業ディレクトリを取れません");
+        return 1;
+    };
+    let remote_v = git(&project, &["remote", "-v"])
+        .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
+        .unwrap_or_default();
+    let Some(nwo) = owner_repo(&remote_v) else {
+        eprintln!("issue-index ledger: GitHub のリポジトリを特定できません(git remote -v)");
+        return 1;
+    };
+    let list = wait(gh(
+        &[
+            "issue",
+            "list",
+            "-R",
+            &nwo,
+            "--state",
+            "open",
+            "--search",
+            "verify-ledger in:title",
+            "--json",
+            "number,title,body",
+            "--limit",
+            "20",
+        ],
+        true,
+    ));
+    if !list.ok {
+        eprintln!(
+            "issue-index ledger: 台帳の取得に失敗しました(gh の認証・ネットワーク。sandbox の中では動きません): {}",
+            list.stderr.lines().next().unwrap_or("不明なエラー")
+        );
+        return 1;
+    }
+    let title = ledger::ledger_title(&parsed.host);
+    let v: Value = serde_json::from_str(&list.stdout).unwrap_or(Value::Null);
+    let Some(issue) = v.as_array().and_then(|a| {
+        a.iter()
+            .find(|i| i.get("title").and_then(Value::as_str) == Some(title.as_str()))
+    }) else {
+        eprintln!("issue-index ledger: open な台帳「{title}」が {nwo} にありません");
+        return 1;
+    };
+    let number = issue.get("number").and_then(Value::as_u64).unwrap_or(0);
+    let body = issue.get("body").and_then(Value::as_str).unwrap_or("");
+    let new_body = match ledger::apply(body, &parsed.ops) {
+        Ok(b) => b,
+        Err(e) => {
+            eprintln!("issue-index ledger: {e}(本文は書き出していません)");
+            return 1;
+        }
+    };
+    if let Err(e) = std::fs::write(&parsed.out, &new_body) {
+        eprintln!("issue-index ledger: {} に書けません: {e}", parsed.out);
+        return 1;
+    }
+    let (before, after) = (ledger::parse(body), ledger::parse(&new_body));
+    println!(
+        "台帳 #{number}({title})の本文を {} に書き出しました: 済み {} → {}、未了 {} → {}。反映: gh issue edit {number} -R {nwo} --body-file {}",
+        parsed.out,
+        before.done,
+        after.done,
+        before.open.len(),
+        after.open.len(),
+        parsed.out
+    );
+    0
+}
+
 fn main() {
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    if args.first().map(String::as_str) == Some("ledger") {
+        std::process::exit(ledger_cmd(&args[1..]));
+    }
     if !process_control::command_exists("gh") {
         return;
     }
