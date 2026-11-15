@@ -146,7 +146,8 @@
     "preference",
     "one-off",
     "existing-suffices",
-    "misread-signal"
+    "misread-signal",
+    "moved"
   ],
   "calibration": {
     "min_dropped": 3,

@@ -131,7 +131,8 @@ backlog-cleanup 側で再定義しない(ADR-0027)。
 retro の `codify` などの行は、兆候(`signal`)・手段(`mechanism`)・既存手段(`existing`)を構造のまま
 Inbox のノートに載せる。`signal` を持つノートを `dropped` にするときは、`--set-status ... dropped --reason <理由>` の
 `<理由>` に閉語彙(`semantic-judgment` / `unobservable` / `preference` / `one-off` / `existing-suffices` /
-`misread-signal`)を 1 つ書く。自由記述にしない理由は、後から数えるため。日次の `promotion-detect` が兆候ごとの
+`misread-signal` / `moved`)を 1 つ書く。`moved` は、直す場所が別のリポジトリなので、そのリポジトリの inbox へ移したときの
+理由で、採用でも却下でもないので、日次の較正は数えない。自由記述にしない理由は、後から数えるため。日次の `promotion-detect` が兆候ごとの
 採用(`fixed`・`issued`)と却下を数え、却下が続く兆候の定義を直す候補を Inbox に戻す(段 6)。`signal` を持たない
 旧い気づきは、理由なしで `dropped` にできる。理由は vault のノートにだけ残る(jsonl の機体には記録先が無い)。
 

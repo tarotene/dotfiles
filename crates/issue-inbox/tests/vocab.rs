@@ -48,7 +48,7 @@ fn examples_are_adr_or_issue_numbers_of_this_repository() {
 }
 
 #[test]
-fn drop_reasons_are_the_closed_six() {
+fn drop_reasons_are_the_closed_seven() {
     let v = Vocabulary::get();
     assert_eq!(
         v.drop_reasons,
@@ -58,7 +58,8 @@ fn drop_reasons_are_the_closed_six() {
             "preference",
             "one-off",
             "existing-suffices",
-            "misread-signal"
+            "misread-signal",
+            "moved"
         ]
     );
 }
