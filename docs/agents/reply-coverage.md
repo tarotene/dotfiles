@@ -17,7 +17,7 @@
 |---|---|
 | CLI `reply-coverage`(`import`・`check`・`verify`・`bench`・`sweep`) | 実装済み |
 | 架空の見本 11 件と、決定論的なテスト | 実装済み |
-| Gmail の `get_thread` の応答を保存する hook、返信の下書きの作成口の関所 | 未実装(意図あり。ADR の段2) |
+| Gmail の `get_thread` の応答を保存する hook、返信の下書きの作成口の関所、配線(`home/modules/reply-coverage.nix`) | 実装済み(段2) |
 | 共有の指示(AGENTS.md)・各手順書・裁定ページの生成での検査 | 未実装(意図あり。ADR の段3) |
 | 実物の見本による検出精度の計測と、既定のモデルの決定 | 未実装(意図あり。ADR の段4) |
 
@@ -66,7 +66,23 @@ reply-coverage sweep
 
 実際の引数は `crates/reply-coverage/src/backend.rs`。依頼文は標準入力で渡す。実行ファイルは環境変数
 `REPLY_COVERAGE_CLAUDE_BIN` で差し替えられる(テスト用)。`claude` はネットワークと認証に届く必要があるので、
-Claude Code の sandbox の外で動かす(`ja-polish` と同じ。登録は段2)。
+Claude Code の sandbox の外で動かす(`ja-polish` と同じ。`home/modules/claude.nix` の `excludedCommands` に `reply-coverage *`、
+Codex は `home/modules/codex.nix` の rules)。sandbox の中では `Not logged in` で失敗し、api.anthropic.com への通信が拒否される(2026-11-15 に実測)。
+
+## 止める口と逃げ道(段2)
+
+- **会話の全文の保存**(PostToolUse の規則 `reply-thread-snapshot`): Gmail の `get_thread` の応答から、会話の全文を保存する。
+  エージェントに書き写させない。メッセージの id の索引を持ち、返信の `replyToMessageId` から会話を引く。
+- **下書きの作成口の関所**(PreToolUse の規則 `reply-coverage-gate`): Gmail の `create_draft`・`update_draft`・`reply` のうち、
+  返信先(`replyToMessageId`)を持つ呼び出しを、`verify` が通らなければ拒否する。拒否の文面は、次の一手(会話を取得する、
+  `check` を実行する、未回答の依頼に答える)を書く。返信でない新規の下書き・送信・転送は対象外。記録を引くだけで LLM は呼ばない。
+- 有効にした機体(`~/.config/dotfiles/reply-coverage` の目印がある機体。`home/modules/reply-coverage.nix` が既定で置く)だけで働く。
+  目印が無ければ何もしない。判定不能(状態の置き場が無い、入力の形が違う)は、拒否に変えず通す。
+- **逃げ道**: `SKIP_REPLY_COVERAGE_GATE=1`(セッションの環境変数)。検出が使えない(通信・認証の失敗)とき、本人が決めて使う。
+- 順序: 本文を書く → `ja-polish` → `reply-coverage check`(最終稿のファイル) → 下書きの作成。最終稿の sha で、両方の関所が照合する。
+- 既知の穴: Codex の MCP 名(`mcp__codex_apps__gmail_…`)は、規則の一致が未確認(ja-polish の関所と同じ穴)。Slack の下書きは、入力の
+  スレッド返信を示す欄が未確認(この機体に Slack の MCP が無い)なので、規則に載せていない。ブラウザの媒体・日程調整・招待・GitHub は、
+  搬送路が違い、段3 で扱う。
 
 ## 状態の置き場(`~/.local/state/claude/reply-coverage/`)
 

@@ -89,24 +89,40 @@ let
   # Codex's rules (`~/.codex/rules/*.rules`, restart Codex to reload): `allow` runs a matching command
   # outside the sandbox without prompting. ja-polish needs its API key and Google, which the Codex
   # sandbox reaches neither, so every paragraph passed through unrewritten (#1386). The counterpart of
-  # `ja-polish *` in claude.nix's excludedCommands. Only where ja-polish is enabled.
+  # `ja-polish *` in claude.nix's excludedCommands. Only where ja-polish is enabled. `reply-coverage` is
+  # the same case (it calls `claude -p`), only where reply-coverage is enabled.
   # OpenAI, Codex Rules, https://learn.chatgpt.com/docs/agent-configuration/rules (retrieved 2026-11-10;
   # marked "experimental": the syntax may change). The page does not say whether network_proxy and
   # credential_masking apply to a command that runs outside the sandbox (unconfirmed).
-  codexRules = ''
-    prefix_rule(
-        pattern = ["ja-polish"],
-        decision = "allow",
-        justification = "ja-polish rewrites Japanese prose through Gemini and needs its API key and network access (docs/agents/ja-polish.md)",
-        match = [
-            "ja-polish docs/agents/ja-polish.md",
-            "ja-polish stop-gate",
-        ],
-        not_match = [
-            "ja-polish-other docs/x.md",
-        ],
-    )
-  '';
+  codexRules =
+    lib.optionalString config.dotfiles.jaPolish.enable ''
+      prefix_rule(
+          pattern = ["ja-polish"],
+          decision = "allow",
+          justification = "ja-polish rewrites Japanese prose through Gemini and needs its API key and network access (docs/agents/ja-polish.md)",
+          match = [
+              "ja-polish docs/agents/ja-polish.md",
+              "ja-polish stop-gate",
+          ],
+          not_match = [
+              "ja-polish-other docs/x.md",
+          ],
+      )
+    ''
+    + lib.optionalString config.dotfiles.replyCoverage.enable ''
+      prefix_rule(
+          pattern = ["reply-coverage"],
+          decision = "allow",
+          justification = "reply-coverage calls claude -p to check that a reply answers every open ask, and needs the network and the credentials the sandbox hides (docs/agents/reply-coverage.md)",
+          match = [
+              "reply-coverage check --thread gmail:x --draft /tmp/d",
+              "reply-coverage verify --thread gmail:x --draft /tmp/d",
+          ],
+          not_match = [
+              "reply-coverage-other check",
+          ],
+      )
+    '';
 
 in
 {
@@ -187,9 +203,11 @@ in
       # pipeline-node: agent-settings-reconcile
       run ${settingsReconcile} codex-config "$HOME/.codex/config.toml" ${lib.escapeShellArg codexConfigSpec}
     '';
-    home.file.".codex/rules/dotfiles.rules" = lib.mkIf config.dotfiles.jaPolish.enable {
-      text = codexRules;
-    };
+    home.file.".codex/rules/dotfiles.rules" =
+      lib.mkIf (config.dotfiles.jaPolish.enable || config.dotfiles.replyCoverage.enable)
+        {
+          text = codexRules;
+        };
     home.file.".codex/AGENTS.md".text =
       builtins.readFile (repoConfig + "/agents/AGENTS.md")
       + "\n"

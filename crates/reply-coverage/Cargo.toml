@@ -10,6 +10,7 @@ description = "相手のいる会話への返信が、相手の未決の依頼�
 # 検出と記録を行い、下書きの作成口の関所(PreToolUse、hook-router の規則。docs/agents/reply-coverage.md)は
 # 同じ lib の `verify` を呼ぶ。記録の形式と判定を 1 か所に保つため。
 [dependencies]
+agent-session = { version = "0.1.0", path = "../agent-session" }
 process-control = { version = "0.1.0", path = "../process-control" }
 process-env = { version = "0.1.0", path = "../process-env" }
 serde = { workspace = true, features = ["derive"] }

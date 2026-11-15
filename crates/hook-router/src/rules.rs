@@ -229,6 +229,19 @@ pub static RULES: &[Rule] = &[
         budget: S10,
         run: |agent, raw| ja_polish::gate::hook(agent, raw),
     },
+    // 返信の下書きの作成口で、会話を読んでいない・相手の依頼への応答を検査していない呼び出しを拒否する。
+    // 本文の取り出しは ja-polish が持つ正本(`mcp_text`)。記録を引くだけで LLM は呼ばない(docs/agents/reply-coverage.md)。
+    Rule {
+        node: "reply-coverage-gate",
+        event: Event::Pre,
+        tools: Tools::Mcp,
+        budget: S10,
+        run: |agent, raw| {
+            reply_coverage::hook::pre(agent, raw, |tool, input| {
+                ja_polish::gate::mcp_text(tool, input).map(|(_, text)| text)
+            })
+        },
+    },
     // 書き込み前の基点と、触れた文書の一覧を残す(判定はしない。設定ファイルが無い機体では何もしない)。
     Rule {
         node: "ja-polish-snapshot",
@@ -308,6 +321,14 @@ pub static RULES: &[Rule] = &[
         tools: Tools::Bash,
         budget: S10,
         run: adr_number::hook_for,
+    },
+    // Gmail の `get_thread` の応答から、会話の全文を機体ローカルに保存する(エージェントに書き写させない)。
+    Rule {
+        node: "reply-thread-snapshot",
+        event: Event::Post,
+        tools: Tools::Mcp,
+        budget: S10,
+        run: |agent, raw| reply_coverage::hook::post(agent, raw),
     },
     Rule {
         node: "new-tool-guard-record",

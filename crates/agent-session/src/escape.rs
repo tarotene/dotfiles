@@ -155,6 +155,13 @@ pub const JA_POLISH_GATE: Hatch = hatch(
     false,
     "docs/agents/ja-polish.md",
 );
+pub const REPLY_COVERAGE_GATE: Hatch = hatch(
+    "REPLY_COVERAGE_GATE",
+    false,
+    false,
+    false,
+    "docs/agents/reply-coverage.md",
+);
 // セッション単位 + skip ファイル(案内しない)。
 pub const PLAN_SCOPE_GATE: Hatch = hatch(
     "PLAN_SCOPE_GATE",
@@ -229,6 +236,7 @@ pub const ALL: &[&Hatch] = &[
     &DECISION_COLOCATION_GUARD,
     &EXTERNAL_SEND_GUARD,
     &JA_POLISH_GATE,
+    &REPLY_COVERAGE_GATE,
     &PLAN_SCOPE_GATE,
     &PLAN_PRECEDENT_GATE,
     &PLAN_FRESH_GATE,
@@ -356,7 +364,7 @@ mod tests {
             );
             assert!(h.doc.ends_with(".md"), "{}", h.doc);
         }
-        assert_eq!(ALL.len(), 21);
+        assert_eq!(ALL.len(), 22);
     }
 
     #[test]
