@@ -35,7 +35,10 @@ PR を作ったセッション、またはその場で書いたコードの痕�
   次から防ぐのに実際に効く最も上位の手段(`eliminate` > `unrepresentable` > `gate` > `tool` >
   `prose`)。`signal` で理由(兆候)を選び、その既定の段と違う段には `level_reason` を書く。
   `prose` 以外の段は `existing`(採用|拡張|自前)と `searched` も要る。リポジトリ内は必ず探し、
-  外部は `自前` のときだけ 1 回探す。すでに gate があるのに漏れたなら
+  外部は `自前` のときだけ 1 回探す。`searched` は、範囲の名前だけでなく、見つけたものを `<範囲>:<名前>` で
+  書く(`crates:issue-index`、`skills:retro`、何も当たらなければ `inbox:none`)。範囲の名前だけの候補は、
+  「既存で足りた」で却下される例が続いた(5・6・8 件と増えた)。`自前` にする前に、検討した既存の仕組みを 1 つ挙げ、
+  なぜ足りないかを `what` に書く。すでに gate があるのに漏れたなら
   `existing:<名前>` とし、その gate の欠陥として `what` に名前を書く。語彙と事例は
   `docs/agents/codify-signals.md`(手順書の出力にも兆候の一覧が出る)。
 - **気付き(insight)**: 次に効く発見。仕組みにするほどでなければ `disposition: none:<理由>`。
