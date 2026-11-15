@@ -27,8 +27,10 @@ const VOCABULARY_JSON: &str = include_str!("../../../config/agents/mail-lifecycl
 
 /// この日付より前のノートの `mail` 行は、旧い文法(PR #1256)なので畳み込まない。
 pub const MAIL_SINCE: &str = "2026-10-30";
-/// `mail` の出典の媒体(閉語彙)。`none` は件数をまとめた行など、特定のスレッドを指さない行。
-pub const MAIL_CHANNELS: [&str; 4] = ["gmail", "linkedin", "lapras", "none"];
+/// `mail` の出典の媒体(閉語彙)。`none` は件数をまとめた行など、特定のスレッドを指さない行。`slack` は、
+/// 会社側の連絡の媒体(ADR-1573。個人側には無い。語彙は両側で同じにそろえる)。Gmail 以外の媒体と同じく、
+/// 受信は画面に出る受信日時(`YYYYMMDDTHHMM`)を書く。
+pub const MAIL_CHANNELS: [&str; 5] = ["gmail", "linkedin", "lapras", "slack", "none"];
 /// `mail` の要旨の最大文字数。
 pub const MAIL_SUMMARY_MAX_CHARS: usize = 120;
 
@@ -1262,6 +1264,13 @@ mod tests {
         assert_eq!(l.tag.key().as_deref(), Some("gmail:19a2b/19a2c"));
         assert_eq!(l.tag.due, parse_date("2026-11-28"));
         assert!(parse_mail("draft: 返信を用意 [linkedin:2-abc=/20261029T2307]").is_ok());
+        // Slack: チャンネルの ID とスレッドの ts(`.` を `-` にしたもの)、受信は Gmail 以外と同じ受信日時。
+        let sl = parse_mail("ask: 会社側の連絡 [slack:C0123ABCD-1763012345-000100/20261115T1432]")
+            .unwrap();
+        assert_eq!(
+            sl.tag.key().as_deref(),
+            Some("slack:C0123ABCD-1763012345-000100/20261115T1432")
+        );
         assert!(parse_mail("read: 約 490 件を読んだ [none]").is_ok());
         let mv = parse_mail("move: 予算の方針へ [gmail:t/m to:example/repo#564]").unwrap();
         assert_eq!(mv.tag.to, Some(Dest::Issue("example/repo#564".into())));
@@ -1274,6 +1283,9 @@ mod tests {
             "read: 旧い文法 [gmail:abc123]",
             "read: 受信が無い [gmail:t/]",
             "draft: 受信日時が違う [linkedin:abc/2026-10-29]",
+            "ask: Slack の受信は受信日時 [slack:C0123ABCD/1763012345.000100]",
+            "ask: スレッドの ts の . は鍵に使えない [slack:C0123ABCD.1763012345/20261115T1432]",
+            "ask: 媒体の語彙の外 [teams:t/20261115T1432]",
             "ask: 日付が違う [gmail:t/m due:2026-02-30]",
             "ask: to は move だけ [gmail:t/m to:example/repo#1]",
             "move: 移し先が無い [gmail:t/m]",
