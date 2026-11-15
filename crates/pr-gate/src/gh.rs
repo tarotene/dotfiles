@@ -26,6 +26,35 @@ pub fn pr_for_branch_any_state(nwo: &str, branch: &str) -> Option<String> {
     .map(|s| if s.is_empty() { "[]".to_string() } else { s })
 }
 
+/// G_unpushed 用: この head ブランチで merged になった PR の `headRefOid`(新しい順に最大 10 件)。
+/// squash マージでは、PR の head の commit は default branch に別の SHA で入るので、ローカルに残った
+/// 元の commit は、upstream との差では「未 push」に見える。PR の head と同じ SHA なら、push 済みである。
+/// gh 失敗は `None`。
+pub fn merged_head_oids(nwo: &str, branch: &str) -> Option<Vec<String>> {
+    let json = gh_ok(&[
+        "pr",
+        "list",
+        "-R",
+        nwo,
+        "--head",
+        branch,
+        "--state",
+        "merged",
+        "--limit",
+        "10",
+        "--json",
+        "headRefOid",
+    ])?;
+    let value: serde_json::Value = serde_json::from_str(&json).ok()?;
+    Some(
+        value
+            .as_array()?
+            .iter()
+            .filter_map(|pr| pr.get("headRefOid")?.as_str().map(str::to_string))
+            .collect(),
+    )
+}
+
 /// G_stack 用: open PR の一覧(head/base のチェーンをたどる材料)。
 pub fn open_prs(nwo: &str) -> Option<String> {
     github_command::exec::open_prs(nwo, "number,headRefName,baseRefName")
