@@ -7,11 +7,74 @@
 
 use process_control::{spawn_group, wait_with_timeout};
 use regex::Regex;
+use serde_json::json;
+use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::io::{Read, Write};
+use std::path::Path;
 use std::process::{Command, Stdio};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::OnceLock;
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
+
+/// 依頼と応答の記録の置き場を指す環境変数(`ja-polish --trace <dir>` も同じ値を設定する)。
+/// 立てたときだけ、`llm` を呼ぶたびに 1 ファイルを書く(既定は何も書かない)。
+pub const TRACE_ENV: &str = "JA_POLISH_TRACE_DIR";
+
+/// 依頼 1 回の記録(`TRACE_ENV` の置き場に 1 ファイル)。
+struct Trace<'a> {
+    req: &'a Request<'a>,
+    /// `llm` の標準出力・標準エラー。
+    stdout: &'a [u8],
+    stderr: &'a [u8],
+    /// `ok`・`failed`・`timeout`。
+    outcome: &'static str,
+    exit_code: Option<i32>,
+}
+
+/// 依頼と応答を、`dir` に 1 依頼 1 ファイル(JSON、所有者だけが読める)で書く。書けなくても依頼は止めない。
+///
+/// `llm` の終了コードは、ここでなく呼び出し元が見る(`tee` を挟むと終了コードが `tee` のものになり、失敗が
+/// 成功に見えた、という 2026-11-12 の実測の再発を、組み込みの記録にして避ける)。指示文(文体規約の全文を含む)は
+/// 書かず、長さと SHA-256 だけを残す。依頼文と応答には、文書の本文(コード・URL は伏せ字)が入る。
+fn write_trace(dir: &Path, t: &Trace) {
+    use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
+    static SEQ: AtomicU64 = AtomicU64::new(0);
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default();
+    let rec = json!({
+        "ts_unix": now.as_secs(),
+        "model": t.req.model,
+        "thinking_level": t.req.thinking_level,
+        "timeout_secs": t.req.timeout.as_secs(),
+        "outcome": t.outcome,
+        "exit_code": t.exit_code,
+        "system_chars": t.req.system.chars().count(),
+        "system_sha256": format!("{:x}", Sha256::digest(t.req.system.as_bytes())),
+        "user": t.req.user,
+        "stdout": String::from_utf8_lossy(t.stdout),
+        "stderr": String::from_utf8_lossy(t.stderr),
+    });
+    let name = format!(
+        "{}-{}-{}.json",
+        now.as_millis(),
+        std::process::id(),
+        SEQ.fetch_add(1, Ordering::Relaxed)
+    );
+    let _ = std::fs::DirBuilder::new()
+        .recursive(true)
+        .mode(0o700)
+        .create(dir);
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(0o600)
+        .open(dir.join(name))
+    {
+        let _ = f.write_all(rec.to_string().as_bytes());
+    }
+}
 
 /// 依頼の失敗の種類。再依頼してよいかを、理由の文字列でなく型で持つ(判定は [`classify_stderr`] の 1 か所)。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -117,6 +180,24 @@ impl Backend for LlmCli {
         let out = reader.join().unwrap_or_default();
         let err = err_reader.join().unwrap_or_default();
         let _ = writer.join();
+
+        if let Some(dir) = std::env::var_os(TRACE_ENV).filter(|d| !d.is_empty()) {
+            let (outcome, exit_code) = match status {
+                None => ("timeout", None),
+                Some(st) if st.success() => ("ok", st.code()),
+                Some(st) => ("failed", st.code()),
+            };
+            write_trace(
+                Path::new(&dir),
+                &Trace {
+                    req,
+                    stdout: &out,
+                    stderr: &err,
+                    outcome,
+                    exit_code,
+                },
+            );
+        }
 
         match status {
             None => Err(LlmError::new(
@@ -232,13 +313,36 @@ fn para_re() -> &'static Regex {
     })
 }
 
+/// `<para>` の中身全体が `<text>…</text>` の囲みなら、囲みを外した本文を返す。依頼文は `<text>` で本文を
+/// 囲んで送るので、応答の書式(`<para>` だけ)を守らずに、依頼の囲みごと返すモデルがある
+/// (予備のモデルで起きたと見られる。2026-11-13・11-14 に、全段落が「応答に依頼の書式が混ざっています」で
+/// 素通しになった)。`<before>`・`<after>`(参考の段落)が混ざる応答は、本文を取り違えうるので外さない。
+fn unwrap_text(s: &str) -> &str {
+    let t = s.trim_matches(['\n', '\r']);
+    match t
+        .strip_prefix("<text>")
+        .and_then(|r| r.strip_suffix("</text>"))
+    {
+        Some(inner)
+            if !["<text>", "</text>", "<before>", "<after>"]
+                .iter()
+                .any(|tag| inner.contains(tag)) =>
+        {
+            inner.trim_matches(['\n', '\r'])
+        }
+        _ => s,
+    }
+}
+
 /// 応答から `<para n="K">…</para>` を取り出す。番号(1 始まり)→ 本文。同じ番号が複数あれば
-/// 最初のもの。前置きやコードブロックの囲みがあっても読める。
+/// 最初のもの。前置きやコードブロックの囲みがあっても読める。`<para>` の中の `<text>` の囲みは外す
+/// (非公開の `unwrap_text`)。
 pub fn parse_response(resp: &str) -> HashMap<usize, String> {
     let mut map = HashMap::new();
     for c in para_re().captures_iter(resp) {
         if let Ok(n) = c[1].parse::<usize>() {
-            map.entry(n).or_insert_with(|| c[2].to_string());
+            map.entry(n)
+                .or_insert_with(|| unwrap_text(&c[2]).to_string());
         }
     }
     map
@@ -278,6 +382,73 @@ mod tests {
         assert_eq!(map[&1], "一つ目。\n二行目。");
         assert_eq!(map[&2], "二つ目");
         assert!(parse_response("何も無い").is_empty());
+    }
+
+    #[test]
+    fn parse_response_unwraps_a_text_tag_around_the_whole_content() {
+        let resp = "<para n=\"1\">\n<text>\n一つ目。\n二行目。\n</text>\n</para>\n<para n=\"2\"><text>二つ目</text></para>";
+        let map = parse_response(resp);
+        assert_eq!(map[&1], "一つ目。\n二行目。");
+        assert_eq!(map[&2], "二つ目");
+    }
+
+    #[test]
+    fn parse_response_keeps_a_text_tag_it_cannot_unwrap_safely() {
+        // 参考の段落(<before>・<after>)が混ざる、または囲みが入れ子・途中にあるものは、外さない
+        // (本文を取り違えうる)。照合(verify)が書式の混入として落とす。
+        for src in [
+            "<para n=\"1\">\n<before>\n前\n</before>\n<text>\n本文\n</text>\n</para>",
+            "<para n=\"1\">\n<text>\n<text>\n本文\n</text>\n</text>\n</para>",
+            "<para n=\"1\">前置き\n<text>\n本文\n</text>\n</para>",
+        ] {
+            let body = &parse_response(src)[&1];
+            assert!(body.contains("<text>"), "{body}");
+        }
+    }
+
+    #[test]
+    fn write_trace_writes_one_private_json_per_request_without_the_system_prompt() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let trace_dir = dir.path().join("nested").join("trace");
+        let req = Request {
+            model: "m1",
+            thinking_level: Some("low"),
+            system: "秘密の文体規約の全文",
+            user: "依頼文の本文",
+            timeout: Duration::from_secs(45),
+        };
+        for outcome in ["ok", "failed"] {
+            write_trace(
+                &trace_dir,
+                &Trace {
+                    req: &req,
+                    stdout: "応答".as_bytes(),
+                    stderr: b"Error: quota",
+                    outcome,
+                    exit_code: Some(1),
+                },
+            );
+        }
+        let mut files: Vec<_> = std::fs::read_dir(&trace_dir)
+            .unwrap()
+            .map(|e| e.unwrap().path())
+            .collect();
+        assert_eq!(files.len(), 2, "1 依頼 1 ファイル(名前が重ならない)");
+        files.sort();
+        let meta = std::fs::metadata(&files[0]).unwrap();
+        assert_eq!(meta.permissions().mode() & 0o777, 0o600);
+        let text = std::fs::read_to_string(&files[0]).unwrap();
+        let v: serde_json::Value = serde_json::from_str(&text).unwrap();
+        assert_eq!(v["model"], "m1");
+        assert_eq!(v["thinking_level"], "low");
+        assert_eq!(v["user"], "依頼文の本文");
+        assert_eq!(v["stdout"], "応答");
+        assert_eq!(v["stderr"], "Error: quota");
+        assert_eq!(v["exit_code"], 1);
+        assert_eq!(v["system_chars"], 10);
+        assert!(!text.contains("秘密の文体規約"), "指示文は書かない");
+        assert_eq!(v["system_sha256"].as_str().unwrap().len(), 64);
     }
 
     #[test]

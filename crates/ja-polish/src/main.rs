@@ -2,7 +2,9 @@
 //!
 //! 使い方:
 //!   ja-polish --stdin [--dry-run]               標準入力の本文を書き直して標準出力へ(報告は標準エラー)
-//!   ja-polish [--dry-run] [--no-baseline] FILE… ファイルをその場で書き直す
+//!   ja-polish [--dry-run] [--no-baseline] [--trace DIR] FILE…
+//!                                               ファイルをその場で書き直す。`--trace` は、`llm` への依頼と応答を
+//!                                               DIR に 1 依頼 1 ファイルで書く(原因の調査用。既定では書かない)
 //!   ja-polish --check [--no-baseline] FILE…|-   未通過の日本語の段落を一覧する(あれば終了コード 1)
 //!   ja-polish stop-gate                         Stop hook: 標準入力の Stop の入力を読み、通していない
 //!                                               文書があれば {"decision":"block"} を出す(常に終了コード 0)
@@ -25,7 +27,7 @@ use std::process::ExitCode;
 
 const USAGE: &str = "使い方:
   ja-polish --stdin [--dry-run]
-  ja-polish [--dry-run] [--no-baseline] FILE…
+  ja-polish [--dry-run] [--no-baseline] [--trace DIR] FILE…
   ja-polish --check [--no-baseline] FILE…|-
   ja-polish stop-gate   (Stop hook。標準入力の JSON を読む)
   ja-polish bench LIST [--variants model[@level],…]   (固定の見本で測る。書き換えない)";
@@ -36,18 +38,28 @@ struct Opts {
     check: bool,
     dry_run: bool,
     no_baseline: bool,
+    /// `--trace <dir>`: 依頼と応答を、この置き場に 1 依頼 1 ファイルで書く(`llm::TRACE_ENV` と同じ)。
+    trace: Option<String>,
     inputs: Vec<String>,
 }
 
 fn parse(args: &[String]) -> Result<Opts, String> {
     let mut o = Opts::default();
-    for a in args {
+    let mut it = args.iter();
+    while let Some(a) = it.next() {
         match a.as_str() {
             "--stdin" => o.stdin = true,
             "--check" => o.check = true,
             "--dry-run" => o.dry_run = true,
             "--no-baseline" => o.no_baseline = true,
+            "--trace" => match it.next() {
+                Some(d) if !d.is_empty() && !d.starts_with("--") => o.trace = Some(d.clone()),
+                _ => return Err("--trace には、記録を書く置き場を渡してください".to_string()),
+            },
             "-h" | "--help" => return Err(String::new()),
+            s if s.starts_with("--trace=") && s.len() > "--trace=".len() => {
+                o.trace = Some(s["--trace=".len()..].to_string());
+            }
             s if s.starts_with("--") => return Err(format!("知らない引数です: {s}")),
             s => o.inputs.push(s.to_string()),
         }
@@ -92,6 +104,12 @@ fn main() -> ExitCode {
             return ExitCode::from(2);
         }
     };
+
+    // 記録の置き場。ここで環境変数に写すのは、`llm` を呼ぶ層(`LlmCli`)が環境変数 1 本で決める形にして、
+    // 呼び出し元(書き直し・bench)に引数を通さないため。
+    if let Some(d) = &opts.trace {
+        std::env::set_var(ja_polish::llm::TRACE_ENV, d);
+    }
 
     let mut cfg = config::load().unwrap_or_default();
     if let Some(m) = std::env::var("JA_POLISH_MODEL")
@@ -368,6 +386,19 @@ mod tests {
         assert_eq!(o.inputs, vec!["a.md", "b.md"]);
         let o = parse(&v(&["--check", "-"])).unwrap();
         assert!(o.check && o.inputs == vec!["-"]);
+    }
+
+    #[test]
+    fn parse_reads_trace_as_a_value_flag() {
+        let o = parse(&v(&["--trace", "/t/dir", "a.md"])).unwrap();
+        assert_eq!(o.trace.as_deref(), Some("/t/dir"));
+        assert_eq!(o.inputs, vec!["a.md"], "置き場はファイルの一覧に入らない");
+        let o = parse(&v(&["--trace=/t/dir", "a.md"])).unwrap();
+        assert_eq!(o.trace.as_deref(), Some("/t/dir"));
+        // 値が無い・別のフラグが続く形は、誤りにする(ファイルを置き場と取り違えない)。
+        assert!(parse(&v(&["a.md", "--trace"])).is_err());
+        assert!(parse(&v(&["--trace", "--dry-run", "a.md"])).is_err());
+        assert!(parse(&v(&["--trace=", "a.md"])).is_err());
     }
 
     #[test]

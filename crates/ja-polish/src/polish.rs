@@ -158,6 +158,28 @@ fn verify(input: &str, output: &str) -> Result<String, String> {
     Ok(out.to_string())
 }
 
+/// 応答の先頭として理由に添える文字数。
+const HEAD_CHARS: usize = 200;
+
+/// 素通しの理由に、答えたモデルと(`head` があれば)応答の先頭を添える。
+///
+/// 予備のモデルに切り替わった場面で、応答の書式が崩れることがある(2026-11-13・11-14 に、全段落が
+/// 「応答に依頼の書式が混ざっています」で素通しになったが、原因は未確認)。次の発生で、どのモデルが
+/// どんな応答を返したかを、理由から読めるようにする。応答の本文は、コード・URL が伏せ字のままで、改行は `⏎` にする。
+fn annotate(reason: String, model: &str, head: Option<&str>) -> String {
+    match head {
+        Some(h) => {
+            let head: String = h
+                .chars()
+                .take(HEAD_CHARS)
+                .map(|c| if c == '\n' || c == '\r' { '⏎' } else { c })
+                .collect();
+            format!("{reason}(モデル {model}。応答の先頭: 「{head}」)")
+        }
+        None => format!("{reason}(モデル {model})"),
+    }
+}
+
 /// 通った段落: 照合に通った本文(伏せ字つき)と、それを答えたモデル(記録の `model` になる)。
 #[derive(Debug, Clone)]
 struct Verified {
@@ -294,8 +316,17 @@ fn process_chunk(
                 let mut next = Vec::new();
                 for (pos, &p) in todo.iter().enumerate() {
                     let verdict = match parsed.get(&(pos + 1)) {
-                        None => Err("応答に該当する段落がありません".to_string()),
-                        Some(out) => verify(&base[ks[p]], out),
+                        None => Err(annotate(
+                            "応答に該当する段落がありません".to_string(),
+                            &model,
+                            Some(&resp),
+                        )),
+                        Some(out) => verify(&base[ks[p]], out).map_err(|reason| {
+                            // 応答の書式が崩れたときだけ、先頭を添える(原因の特定に要る。伏せ字の欠けなどは、
+                            // 段落の本文を理由に載せない)。
+                            let head = reason.contains("依頼の書式").then_some(out.as_str());
+                            annotate(reason, &model, head)
+                        }),
                     };
                     if verdict.is_err() {
                         next.push(p);
@@ -809,8 +840,50 @@ mod tests {
         let fake = Fake::new(vec![ok(bad), ok(bad)]);
         let r = run(text, None, &fake);
         assert_eq!(r.text, text);
-        assert_eq!(r.skipped(), vec!["数値の集合が変わりました"]);
+        // 答えたモデルを添える。応答の本文は、書式が崩れたとき以外は載せない。
+        assert_eq!(r.skipped(), vec!["数値の集合が変わりました(モデル m)"]);
         assert!(!r.entries[0].transient, "照合の外れは一時的ではない");
+    }
+
+    #[test]
+    fn a_response_wrapped_in_the_request_text_tag_is_unwrapped_and_passes() {
+        // 依頼の囲み(<text>)ごと返すモデルの応答。外して読めば、通る。
+        let text = "翻訳調の文章を直すことができる。\n";
+        let fake = Fake::new(vec![ok(
+            "<para n=\"1\">\n<text>\n翻訳調の文章を直せる。\n</text>\n</para>",
+        )]);
+        let r = run(text, None, &fake);
+        assert_eq!(r.text, "翻訳調の文章を直せる。\n");
+        assert_eq!(r.paras[0].status, Status::Polished);
+        assert_eq!(fake.calls().len(), 1, "再依頼にならない");
+    }
+
+    #[test]
+    fn a_format_failure_reason_carries_the_model_and_the_head_of_the_response() {
+        // <before> も混ざる応答は外せない。2 回とも外れて素通しになり、理由から何が返ったかが読める。
+        let text = "一つ目の段落です。\n";
+        let bad = "<para n=\"1\">\n<before>\n前の段落\n</before>\n<text>\n一つ目の段落です。\n</text>\n</para>";
+        let fake = Fake::new(vec![ok(bad), ok(bad)]);
+        let r = run(text, None, &fake);
+        assert_eq!(r.text, text);
+        let reason = r.skipped()[0].to_string();
+        assert!(
+            reason.starts_with("応答に依頼の書式が混ざっています(モデル m。応答の先頭: 「"),
+            "{reason}"
+        );
+        assert!(reason.contains("<before>⏎前の段落⏎</before>"), "{reason}");
+    }
+
+    #[test]
+    fn annotate_cuts_the_head_and_marks_newlines() {
+        let long = "あ".repeat(HEAD_CHARS + 50);
+        let r = annotate("理由".to_string(), "fb", Some(&long));
+        assert_eq!(r.chars().filter(|c| *c == 'あ').count(), HEAD_CHARS);
+        assert_eq!(
+            annotate("理由".to_string(), "fb", Some("a\r\nb")),
+            "理由(モデル fb。応答の先頭: 「a⏎⏎b」)"
+        );
+        assert_eq!(annotate("理由".to_string(), "fb", None), "理由(モデル fb)");
     }
 
     /// 依頼の `<para n="K">…<text>本文</text>…` から、各段落の本文を取り出す。
