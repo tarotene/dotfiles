@@ -154,13 +154,16 @@ pub fn classify_stderr(stderr: &str, code: Option<i32>) -> LlmError {
     LlmError::new(kind, failure_reason(stderr, code))
 }
 
-/// 標準エラー出力の先頭の意味のある 1 行(長ければ切る)。
+/// 標準エラー出力の、理由を表す 1 行(長ければ切る)。通常は先頭の意味のある行。Python の
+/// トレースバック(`Traceback (most recent call last):` で始まる)のときは、先頭が `File "…", line N`
+/// の行になって理由が読めないので、例外を表す最後の行を使う。
 fn failure_reason(stderr: &str, code: Option<i32>) -> String {
-    let line = stderr
-        .lines()
-        .map(str::trim)
-        .find(|l| !l.is_empty() && !l.starts_with("Traceback"))
-        .unwrap_or("");
+    let mut lines = stderr.lines().map(str::trim).filter(|l| !l.is_empty());
+    let line = if stderr.lines().any(|l| l.trim().starts_with("Traceback")) {
+        lines.next_back().unwrap_or("")
+    } else {
+        lines.next().unwrap_or("")
+    };
     let line: String = line.chars().take(120).collect();
     match (line.is_empty(), code) {
         (true, Some(c)) => format!("llm が終了コード {c} で失敗しました"),
@@ -331,6 +334,15 @@ mod tests {
         assert_eq!(
             failure_reason("", Some(2)),
             "llm が終了コード 2 で失敗しました"
+        );
+    }
+
+    #[test]
+    fn failure_reason_uses_the_exception_line_of_a_traceback() {
+        let tb = "Traceback (most recent call last):\n  File \"/nix/store/x/bin/.llm-wrapped\", line 9, in <module>\n    sys.exit(cli())\nPermissionError: [Errno 13] Permission denied: '/x/keys.json'\n";
+        assert_eq!(
+            failure_reason(tb, Some(1)),
+            "llm が失敗しました: PermissionError: [Errno 13] Permission denied: '/x/keys.json'"
         );
     }
 }
