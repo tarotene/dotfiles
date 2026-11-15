@@ -457,6 +457,123 @@ fn only_changed_paragraphs_are_polished_when_a_baseline_exists() {
     assert!(!sent.contains("<text>\n承認済み"), "{sent}");
 }
 
+impl Sandbox {
+    /// 偽の `llm`: 標準入力を `llm.stdin` に、引数を `llm.args` に残し、`body` を標準出力に出す。
+    fn fake_llm_keeping_args(&self, body: &str) {
+        let script = format!(
+            "#!/bin/sh\ncat > $0.stdin\nprintf '%s\\n' \"$@\" > $0.args\nprintf '%s\\n' '{body}'\n"
+        );
+        let p = self.path("llm");
+        std::fs::write(&p, script).unwrap();
+        std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+
+    fn with_messages(&self, body: &str) {
+        std::fs::write(self.path("messages.toml"), body).unwrap();
+    }
+
+    fn message_cmd(&self) -> Command {
+        let mut c = self.cmd();
+        c.env("JA_POLISH_MESSAGES_FILE", self.path("messages.toml"));
+        c
+    }
+}
+
+#[test]
+fn message_mode_sends_the_phrasebank_with_the_style_and_marks_the_records() {
+    let sb = Sandbox::new();
+    sb.with_messages("# 例文集\n[ja.move.closing]\nlabel = \"結び\"\n# 目印: PHRASEBANK-MARK\n");
+    sb.fake_llm_keeping_args(GOOD);
+    let file = sb.path("mail.md");
+    std::fs::write(&file, SRC).unwrap();
+
+    let (out, err, code) = text(
+        &sb.message_cmd()
+            .arg("--message")
+            .arg(&file)
+            .output()
+            .unwrap(),
+    );
+    assert_eq!(code, Some(0), "{out}{err}");
+    assert!(out.contains("書き直し 1 / 変更なし 0 / 素通し 0"), "{out}");
+    let args = std::fs::read_to_string(sb.path("llm.args")).unwrap();
+    assert!(
+        args.contains("R1. 常体で書く") && args.contains("PHRASEBANK-MARK"),
+        "文体規約と例文集の両方を基準にする: {args}"
+    );
+    assert!(args.contains("例文どおりの言い回し"), "{args}");
+    assert!(
+        sb.records().contains("\"message\":true"),
+        "{}",
+        sb.records()
+    );
+}
+
+#[test]
+fn a_document_pass_does_not_count_as_a_message_pass() {
+    let sb = Sandbox::new();
+    sb.with_messages("# 例文集\n");
+    sb.fake_llm_keeping_args(GOOD);
+    let file = sb.path("mail.md");
+    std::fs::write(&file, SRC).unwrap();
+
+    // 文書の基準で通す。文書の `--check` は通るが、メッセージの `--check` は未通過のまま。
+    sb.cmd().arg(&file).output().unwrap();
+    assert_eq!(std::fs::read_to_string(&file).unwrap(), "文章を直す。\n");
+    let (out, _, code) = text(&sb.cmd().arg("--check").arg(&file).output().unwrap());
+    assert_eq!(code, Some(0), "{out}");
+    let (out, _, code) = text(
+        &sb.message_cmd()
+            .args(["--check", "--message"])
+            .arg(&file)
+            .output()
+            .unwrap(),
+    );
+    assert_eq!(code, Some(1), "{out}");
+
+    // メッセージの基準で、同じ段落をもう一度通す。通したあとは、メッセージの `--check` も通る。
+    std::fs::remove_file(sb.path("llm.stdin")).unwrap();
+    let (out, err, code) = text(
+        &sb.message_cmd()
+            .arg("--message")
+            .arg(&file)
+            .output()
+            .unwrap(),
+    );
+    assert_eq!(code, Some(0), "{out}{err}");
+    assert!(sb.path("llm.stdin").exists(), "もう一度送る: {out}");
+    let (out, _, code) = text(
+        &sb.message_cmd()
+            .args(["--check", "--message"])
+            .arg(&file)
+            .output()
+            .unwrap(),
+    );
+    assert_eq!(code, Some(0), "{out}");
+}
+
+#[test]
+fn missing_phrasebank_refuses_to_send_in_message_mode() {
+    let sb = Sandbox::new();
+    sb.fake_llm(GOOD, false);
+    let file = sb.path("mail.md");
+    std::fs::write(&file, SRC).unwrap();
+    let (out, _, code) = text(
+        &sb.cmd()
+            .env("JA_POLISH_MESSAGES_FILE", sb.path("nope.toml"))
+            .arg("--message")
+            .arg(&file)
+            .output()
+            .unwrap(),
+    );
+    assert_eq!(code, Some(0));
+    assert!(
+        out.contains("素通し 1") && out.contains("nope.toml"),
+        "{out}"
+    );
+    assert!(!sb.path("llm.stdin").exists(), "例文集なしでは送らない");
+}
+
 #[test]
 fn bad_usage_exits_2() {
     let sb = Sandbox::new();

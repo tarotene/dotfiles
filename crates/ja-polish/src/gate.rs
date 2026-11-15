@@ -236,12 +236,14 @@ fn fetch_current_body(t: &EditTarget) -> Option<String> {
         .then(|| String::from_utf8_lossy(&out).replace("\r\n", "\n"))
 }
 
-/// 本文に、通していない日本語の段落があれば、拒否の理由。`baseline` は、すでにある本文(編集の前)。
+/// 本文に、通していない日本語の段落があれば、拒否の理由。`baseline` は、すでにある本文(編集の前)。`message` は、
+/// メール・Slack の下書きの本文か(メッセージの基準で通した段落だけを通過とみなす。`known` は、その基準の記録)。
 fn judge(
     what: &str,
     text: &str,
     known: &HashSet<String>,
     baseline: Option<&str>,
+    message: bool,
 ) -> Option<String> {
     if is_proxy_post(text) {
         return None;
@@ -251,9 +253,17 @@ fn judge(
         return None;
     }
     let head: String = pending[0].text.chars().take(40).collect();
+    let (basis, command) = if message {
+        (
+            "メール・メッセージの基準(例文集つき)で",
+            "ja-polish --message <そのファイル>",
+        )
+    } else {
+        ("", "ja-polish <そのファイル>")
+    };
     Some(format!(
-        "[ja-polish] {what}に、書き直しを通していない日本語の段落が {n} 個あります(最初の段落: 「{head}」)。\
-本文を scratchpad のファイルに書き、`ja-polish <そのファイル>` で書き直してから、直したファイルの内容を使ってください。\
+        "[ja-polish] {what}に、{basis}書き直しを通していない日本語の段落が {n} 個あります(最初の段落: 「{head}」)。\
+本文を scratchpad のファイルに書き、`{command}` で書き直してから、直したファイルの内容を使ってください。\
 `ja-polish` は単体で呼びます(`<`・`>` のリダイレクトや `$(…)` を足すと sandbox の中に残ってキーに届きません)。\
 出力の差分を読み、意味がずれていたら、直したファイルを手で直さず、下書きを直して通し直します(記録は段落の中身で照合します)。\
 `ja-polish` が通せなかった段落は素通しとして記録されるので、この検査は通ります。\
@@ -301,11 +311,11 @@ fn decide_bash_with(
                 )?,
             ),
         };
-        let reason = judge(what, &text, known, None)?;
+        let reason = judge(what, &text, known, None, false)?;
         // 未通過の段落があるときだけ、いまの本文を引いて、すでにある段落を数えから外す(通信は拒否の前の 1 回だけ)。
         if r.kind == Kind::GhBody {
             if let Some(base) = edit_target(r.tokens).and_then(|t| fetch(&t)) {
-                return judge(what, &text, known, Some(&base));
+                return judge(what, &text, known, Some(&base), false);
             }
         }
         Some(reason)
@@ -329,7 +339,13 @@ fn str_field<'a>(input: &'a Value, key: &str) -> Option<&'a str> {
 }
 
 /// MCP ツールの入力から、人が読む本文を取り出す。対象のツールでない・取れないなら `None`。
+/// 呼び出しの本文を、(何の本文か, 本文)で返す。ほかの crate(hook-router など)が使う正本。
 pub fn mcp_text(tool: &str, input: &Value) -> Option<(&'static str, String)> {
+    mcp_draft(tool, input).map(|(what, text, _)| (what, text))
+}
+
+/// [`mcp_text`] に、メール・Slack の下書きか(メッセージの基準で通した段落だけを通過とみなす)を足したもの。
+fn mcp_draft(tool: &str, input: &Value) -> Option<(&'static str, String, bool)> {
     let suffix_is = |names: &[&str]| names.iter().any(|n| tool.ends_with(&format!("__{n}")));
     if tool.contains("Gmail")
         && suffix_is(&[
@@ -341,7 +357,7 @@ pub fn mcp_text(tool: &str, input: &Value) -> Option<(&'static str, String)> {
         ])
     {
         let body = str_field(input, "body").or_else(|| str_field(input, "htmlBody"))?;
-        return Some(("メールの本文", body.to_string()));
+        return Some(("メールの本文", body.to_string(), true));
     }
     if (tool.contains("Slack") || tool.contains("slack"))
         && (tool.contains("draft")
@@ -360,20 +376,32 @@ pub fn mcp_text(tool: &str, input: &Value) -> Option<(&'static str, String)> {
             .iter()
             .filter_map(|k| str_field(input, k))
             .collect();
-        return (!parts.is_empty()).then(|| ("Slack の本文", parts.join("\n\n")));
+        return (!parts.is_empty()).then(|| ("Slack の本文", parts.join("\n\n"), true));
     }
     if tool.contains("Claude_Docs") && suffix_is(&["create", "update", "batch"]) {
         let mut all = Vec::new();
         collect_strings(input, &mut all);
-        return (!all.is_empty()).then(|| ("Claude Docs の本文", all.join("\n\n")));
+        return (!all.is_empty()).then(|| ("Claude Docs の本文", all.join("\n\n"), false));
     }
     None
 }
 
-/// MCP ツールの呼び出しを判定する。
-pub fn decide_mcp(tool: &str, input: &Value, known: &HashSet<String>) -> Option<String> {
-    let (what, text) = mcp_text(tool, input)?;
-    judge(what, &text, known, None)
+/// MCP ツールの呼び出しを判定する。メール・Slack の下書きは、メッセージの基準で通した段落(`known_message`)だけを
+/// 通過とみなす。文書の基準で通した段落(`known`)は、例文どおりの言い回しを保つ指示を受けていないので通さない。
+pub fn decide_mcp(
+    tool: &str,
+    input: &Value,
+    known: &HashSet<String>,
+    known_message: &HashSet<String>,
+) -> Option<String> {
+    let (what, text, message) = mcp_draft(tool, input)?;
+    judge(
+        what,
+        &text,
+        if message { known_message } else { known },
+        None,
+        message,
+    )
 }
 
 /// hook 本体(ルータの規則 `ja-polish-gate` が呼ぶ)。
@@ -394,6 +422,9 @@ pub fn hook(agent: Agent, raw: &str) -> Option<Outcome> {
     let known = records::records_path()
         .map(|p| records::load(&p))
         .unwrap_or_default();
+    let known_message = records::records_path()
+        .map(|p| records::load_message(&p))
+        .unwrap_or_default();
 
     let reason = if let Some(cmd) = call.bash_command() {
         decide_bash(&cmd, &known)
@@ -402,7 +433,7 @@ pub fn hook(agent: Agent, raw: &str) -> Option<Outcome> {
             Agent::Copilot => "toolArgs",
             Agent::Claude | Agent::Codex => "tool_input",
         };
-        decide_mcp(&call.tool, call.raw.get(key)?, &known)
+        decide_mcp(&call.tool, call.raw.get(key)?, &known, &known_message)
     } else {
         None
     }?;
@@ -611,18 +642,25 @@ mod tests {
     fn gmail_draft_prefers_body_then_html_and_ignores_subject() {
         let t = "mcp__claude_ai_Gmail__create_draft";
         let denied = json!({"to": ["a@example.com"], "subject": JP, "body": JP});
-        assert!(decide_mcp(t, &denied, &HashSet::new()).is_some());
+        assert!(decide_mcp(t, &denied, &HashSet::new(), &HashSet::new()).is_some());
         // 件名だけが日本語(本文は英語): 件名は対象にしない。
         let subject_only = json!({"subject": JP, "body": "Hello."});
-        assert!(decide_mcp(t, &subject_only, &HashSet::new()).is_none());
+        assert!(decide_mcp(t, &subject_only, &HashSet::new(), &HashSet::new()).is_none());
         // body が無ければ htmlBody。
         let html = json!({"htmlBody": format!("<p>{JP}</p>")});
-        assert!(decide_mcp(t, &html, &HashSet::new()).is_some());
-        assert!(decide_mcp(t, &denied, &known(&[JP])).is_none());
+        assert!(decide_mcp(t, &html, &HashSet::new(), &HashSet::new()).is_some());
+        // メッセージの基準で通した記録があれば通る。文書の基準で通した記録だけでは通らず、理由に --message を案内する。
+        assert!(decide_mcp(t, &denied, &HashSet::new(), &known(&[JP])).is_none());
+        let reason = decide_mcp(t, &denied, &known(&[JP]), &HashSet::new()).expect("deny");
+        assert!(
+            reason.contains("例文集つき") && reason.contains("ja-polish --message <そのファイル>"),
+            "{reason}"
+        );
         // 検索など、対象でないツールは見ない。
         assert!(decide_mcp(
             "mcp__claude_ai_Gmail__search_threads",
             &json!({"query": JP}),
+            &HashSet::new(),
             &HashSet::new()
         )
         .is_none());
@@ -634,17 +672,54 @@ mod tests {
         assert!(decide_mcp(
             "mcp__claude_ai_Slack__slack_send_message_draft",
             &slack,
+            &HashSet::new(),
+            &HashSet::new()
+        )
+        .is_some());
+        // Slack の下書きも、メッセージの基準で通した記録だけを通す。
+        assert!(decide_mcp(
+            "mcp__claude_ai_Slack__slack_send_message_draft",
+            &slack,
+            &known(&[JP]),
             &HashSet::new()
         )
         .is_some());
         assert!(decide_mcp(
+            "mcp__claude_ai_Slack__slack_send_message_draft",
+            &slack,
+            &HashSet::new(),
+            &known(&[JP])
+        )
+        .is_none());
+        assert!(decide_mcp(
             "mcp__claude_ai_Slack__slack_search_public",
             &slack,
+            &HashSet::new(),
             &HashSet::new()
         )
         .is_none());
         let docs = json!({"object": "node", "payload": {"markdown": format!("# 題\n\n{JP}")}});
-        assert!(decide_mcp("mcp__claude_ai_Claude_Docs__create", &docs, &HashSet::new()).is_some());
-        assert!(decide_mcp("mcp__claude_ai_Claude_Docs__read", &docs, &HashSet::new()).is_none());
+        assert!(decide_mcp(
+            "mcp__claude_ai_Claude_Docs__create",
+            &docs,
+            &HashSet::new(),
+            &HashSet::new()
+        )
+        .is_some());
+        // Claude Docs は文書の基準で通した記録でよい。
+        assert!(decide_mcp(
+            "mcp__claude_ai_Claude_Docs__create",
+            &docs,
+            &known(&[JP]),
+            &HashSet::new()
+        )
+        .is_none());
+        assert!(decide_mcp(
+            "mcp__claude_ai_Claude_Docs__read",
+            &docs,
+            &HashSet::new(),
+            &HashSet::new()
+        )
+        .is_none());
     }
 }

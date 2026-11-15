@@ -65,6 +65,27 @@ fn gate_follows_config_records_and_escape_hatch() {
     .to_string();
     assert!(is_deny(gate::hook(Agent::Claude, &mcp)));
 
+    // 6b. Gmail の下書きは、メッセージの基準(`ja-polish --message`)で通した記録だけを通す。文書の基準で通した
+    //     記録があっても拒否し、メッセージの基準の記録が入れば通る。
+    let drafted = "もう一つ、下書きにする日本語の文章を用意する。";
+    let mcp_drafted = json!({
+        "tool_name": "mcp__claude_ai_Gmail__create_draft",
+        "tool_input": {"to": ["a@example.com"], "body": drafted}
+    })
+    .to_string();
+    records::append(
+        &path,
+        &[records::Entry::polished(blocks::hash(drafted), "m")],
+    )
+    .unwrap();
+    assert!(is_deny(gate::hook(Agent::Claude, &mcp_drafted)));
+    records::append(
+        &path,
+        &[records::Entry::polished(blocks::hash(drafted), "m").with_message(true)],
+    )
+    .unwrap();
+    assert!(gate::hook(Agent::Claude, &mcp_drafted).is_none());
+
     // 7. ja-polish が動けない間(直近 5 件の記録がすべて素通し)は、通していない段落でも拒否しない。
     //    往復を求めても、素通しが増えるだけだからである(API キーが無い機体の症状)。
     let entries: Vec<records::Entry> = (0..records::UNAVAILABLE_RUN)
