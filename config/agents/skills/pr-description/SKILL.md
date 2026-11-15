@@ -204,6 +204,9 @@ PR 作成後に残作業(マージ後の適用・外部サービスでの操作�
       マージ後に実機確認だけが残る Issue を作らない)。
    5. 確かめたら、その行を `- [x]` にして、行の末尾に結果(終了コード・出力の要点・日付・機体)を
       書く。行の削除はしない(済んだ記録として残す)。「変化なし」のコメントは書かない。
+      変換は `~/.claude/hooks/issue-index ledger <機体> --mark <語> --result <結果> --out <ファイル>`(新しい行は
+      `--add <行> --section <節>`)に任せる(sandbox の外で実行。出力された
+      `gh issue edit <番号> --body-file <ファイル>` で反映する。`docs/agents/issue-index.md`)。
    6. build の検査(`home.checks` の canary など)で確かめられる項目は、台帳に積まず、検査の
       fixture を足す(機体ごとの確認が要らなくなる)。
    `## 要確認` のポインタは、これまでどおり `- #N — <一言>` だけで、`pr-followup-guard`
