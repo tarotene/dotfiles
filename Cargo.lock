@@ -1793,6 +1793,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "pr-hygiene-check"
+version = "0.1.0"
+dependencies = [
+ "github-command",
+ "repo-scope",
+ "serde_json",
+]
+
+[[package]]
 name = "pr-title-check"
 version = "0.1.0"
 dependencies = [

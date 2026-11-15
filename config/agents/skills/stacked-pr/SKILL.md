@@ -245,6 +245,30 @@ git push --force-with-lease origin <その段のブランチ>
 各段を push したあとに `pr-checks-wait <N>` で CI を待つ(`mergeable` が `MERGEABLE` に
 変わったことも合わせて確認する)。
 
+### セッションの外で作った open PR の汚れを直す(`pr-hygiene-check`)
+
+時間が経つと、自分の open PR は、このセッションで作ったものでなくても汚れる。汚れを**見つける**のは
+`pr-hygiene-check`(`docs/agents/pr-hygiene-check.md`。`--json` で機械向け)で、**直す**のは、上の手順である。
+母集団は、この機体の契約の側と同じ側の持ち主だけ(別の側には問い合わせない。`docs/agents/repo-scope-guard.md`)。
+出力は、下の段から直す順に並ぶ。1 本直すたびに `pr-hygiene-check` を読み直し、clean になったことを確かめる。
+
+| 分類 | 意味 | 直し方 |
+|---|---|---|
+| `conflict` | base と衝突(CI も回らない) | 「最下段の base(main)自体が進んで衝突したとき」。`git fetch origin` のあと `git rebase origin/<base>`、衝突を解いて `--force-with-lease` |
+| `merged-ancestor` | 下の段が squash でマージされ、上の段にその段のコミットが残っている(出力の `mergedAncestors` がその PR) | 上の段を `git rebase --onto origin/main <マージ済み PR の headRefOid> <ブランチ>`(`gh pr view <N> --json headRefOid`)。base が `main` に付け替わったことを読み戻す |
+| `base-gone` | base のブランチが無い | `gh pr edit <N> --base main`(`stack-base-guard` が検査する)のあと、`merged-ancestor` と同じ `--onto` |
+| `merge-commit` | 親が 2 つのコミットがある | `git rebase origin/<base>`(`--rebase-merges` を付けない。merge commit が落ちて一直線になる。共有 AGENTS.md「トピックブランチを最新化するときは merge ではなく rebase を使う」) |
+| `behind` | base に遅れている | `git rebase origin/<base>` |
+| `unknown` | 判定できなかった | `gh pr view <N> --json mergeable,mergeStateStatus` を読み直す。まだ `UNKNOWN` なら、少し待ってから `pr-hygiene-check` をやり直す |
+| `below:#N` | 積み上げで、下の段(#N)が汚れている | 先に #N を直す。上の段は、最上段を 1 回だけ `--onto` で積み直す(上の「最下段の base(main)自体が進んで衝突したとき」) |
+
+- 衝突の解き方に中身の選択が要るとき(両側が同じ行を変えている)は、両側の差分を本人に見せて聞く。衝突の無い rebase・
+  `--onto` の積み直し・`gh pr edit --base` は、自分の PR のブランチに `--force-with-lease --force-if-includes` で書くだけで、
+  出力の `headOid` を旧 SHA として報告に残せば戻せるので、聞かずに行ってよい。
+- 別のリポジトリの PR は、そのリポジトリの worktree で直す(CLAUDE.md「別のリポジトリの worktree で作業する手順」。
+  ブランチがローカルに無ければ `git fetch origin <head>` のあと `git switch -c <head> origin/<head>`)。
+- マージと close はしない。`draft` の PR・題名に `DO-NOT-MERGE` や `WIP` を持つ PR は、直すかどうかを本人に聞く。
+
 ## 5. GitHub ネイティブの stack 機能
 
 2026-07-30 に GitHub 本体へ public preview で入った Stacked pull requests
