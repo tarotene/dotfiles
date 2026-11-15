@@ -128,7 +128,13 @@ pub trait Backend: Sync {
     fn complete(&self, req: &Request) -> Result<String, LlmError>;
 }
 
-/// `llm prompt -m <model> -s <system> [-o thinking_level <level>] --no-stream -n` に、標準入力で依頼文を渡す。
+/// `llm prompt -m <model> -s <system> [-o thinking_level <level>] --no-stream -n -d :memory:` に、
+/// 標準入力で依頼文を渡す。
+/// `-d :memory:` は、履歴のデータベースをファイルでなくメモリ上に置く。`llm prompt` は `-n` でも、
+/// 判定より前に履歴のデータベース(既定は llm のユーザーディレクトリの `logs.db`)を必ず開くので、
+/// そのディレクトリに書き込めない環境(Codex から実行したとき。2026-11-15)では
+/// `sqlite3.OperationalError: unable to open database file` で落ちる(llm 0.32 の `cli.py:769-772`)。
+/// 履歴は `-n` で残さないので、ファイルは要らない。
 /// 実行ファイルは環境変数 `JA_POLISH_LLM_BIN` で差し替えられる(既定は PATH の `llm`)。
 pub struct LlmCli;
 
@@ -143,7 +149,17 @@ impl Backend for LlmCli {
         } = *req;
         let bin = std::env::var("JA_POLISH_LLM_BIN").unwrap_or_else(|_| "llm".to_string());
         let mut cmd = Command::new(&bin);
-        cmd.args(["prompt", "-m", model, "-s", system, "--no-stream", "-n"]);
+        cmd.args([
+            "prompt",
+            "-m",
+            model,
+            "-s",
+            system,
+            "--no-stream",
+            "-n",
+            "-d",
+            ":memory:",
+        ]);
         if let Some(level) = thinking_level {
             cmd.args(["-o", "thinking_level", level]);
         }

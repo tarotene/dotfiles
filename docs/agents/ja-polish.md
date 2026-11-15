@@ -57,7 +57,12 @@ scratchpad は git の外なので基点が無く、本文の全体が対象に�
    載せる。写しは持たない。ハブが解決できないときは、基準なしでは送らず、段落を素通しにする。
 5. 対象の段落を `chunk_paras`(既定 8)個ずつの束に分け、最大 `parallel`(既定 3)本を同時に送る。
    各束は、その段落と前後の段落(参考。書き換えない)を、`llm prompt -m <model> -s <指示文>
-   [-o thinking_level <値>] --no-stream -n` に標準入力で渡す。`-n` で llm の履歴 DB に残さない。
+   [-o thinking_level <値>] --no-stream -n -d :memory:` に標準入力で渡す。`-n` で llm の履歴 DB に残さない。
+   `-d :memory:` は、履歴 DB をファイルでなくメモリ上に置く。`llm prompt` は `-n` でも、判定より前に履歴 DB
+   (既定は llm のユーザーディレクトリの `logs.db`)を必ず開くので(llm 0.32、`llm/cli.py:769-772`、取得
+   2026-11-15)、そのディレクトリに書き込めない環境では `sqlite3.OperationalError: unable to open
+   database file` で落ちる。2026-11-15 に、Codex から `ja-polish` を実行した結果がこれで、書き込めない
+   ディレクトリを指す `LLM_USER_PATH` で、同じ失敗を手元で再現した(`-d :memory:` を付けると、この段を通る)。
    混雑・時間切れのときの再依頼と予備のモデルは「失敗したとき」(ADR-1387 の D9〜D11)。
 6. 戻ってきた段落を照合する。外れたら、その段落だけ 1 回再依頼する:
    - 伏せ字がすべて同数で残っている

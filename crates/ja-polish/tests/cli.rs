@@ -25,7 +25,9 @@ impl Sandbox {
         let script = if fail {
             format!("#!/bin/sh\ncat > /dev/null\necho '{body}' >&2\nexit 1\n")
         } else {
-            format!("#!/bin/sh\ncat > $0.stdin\nprintf '%s\\n' '{body}'\n")
+            format!(
+                "#!/bin/sh\ncat > $0.stdin\nprintf '%s\\n' \"$@\" > $0.args\nprintf '%s\\n' '{body}'\n"
+            )
         };
         let p = self.path("llm");
         std::fs::write(&p, script).unwrap();
@@ -101,6 +103,31 @@ fn file_mode_polishes_records_and_is_idempotent() {
     assert_eq!(code, Some(0));
     assert!(out.contains("書き直す日本語の段落はありません"), "{out}");
     assert!(!sb.path("llm.stdin").exists(), "2 回目は llm を呼ばない");
+}
+
+/// `llm prompt` は `-n` でも、履歴のデータベース(既定は llm のユーザーディレクトリの `logs.db`)を
+/// 必ず開く。そのディレクトリに書き込めない環境(Codex から実行したとき。2026-11-15)では
+/// `sqlite3.OperationalError: unable to open database file` で落ちるので、`-d :memory:` を渡して
+/// ファイルに依存させない。引数が外れると、この検査が落ちる。
+#[test]
+fn llm_is_called_with_an_in_memory_log_database() {
+    let sb = Sandbox::new();
+    sb.fake_llm(GOOD, false);
+    let file = sb.path("doc.md");
+    std::fs::write(&file, SRC).unwrap();
+    let (out, err, code) = text(&sb.cmd().arg("--dry-run").arg(&file).output().unwrap());
+    assert_eq!(code, Some(0), "{out}{err}");
+
+    let args: Vec<String> = std::fs::read_to_string(sb.path("llm.args"))
+        .unwrap()
+        .lines()
+        .map(str::to_string)
+        .collect();
+    assert!(
+        args.windows(2).any(|w| w[0] == "-d" && w[1] == ":memory:"),
+        "{args:?}"
+    );
+    assert!(args.iter().any(|a| a == "-n"), "{args:?}");
 }
 
 #[test]
