@@ -1,6 +1,6 @@
 # reply-coverage — 相手のいる会話への返信が、相手の未決の依頼すべてに答えているかを検査する
 
-設計の判断: `docs/adr/0000-reply-coverage.md`(#1577)。実装: `crates/reply-coverage`。
+設計の判断: `docs/adr/1585-reply-coverage.md`(#1577)。実装: `crates/reply-coverage`。
 
 ## 何のためか
 
