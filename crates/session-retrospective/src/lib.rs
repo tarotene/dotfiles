@@ -702,6 +702,12 @@ Rows so far: {n_rows}. Step 1 and 2 may be repeated until every TODO is covered.
        pipeline-map.toml node ids, the crates/ names, the config/agents/skills/ names,
        the home/modules/ names (sandbox, service and permission declarations: `home-modules`),
        and a note with the same title in the wrap-up inbox (`issue-inbox --list-open`: `inbox`).
+       Write each scope with what you found there, as `<scope>:<name>`: the nearest
+       existing thing (`crates:issue-index`, `skills:retro`, `inbox:none` when nothing
+       matched). A bare scope name tells the reader nothing about how deep you looked:
+       candidates built on one were rejected with `existing-suffices` again and again
+       (5, 6, then 8 of them). Before 自前, name one existing mechanism you considered
+       and say in `what` why it does not suffice.
        Look outside (nixpkgs, an upstream feature) once, and only when the answer would be 自前.
        A level other than the signal's default needs `level_reason`.
 {signal_guide}     - The tables with examples: docs/agents/codify-signals.md.
