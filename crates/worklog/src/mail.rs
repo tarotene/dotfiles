@@ -845,6 +845,86 @@ impl Ledger {
         }
         Ok(out)
     }
+
+    /// 下書きの本文の写しの置き場: 終端の控えと同じ親の `mail-drafts/`(Git の外。相手の名前が入るため)。
+    fn draft_path(&self, key: &str) -> Result<PathBuf, String> {
+        parse_key(key)?;
+        let dir = self
+            .path
+            .parent()
+            .ok_or("下書きの写しの置き場が決まらない")?
+            .join("mail-drafts");
+        // 鍵の `:` と `/` を `.` に換える(鍵の文字種は `[A-Za-z0-9_=-]` に限るので、換えは一対一)。
+        Ok(dir.join(key.replace([':', '/'], ".")))
+    }
+
+    /// 下書きの本文の写しを保存する(同じ鍵は上書き。下書きは直すたびに写し直す)。
+    pub fn save_draft(&self, key: &str, body: &str) -> Result<PathBuf, String> {
+        let path = self.draft_path(key)?;
+        if let Some(dir) = path.parent() {
+            fs::create_dir_all(dir).map_err(|e| format!("{} を作れない: {e}", dir.display()))?;
+        }
+        fs::write(&path, body).map_err(|e| format!("{} に書けない: {e}", path.display()))?;
+        Ok(path)
+    }
+
+    /// 保存した下書きの写し。無ければ `None`。
+    pub fn draft(&self, key: &str) -> Result<Option<String>, String> {
+        let path = self.draft_path(key)?;
+        match fs::read_to_string(&path) {
+            Ok(s) => Ok(Some(s)),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(e) => Err(format!("{} を読めない: {e}", path.display())),
+        }
+    }
+
+    /// 下書きの写しを捨てる(送信済みの照合を終えたあと)。無くてもよい。
+    pub fn forget_draft(&self, key: &str) -> Result<bool, String> {
+        let path = self.draft_path(key)?;
+        match fs::remove_file(&path) {
+            Ok(()) => Ok(true),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(false),
+            Err(e) => Err(format!("{} を捨てられない: {e}", path.display())),
+        }
+    }
+}
+
+/// 下書きと、送った版の本文の差。行ごとの差(`- ` が下書きだけにある行、`+ ` が送った版だけにある行)を、
+/// 並びの順に返す。改行の形(CRLF)・行末の空白・末尾の空行は無視する。差が無ければ空(何も出さない)。
+pub fn draft_diff(draft: &str, sent: &str) -> Vec<String> {
+    fn lines(s: &str) -> Vec<&str> {
+        let mut v: Vec<&str> = s.lines().map(str::trim_end).collect();
+        while v.last() == Some(&"") {
+            v.pop();
+        }
+        v
+    }
+    let (a, b) = (lines(draft), lines(sent));
+    // 最長共通部分列で、残す行を決める(下書きは数十行なので、表を作って足りる)。
+    let mut lcs = vec![vec![0usize; b.len() + 1]; a.len() + 1];
+    for i in (0..a.len()).rev() {
+        for j in (0..b.len()).rev() {
+            lcs[i][j] = if a[i] == b[j] {
+                lcs[i + 1][j + 1] + 1
+            } else {
+                lcs[i + 1][j].max(lcs[i][j + 1])
+            };
+        }
+    }
+    let (mut i, mut j, mut out) = (0, 0, Vec::new());
+    while i < a.len() || j < b.len() {
+        if i < a.len() && j < b.len() && a[i] == b[j] {
+            i += 1;
+            j += 1;
+        } else if j == b.len() || (i < a.len() && lcs[i + 1][j] >= lcs[i][j + 1]) {
+            out.push(format!("- {}", a[i]));
+            i += 1;
+        } else {
+            out.push(format!("+ {}", b[j]));
+            j += 1;
+        }
+    }
+    out
 }
 
 /// 控えにあるのにノートの畳み込みに同じ終端が無い鍵(終端の行が消えた)。`(鍵, 控えの状態, 今の状態)`。
@@ -1177,6 +1257,49 @@ pub fn mail_entries(rows: &[Row]) -> impl Iterator<Item = &Entry> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn draft_diff_lists_only_the_changed_lines_in_order_and_ignores_whitespace_noise() {
+        let draft = "〇〇 様\n\nご連絡ありがとうございます。\nご提示いただいた日程でお願いしたく存じます。\n\nよろしくお願いします。\n杉本\n";
+        let sent = "〇〇 様\r\n\r\nご連絡ありがとうございます。  \r\nご提示いただいた日程でお願いできますと幸いです。\r\n\r\nどうぞよろしくお願いいたします。\r\n杉本 健太朗\r\n\r\n";
+        assert_eq!(
+            draft_diff(draft, sent),
+            vec![
+                "- ご提示いただいた日程でお願いしたく存じます。",
+                "+ ご提示いただいた日程でお願いできますと幸いです。",
+                "- よろしくお願いします。",
+                "- 杉本",
+                "+ どうぞよろしくお願いいたします。",
+                "+ 杉本 健太朗",
+            ]
+        );
+        // 改行の形・行末の空白・末尾の空行だけが違うときは、差なし。
+        assert!(draft_diff("A\nB\n", "A  \r\nB\r\n\r\n").is_empty());
+        assert!(draft_diff("", "").is_empty());
+        // 行の追加だけ・削除だけ。
+        assert_eq!(draft_diff("A\n", "A\nB\n"), vec!["+ B"]);
+        assert_eq!(draft_diff("A\nB\n", "A\n"), vec!["- B"]);
+    }
+
+    #[test]
+    fn ledger_keeps_one_draft_copy_per_key_and_forgets_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let ledger = Ledger::at(dir.path().join("mail-terminal"));
+        let key = "gmail:19abc_D/19xyz-1";
+        assert_eq!(ledger.draft(key).unwrap(), None);
+        let path = ledger.save_draft(key, "一版").unwrap();
+        // 置き場は、終端の控えと同じ親の mail-drafts/。鍵の : と / は . に換わる。
+        assert_eq!(path, dir.path().join("mail-drafts/gmail.19abc_D.19xyz-1"));
+        // 同じ鍵は上書きされる(下書きは、直すたびに写し直す)。
+        ledger.save_draft(key, "二版").unwrap();
+        assert_eq!(ledger.draft(key).unwrap().as_deref(), Some("二版"));
+        assert!(ledger.forget_draft(key).unwrap());
+        assert!(!ledger.forget_draft(key).unwrap(), "2 回目は無い");
+        assert_eq!(ledger.draft(key).unwrap(), None);
+        // 鍵の形が違えば、パスを作らず拒む(`../` で外へ出られない)。
+        assert!(ledger.save_draft("gmail:../x/y", "x").is_err());
+        assert!(ledger.draft("not a key").is_err());
+    }
 
     const D: i64 = 20_757; // 2026-10-31
 

@@ -41,6 +41,7 @@ worklog session-start [--agent claude|codex|copilot]   # SessionStart hook。手
 ```text
 worklog add mail "<出来事>: <要旨> [<媒体>:<スレッド>/<受信> [due:YYYY-MM-DD]]"
 worklog mail open | check | sweep [--dry-run] | restore <鍵> | forget <鍵>
+worklog mail snapshot <鍵> --body-file <ファイル> | diff <鍵> --sent-file <ファイル> | snapshot-forget <鍵>   # 下書きの写しと送った版の差(vault 不要。docs/agents/mail-lifecycle.md)
 ```
 
 - 出来事(閉語彙。正本は `config/agents/mail-lifecycle/vocabulary.json`): `read`・`ask`・`draft`・`decide`・

@@ -34,6 +34,9 @@ fn usage() -> String {
          worklog list [--since YYYY-MM-DD] [--until YYYY-MM-DD] [--repo owner/repo] [--kind k[,k]]\n  \
          worklog mail open|check\n  worklog mail sweep [--today YYYY-MM-DD] [--dry-run]\n  \
          worklog mail restore <鍵>|forget <鍵>\n  \
+         worklog mail snapshot <鍵> --body-file <ファイル>   (下書きの本文の写しを保存する)\n  \
+         worklog mail diff <鍵> --sent-file <ファイル>   (写しと送った版の差。差が無ければ何も出さない)\n  \
+         worklog mail snapshot-forget <鍵>\n  \
          worklog add slot done|drop <鍵>   (出来事: {})\n  \
          worklog slot closed [--json]\n  worklog slot check\n  \
          worklog offer begin|plan|record|recover|abort|show|list   (引数なしの `worklog offer` で形を出す)\n  \
@@ -263,6 +266,10 @@ fn offer_cmd(args: &[String]) -> Result<(), String> {
 fn mail_cmd(args: &[String]) -> Result<ExitCode, String> {
     let sub = args.first().map(String::as_str).ok_or_else(usage)?;
     let rest = &args[1..];
+    // 下書きの写しは、ノートを読まない。vault が無い機体でも使える。
+    if matches!(sub, "snapshot" | "diff" | "snapshot-forget") {
+        return draft_cmd(sub, rest);
+    }
     let vault = open_vault()?;
     let (today, time) = jst_parts(now_unix());
     let ledger = Ledger::from_env()?;
@@ -346,6 +353,56 @@ fn mail_cmd(args: &[String]) -> Result<ExitCode, String> {
         }
         _ => Err(usage()),
     }
+}
+
+/// `mail snapshot|diff|snapshot-forget`: 下書きの本文の写し(Git の外)を保存し、送った版との差を出す。
+/// 鍵は、受けたメッセージの鍵(下書きのものでない。`docs/agents/mail-lifecycle.md`)。
+fn draft_cmd(sub: &str, rest: &[String]) -> Result<ExitCode, String> {
+    let ledger = Ledger::from_env()?;
+    let key = rest.first().map(String::as_str).ok_or_else(usage)?;
+    let mut it = rest[1..].iter();
+    let mut file = None;
+    while let Some(a) = it.next() {
+        match (sub, a.as_str()) {
+            ("snapshot", "--body-file") | ("diff", "--sent-file") => {
+                file = Some(value(&mut it, a)?.to_string());
+            }
+            _ => return Err(usage()),
+        }
+    }
+    let read =
+        |path: &str| std::fs::read_to_string(path).map_err(|e| format!("{path} を読めない: {e}"));
+    match sub {
+        "snapshot" => {
+            let body = read(&file.ok_or_else(usage)?)?;
+            let path = ledger.save_draft(key, &body)?;
+            println!("下書きの写しを保存した: {}", path.display());
+        }
+        "diff" => {
+            let sent = read(&file.ok_or_else(usage)?)?;
+            let draft = ledger
+                .draft(key)?
+                .ok_or_else(|| format!("下書きの写しが無い鍵: {key}"))?;
+            for line in mail::draft_diff(&draft, &sent) {
+                println!("{line}");
+            }
+        }
+        _ => {
+            if !rest[1..].is_empty() {
+                return Err(usage());
+            }
+            let gone = ledger.forget_draft(key)?;
+            println!(
+                "{}: {key}",
+                if gone {
+                    "下書きの写しを捨てた"
+                } else {
+                    "下書きの写しは無かった"
+                }
+            );
+        }
+    }
+    Ok(ExitCode::SUCCESS)
 }
 
 fn list_cmd(args: &[String]) -> Result<(), String> {

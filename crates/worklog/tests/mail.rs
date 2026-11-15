@@ -541,3 +541,105 @@ fn an_agent_turn_item_is_reminded_sooner_than_a_person_turn_item() {
     let later = run(&e, 7, &["mail", "sweep", "--dry-run"]);
     assert!(later.stdout.contains("gmail:t1/m1"), "{}", later.stdout);
 }
+
+#[test]
+fn draft_snapshot_and_diff_work_without_a_vault_and_keep_the_copy_outside_git() {
+    let e = env();
+    // vault を指さない(ノートを読まない)。置き場は終端の控えと同じ WORKLOG_STATE_DIR の下。
+    let draft = e.root.join("draft.txt");
+    let sent = e.root.join("sent.txt");
+    std::fs::write(
+        &draft,
+        "〇〇 様\n\nご提示いただいた日程でお願いしたく存じます。\n\n杉本\n",
+    )
+    .unwrap();
+    std::fs::write(
+        &sent,
+        "〇〇 様\n\nご提示いただいた日程でお願いできますと幸いです。\n\n杉本 健太朗\n",
+    )
+    .unwrap();
+    let key = "gmail:t1/m1";
+    let snap = run(
+        &e,
+        0,
+        &[
+            "mail",
+            "snapshot",
+            key,
+            "--body-file",
+            draft.to_str().unwrap(),
+        ],
+    );
+    ok(&snap);
+    assert!(e.state.join("mail-drafts/gmail.t1.m1").exists());
+
+    // 差は、行ごとに - と + で出る。
+    let d = run(
+        &e,
+        0,
+        &["mail", "diff", key, "--sent-file", sent.to_str().unwrap()],
+    );
+    ok(&d);
+    assert_eq!(
+        d.stdout.lines().collect::<Vec<_>>(),
+        vec![
+            "- ご提示いただいた日程でお願いしたく存じます。",
+            "+ ご提示いただいた日程でお願いできますと幸いです。",
+            "- 杉本",
+            "+ 杉本 健太朗",
+        ]
+    );
+
+    // 差が無ければ、何も出さない。
+    ok(&run(
+        &e,
+        0,
+        &[
+            "mail",
+            "snapshot",
+            key,
+            "--body-file",
+            sent.to_str().unwrap(),
+        ],
+    ));
+    let same = run(
+        &e,
+        0,
+        &["mail", "diff", key, "--sent-file", sent.to_str().unwrap()],
+    );
+    ok(&same);
+    assert!(same.stdout.is_empty(), "{}", same.stdout);
+
+    // 写しの無い鍵と、形の違う鍵は失敗する。捨てたあとは、写しが無い。
+    let none = run(
+        &e,
+        0,
+        &[
+            "mail",
+            "diff",
+            "gmail:t9/m9",
+            "--sent-file",
+            sent.to_str().unwrap(),
+        ],
+    );
+    assert_ne!(none.code, 0);
+    assert!(
+        none.stderr.contains("下書きの写しが無い鍵"),
+        "{}",
+        none.stderr
+    );
+    let bad = run(
+        &e,
+        0,
+        &[
+            "mail",
+            "snapshot",
+            "gmail:../x/y",
+            "--body-file",
+            draft.to_str().unwrap(),
+        ],
+    );
+    assert_ne!(bad.code, 0);
+    ok(&run(&e, 0, &["mail", "snapshot-forget", key]));
+    assert!(!e.state.join("mail-drafts/gmail.t1.m1").exists());
+}
