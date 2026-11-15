@@ -102,6 +102,72 @@ pub fn split(text: &str) -> Vec<Block> {
     blocks
 }
 
+/// 行が、箇条書き(`-`・`*`・`+`)か番号付き(`1.`・`1)`)の項目の先頭か。インデントは許す。
+/// 記号のあとに空白が要る(`**太字**` や `---` を項目と読まない)。
+fn is_item_line(line: &str) -> bool {
+    let t = line.trim_start();
+    let mut chars = t.chars();
+    match chars.next() {
+        Some('-' | '*' | '+') => matches!(chars.next(), Some(' ' | '\t')),
+        Some(d) if d.is_ascii_digit() => {
+            let rest = t.trim_start_matches(|c: char| c.is_ascii_digit());
+            // 桁数の上限(日付や年号の `2026.` を番号と読まない)。
+            t.len() - rest.len() <= 3
+                && rest.starts_with(['.', ')'])
+                && matches!(rest.chars().nth(1), Some(' ' | '\t'))
+        }
+        _ => false,
+    }
+}
+
+/// 箇条書き・番号付きの項目を含む段落を、項目ごとの段落に分ける(項目の前の導入の行も 1 つの段落)。
+/// 項目に続く、記号の無い行(折り返し)は、前の項目に付く。ネストした項目も別の段落になる。
+/// [`join`] で元に戻る(項目の間の区切りは、その行末の改行)。フェンスと front matter は分けない。
+///
+/// 基点との比較を、項目の単位にするために使う: 承認済みの 7 項目の箇条書きに 1 項目足しただけで、
+/// 段落全体が書き直しの対象になっていた(2026-11-12 の実測)。
+pub fn split_items(blocks: Vec<Block>) -> Vec<Block> {
+    let mut out = Vec::with_capacity(blocks.len());
+    for b in blocks {
+        if b.verbatim || !b.text.lines().any(is_item_line) {
+            out.push(b);
+            continue;
+        }
+        let mut units: Vec<(String, String)> = Vec::new();
+        let mut cur = String::new();
+        for line in b.text.split_inclusive('\n') {
+            if is_item_line(line) && !cur.is_empty() {
+                units.push(finish_unit(std::mem::take(&mut cur)));
+            }
+            cur.push_str(line);
+        }
+        for (text, sep) in units {
+            out.push(Block {
+                text,
+                sep,
+                verbatim: false,
+            });
+        }
+        out.push(Block {
+            text: cur,
+            sep: b.sep,
+            verbatim: false,
+        });
+    }
+    out
+}
+
+/// 項目 1 つ分の行の並びを、(本文, 行末の改行)にする。
+fn finish_unit(mut s: String) -> (String, String) {
+    let sep = take_trailing_newline(&mut s);
+    (s, sep)
+}
+
+/// [`split`] してから、箇条書き・番号付きを項目ごとに分ける([`split_items`])。
+pub fn split_with_items(text: &str) -> Vec<Block> {
+    split_items(split(text))
+}
+
 /// [`split`] の逆。
 pub fn join(blocks: &[Block]) -> String {
     let mut out = String::new();
@@ -175,6 +241,52 @@ mod tests {
         ] {
             assert_eq!(join(&split(src)), src, "round trip: {src:?}");
         }
+    }
+
+    fn texts(blocks: &[Block]) -> Vec<&str> {
+        blocks.iter().map(|b| b.text.as_str()).collect()
+    }
+
+    #[test]
+    fn items_split_bullets_numbers_and_the_intro_line() {
+        let src = "手順:\n- 一つ目。\n- 二つ目\n  折り返しの行。\n  - ネストした項目。\n1. 番号付き。\n2) 別の記号。\n\n次の段落。\n";
+        let blocks = split_with_items(src);
+        assert_eq!(
+            texts(&blocks),
+            vec![
+                "手順:",
+                "- 一つ目。",
+                "- 二つ目\n  折り返しの行。",
+                "  - ネストした項目。",
+                "1. 番号付き。",
+                "2) 別の記号。",
+                "次の段落。",
+            ]
+        );
+        assert_eq!(join(&blocks), src, "往復で元に戻る");
+    }
+
+    #[test]
+    fn items_round_trip_for_crlf_and_trailing_blank_lines() {
+        for src in [
+            "- 一\r\n- 二\r\n\r\n次。\r\n",
+            "- 一\n- 二",
+            "- 一\n- 二\n\n\n\n",
+            "前置き\n* a\n+ b\n\n末尾。",
+            "1. a\n\n```\n- code\n\n- more\n```\n\n- b\n",
+        ] {
+            assert_eq!(join(&split_with_items(src)), src, "{src:?}");
+        }
+    }
+
+    #[test]
+    fn items_leave_non_lists_fences_and_lookalikes_alone() {
+        // 太字・水平線・年号・記号のあとに空白が無い行は、項目でない。フェンスの中の `- ` も分けない。
+        let src = "**太字**で始まる段落。\n\n---\n\n2026.11 のメモ。\n\n-記号の直後に字。\n\n```\n- code\n- more\n```\n";
+        assert_eq!(split_with_items(src), split(src));
+        // 項目が 1 つだけの段落は、そのまま 1 つ。
+        let one = "- 唯一の項目。\n";
+        assert_eq!(texts(&split_with_items(one)), vec!["- 唯一の項目。"]);
     }
 
     #[test]
