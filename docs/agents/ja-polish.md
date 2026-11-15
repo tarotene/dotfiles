@@ -199,6 +199,31 @@ ja-polish bench crates/ja-polish/bench/samples.txt [--variants model[@level],…
 「通した」とみなす(`records::load`)。キーを入れた・混雑が収まったあとは、同じ文書をもう一度 `ja-polish` に
 通せば、素通しだった段落が書き直される。キーが無いまま再実行すると、同じ段落をまた送って素通しの記録が 1 行増える。
 
+### 素通しの理由と、依頼・応答の記録(原因の調査)
+
+照合([`polish::verify`])に再依頼でも外れた素通しの理由には、**答えたモデル**を添える(`…が変わりました(モデル gemini-3.6-flash)`)。
+応答の書式が崩れたとき(`応答に依頼の書式が混ざっています`、`応答に該当する段落がありません`)は、さらに**応答の先頭 200 字**
+(改行は `⏎`)も添える。伏せ字の欠けなどの理由には、段落の本文を載せない。
+
+**全段落が「応答に依頼の書式が混ざっています」で素通しになる症状の原因**(2026-11-13 に 1 回、11-14 に同じセッション内で連続 3 回、
+11-15 に再現): 主のモデル(`gemini-3.6-flash`)が無料枠の上限(`You exceeded your current quota`)で、再依頼でも失敗し、予備のモデル
+(`gemini-flash-lite-latest`)に切り替わる。予備のモデルが、応答の書式(`<para>` だけ)を守らず、**依頼文の `<text>` の囲みごと返す**
+(`<para n="1">⏎<text>⏎本文⏎</text>⏎</para>`)。囲みの残る応答は、照合が書式の混入として落とす。2026-11-15 に、`--trace` で取った
+4 件の依頼と応答(主のモデルが 3 回 `exit_code` 1・`Quota exceeded`、予備のモデルが `ok`。5 段落の応答のすべてが `<text>` で
+囲まれていた)で確かめた。無料枠の上限そのものは、この囲みの除去と別の問題で、課金の検討の知らせ(`gate-failopen-advisory`)の対象。
+
+応答のうち、`<para>` の中身全体が `<text>…</text>` の囲みなら、囲みを外して読む(`llm::unwrap_text`)。上の症状は、これで通る
+(同じ PR 本文が、囲みを外す前は 5 段落すべて素通し、外したあとは通った)。`<before>`・`<after>`(参考の段落)が混ざる応答は、
+本文を取り違えうるので外さず、書式の混入として外れる。
+
+`llm` へのすべての依頼と応答は、`ja-polish --trace <dir> <ファイル>`(または環境変数 `JA_POLISH_TRACE_DIR=<dir>`)で、
+`<dir>` に **1 依頼 1 ファイル**(JSON、所有者だけが読める)として書ける。既定では何も書かない。書くのは、`model`・`thinking_level`・
+`timeout_secs`・`outcome`(`ok`・`failed`・`timeout`)・`exit_code`・依頼文(`user`)・`stdout`・`stderr`、指示文の長さと SHA-256
+(指示文そのものは、文体規約の全文を含むので書かない)。依頼文と応答には文書の本文が入る(コード・URL は伏せ字)ので、`<dir>` は
+共有しない場所(scratchpad など)に置く。`JA_POLISH_LLM_BIN` を `tee` を挟むラッパーに差し替える方法は、`tee` が終了コードを
+上書きして `llm` の失敗が成功に見えるので使わない(2026-11-12 の実測)。`ja-polish` は単体で呼ぶ(`--trace` は引数なので、コマンドが
+`ja-polish` で始まる形のまま、sandbox の外で動く)。
+
 `~/.local/state/claude/gate-events.jsonl` に、書き直した回ごとに `ja-polish` の `fail-open`(1 段落でも
 素通しがあった)か `pass` を残す。`gate-failopen-advisory` が、`pass` を挟まずに 3 回続けて `fail-open` の
 とき、次のセッションの冒頭で警告する(`GATE_FAILOPEN_THRESHOLD` で変えられる)。
