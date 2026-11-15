@@ -22,14 +22,26 @@
 //!
 //! `ja-polish` が失敗して素通しにした段落は、記録に `skipped` で残るので、この関所は通す
 //! (止めない設計。後から知らせる経路は gate イベント)。
+//!
+//! `gh issue edit` / `gh pr edit` の本文は、git の外なので基点が無く、既存の長い本文に 1 行足すだけでも
+//! 全段落の通過を求めていた。そこで、未通過の段落があるときだけ `gh <issue|pr> view --json body` で
+//! いまの本文を引き、そこにある段落は通過済みとして数えない(文書ファイルの基点と同じ型、ADR-1387 D5)。
+//! 引けないとき(認証・ネットワーク・番号の省略)は、基点なしの従来の判定のままにする。
 
 use crate::{config, polish, records};
 use agent_session::hook::ToolCall;
 use agent_session::{Agent, Outcome};
 use command_inspection::command::{first_deny, gh_command_at};
+use command_inspection::shell::is_sep;
 use github_command::gh::{has_heredoc, read_body_file, ApiBody, BodyFlags};
+use process_control::output_with_timeout;
 use serde_json::Value;
 use std::collections::HashSet;
+use std::process::Command;
+use std::time::Duration;
+
+/// いまの本文を引く時間の上限。ルータの持ち時間(10 秒)に収める。
+const FETCH_TIMEOUT: Duration = Duration::from_secs(4);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Kind {
@@ -139,12 +151,102 @@ fn is_proxy_post(text: &str) -> bool {
         .any(|l| l.trim_start().starts_with("No-Attribution:"))
 }
 
-/// 本文に、通していない日本語の段落があれば、拒否の理由。
-fn judge(what: &str, text: &str, known: &HashSet<String>) -> Option<String> {
+/// `gh issue edit` / `gh pr edit` の対象。いまの本文を引くのに使う。
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct EditTarget {
+    /// `issue` か `pr`。
+    noun: &'static str,
+    /// 番号・URL・ブランチ名(`gh <noun> view` にそのまま渡せるもの)。
+    target: String,
+    /// `-R` / `--repo` の値。
+    repo: Option<String>,
+}
+
+/// 値を次のトークンに取る `gh issue|pr edit` のフラグ。対象(位置引数)を探すとき、値を読み飛ばすのに使う。
+const EDIT_VALUE_FLAGS: &[&str] = &[
+    "-R",
+    "--repo",
+    "-b",
+    "--body",
+    "-F",
+    "--body-file",
+    "-t",
+    "--title",
+    "-a",
+    "--add-assignee",
+    "--remove-assignee",
+    "-l",
+    "--add-label",
+    "--remove-label",
+    "-m",
+    "--milestone",
+    "-p",
+    "--add-project",
+    "--remove-project",
+    "-B",
+    "--base",
+    "-r",
+    "--add-reviewer",
+    "--remove-reviewer",
+];
+
+/// 範囲のトークン(先頭が `gh`)が `gh issue|pr edit` なら、その対象。番号を省いた形(現在のブランチの PR)や、
+/// 対象が読めない形は `None`(基点なしの判定のままにする)。
+fn edit_target(tokens: &[String]) -> Option<EditTarget> {
+    let noun = match (tokens.get(1)?.as_str(), tokens.get(2)?.as_str()) {
+        ("issue", "edit") => "issue",
+        ("pr", "edit") => "pr",
+        _ => return None,
+    };
+    let mut target = None;
+    let mut repo = None;
+    let mut i = 3;
+    while i < tokens.len() && !is_sep(&tokens[i]) {
+        let t = tokens[i].as_str();
+        if let Some(v) = t.strip_prefix("--repo=") {
+            repo = Some(v.to_string());
+        } else if EDIT_VALUE_FLAGS.contains(&t) {
+            if matches!(t, "-R" | "--repo") {
+                repo = tokens.get(i + 1).cloned();
+            }
+            i += 1;
+        } else if !t.starts_with('-') && target.is_none() {
+            target = Some(t.to_string());
+        }
+        i += 1;
+    }
+    Some(EditTarget {
+        noun,
+        target: target?,
+        repo,
+    })
+}
+
+/// いまの本文を `gh <noun> view` で引く。引けなければ `None`(認証・ネットワーク・時間切れを区別しない)。
+/// CRLF は LF にそろえる(段落の記録は LF で数えている)。
+fn fetch_current_body(t: &EditTarget) -> Option<String> {
+    let mut cmd = Command::new("gh");
+    cmd.args([t.noun, "view", &t.target, "--json", "body", "--jq", ".body"]);
+    if let Some(r) = &t.repo {
+        cmd.args(["-R", r]);
+    }
+    let (status, out) = output_with_timeout(&mut cmd, FETCH_TIMEOUT, None)?;
+    status
+        .success()
+        .then(|| String::from_utf8_lossy(&out).replace("\r\n", "\n"))
+}
+
+/// 本文に、通していない日本語の段落があれば、拒否の理由。`baseline` は、すでにある本文(編集の前)。
+fn judge(
+    what: &str,
+    text: &str,
+    known: &HashSet<String>,
+    baseline: Option<&str>,
+) -> Option<String> {
     if is_proxy_post(text) {
         return None;
     }
-    let pending = polish::pending(text, None, known);
+    let pending = polish::pending(text, baseline, known);
     if pending.is_empty() {
         return None;
     }
@@ -161,8 +263,17 @@ fn judge(what: &str, text: &str, known: &HashSet<String>) -> Option<String> {
     ))
 }
 
-/// Bash のコマンド文字列を判定する。
+/// Bash のコマンド文字列を判定する。`gh issue|pr edit` は、いまの本文を基点にする。
 pub fn decide_bash(cmd: &str, known: &HashSet<String>) -> Option<String> {
+    decide_bash_with(cmd, known, &fetch_current_body)
+}
+
+/// [`decide_bash`] の、いまの本文の取り方を差し替えられる版(試験用)。
+fn decide_bash_with(
+    cmd: &str,
+    known: &HashSet<String>,
+    fetch: &dyn Fn(&EditTarget) -> Option<String>,
+) -> Option<String> {
     first_deny(cmd, is_target_at, |r| {
         let (what, text) = match r.kind {
             Kind::GhBody => (
@@ -190,7 +301,14 @@ pub fn decide_bash(cmd: &str, known: &HashSet<String>) -> Option<String> {
                 )?,
             ),
         };
-        judge(what, &text, known)
+        let reason = judge(what, &text, known, None)?;
+        // 未通過の段落があるときだけ、いまの本文を引いて、すでにある段落を数えから外す(通信は拒否の前の 1 回だけ)。
+        if r.kind == Kind::GhBody {
+            if let Some(base) = edit_target(r.tokens).and_then(|t| fetch(&t)) {
+                return judge(what, &text, known, Some(&base));
+            }
+        }
+        Some(reason)
     })
 }
 
@@ -255,7 +373,7 @@ pub fn mcp_text(tool: &str, input: &Value) -> Option<(&'static str, String)> {
 /// MCP ツールの呼び出しを判定する。
 pub fn decide_mcp(tool: &str, input: &Value, known: &HashSet<String>) -> Option<String> {
     let (what, text) = mcp_text(tool, input)?;
-    judge(what, &text, known)
+    judge(what, &text, known, None)
 }
 
 /// hook 本体(ルータの規則 `ja-polish-gate` が呼ぶ)。
@@ -405,6 +523,81 @@ mod tests {
         // git -C <dir> commit も拾う。commit 以外は拾わない。
         assert!(decide_bash(&format!("git -C /x commit -m '{JP}'"), &HashSet::new()).is_some());
         assert!(decide_bash(&format!("git log --grep '{JP}'"), &HashSet::new()).is_none());
+    }
+
+    const OLD: &str = "承認済みの文を、そのまま残している。";
+    const NEW: &str = "新しく足した行を、これから通す。";
+
+    fn tokens(cmd: &str) -> Vec<String> {
+        command_inspection::parse(cmd).unwrap().tokens
+    }
+
+    #[test]
+    fn edit_target_reads_number_repo_and_skips_flag_values() {
+        let t = |c: &str| edit_target(&tokens(c));
+        assert_eq!(
+            t("gh issue edit 12 -R o/r --body-file /x"),
+            Some(EditTarget {
+                noun: "issue",
+                target: "12".into(),
+                repo: Some("o/r".into())
+            })
+        );
+        // 値フラグの値(数字でも)は、対象と読まない。
+        assert_eq!(
+            t("gh pr edit --title 5 --repo=o/r 34 --body-file /x"),
+            Some(EditTarget {
+                noun: "pr",
+                target: "34".into(),
+                repo: Some("o/r".into())
+            })
+        );
+        // 番号を省いた形(現在のブランチの PR)・edit でない形は、基点なし。
+        assert_eq!(t("gh pr edit --body-file /x"), None);
+        assert_eq!(t("gh pr comment 3 --body-file /x"), None);
+        // 次の文(`&&` の後)の位置引数は、対象と読まない。
+        assert_eq!(t("gh issue edit --body-file /x && echo 7"), None);
+    }
+
+    #[test]
+    fn edit_uses_the_current_body_as_the_baseline() {
+        let dir = tempfile::tempdir().unwrap();
+        let f = write(&dir, "b.md", &format!("{OLD}\n\n{NEW}\n"));
+        let cmd = format!("gh issue edit 12 -R o/r --body-file {f}");
+        let current = format!("{OLD}\n");
+        let fetch = |t: &EditTarget| {
+            assert_eq!((t.noun, t.target.as_str()), ("issue", "12"));
+            Some(current.clone())
+        };
+        // 基点なしなら 2 段落が未通過、基点ありなら足した 1 段落だけ。
+        let none = decide_bash_with(&cmd, &HashSet::new(), &|_| None).expect("deny");
+        assert!(none.contains("2 個"), "{none}");
+        let with = decide_bash_with(&cmd, &HashSet::new(), &fetch).expect("deny");
+        assert!(
+            with.contains("1 個") && with.contains("新しく足した"),
+            "{with}"
+        );
+        // 足した段落を通していれば、既存の段落が未記録でも通る。
+        assert!(decide_bash_with(&cmd, &known(&[NEW]), &fetch).is_none());
+    }
+
+    #[test]
+    fn the_current_body_is_not_fetched_when_nothing_is_pending() {
+        let dir = tempfile::tempdir().unwrap();
+        let f = write(&dir, "b.md", &format!("{NEW}\n"));
+        let cmd = format!("gh issue edit 12 --body-file {f}");
+        let boom = |_: &EditTarget| -> Option<String> { panic!("通信してはならない") };
+        assert!(decide_bash_with(&cmd, &known(&[NEW]), &boom).is_none());
+    }
+
+    #[test]
+    fn only_edit_takes_a_baseline() {
+        // create・comment は、いまの本文を持たない。引かない。
+        let dir = tempfile::tempdir().unwrap();
+        let f = write(&dir, "b.md", &format!("{OLD}\n"));
+        let boom = |_: &EditTarget| -> Option<String> { panic!("通信してはならない") };
+        let cmd = format!("gh issue comment 12 --body-file {f}");
+        assert!(decide_bash_with(&cmd, &HashSet::new(), &boom).is_some());
     }
 
     #[test]
