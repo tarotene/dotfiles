@@ -12,7 +12,7 @@
   "properties": {
     "format_version": {
       "description": "ページ形式の版。テンプレートと verdicts.schema.json が実装している版と一致していること。",
-      "const": 6
+      "const": 7
     },
     "run_label": {
       "description": "その回の呼び名。ページの冒頭に「<run_label>の一括処理」と出る。",
@@ -156,6 +156,8 @@
         "name",
         "note",
         "key",
+        "thread",
+        "asks",
         "text"
       ],
       "properties": {
@@ -168,6 +170,41 @@
         },
         "key": {
           "$ref": "#/$defs/key"
+        },
+        "thread": {
+          "description": "返信先の会話の id(`<媒体>:<会話の印>`。reply-coverage の `check` に渡したものと同じ)。生成器が `reply-coverage verify` で、この下書きの最終稿が検査に合格しているかを照会する。",
+          "type": "string",
+          "pattern": "^[a-z]+:.+$"
+        },
+        "asks": {
+          "description": "検査の報告にある、相手の依頼と処分の一覧。本人が、答え漏れが無いかを画面で確かめる。依頼が無い会話は空の配列。",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "quote",
+              "status"
+            ],
+            "properties": {
+              "quote": {
+                "description": "会話からの逐語の引用。",
+                "type": "string",
+                "minLength": 1
+              },
+              "status": {
+                "description": "処分。未回答(unanswered)は検査に合格しないので、ここには出ない。",
+                "type": "string",
+                "enum": [
+                  "answered",
+                  "declined",
+                  "deferred",
+                  "answered_before",
+                  "retracted"
+                ]
+              }
+            }
+          }
         },
         "text": {
           "description": "下書き本文。ページ上で本人が直せる。",

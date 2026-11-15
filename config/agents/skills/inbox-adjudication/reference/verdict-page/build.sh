@@ -48,6 +48,30 @@ duplicates() {
   jq -r --arg f "$2" '[.items[][$f]] | group_by(.) | map(select(length > 1) | .[0]) | .[]' "$1"
 }
 
+# verify_drafts <items.json>: drafts[] の下書きごとに `reply-coverage verify` を呼び、会話の相手の依頼すべてへの
+# 応答を検査した最終稿であること(検査のあとに本文を直していないこと)を確かめる。検査していない下書きを
+# 含むページは作らない。実行ファイルは環境変数 REPLY_COVERAGE_BIN で差し替えられる(--selftest が使う)。
+verify_drafts() {
+  local data=$1 bin="${REPLY_COVERAGE_BIN:-reply-coverage}" n i thread file
+  n=$(jq '(.drafts // []) | length' "$data")
+  [ "$n" -gt 0 ] || return 0
+  if ! command -v "$bin" >/dev/null 2>&1; then
+    echo "error: drafts[] があるのに $bin が見つかりません(返信の下書きは reply-coverage の検査が要ります)" >&2
+    return 1
+  fi
+  for ((i = 0; i < n; i++)); do
+    thread=$(jq -r ".drafts[$i].thread" "$data")
+    file=$(mktemp)
+    jq -j ".drafts[$i].text" "$data" > "$file"
+    if ! "$bin" verify --thread "$thread" --draft "$file" 2> "$file.err"; then
+      echo "error: drafts[$i](会話 $thread)は検査に合格していません: $(tr '\n' ' ' < "$file.err")" >&2
+      rm -f "$file" "$file.err"
+      return 1
+    fi
+    rm -f "$file" "$file.err"
+  done
+}
+
 # build <items.json>: 完成した HTML を標準出力へ出す。
 build() {
   local data=$1 field dup ph n
@@ -69,6 +93,8 @@ build() {
     echo "error: items[].rec_option が選択肢にありません: $dup" >&2
     return 1
   fi
+  # drafts[] の各下書きは、reply-coverage の検査に合格した最終稿でなければならない(#1577)。
+  verify_drafts "$data" || return 1
   # 差し込み点は 1 か所ずつ(コメントなどに同じ語が残ると、置換が別の場所に当たる)。
   for ph in __DATA__ __OPTIONS__ __FORMAT_VERSION__; do
     n=$(grep -o "$ph" "$TEMPLATE" | wc -l || true)
@@ -137,6 +163,10 @@ selftest() {
   trap 'rm -rf "$tmp"' EXIT
   valid="$HERE/fixtures/valid.items.json"
   breaker="$HERE/fixtures/script-breaker.items.json"
+  # 偽の reply-coverage: 本文に NOT-CHECKED を含む下書きだけを、検査していないものとして落とす。
+  printf '#!/bin/sh\n[ "$1" = verify ] || exit 2\nwhile [ $# -gt 0 ]; do [ "$1" = --draft ] && f=$2; shift; done\n! grep -q NOT-CHECKED "$f"\n' > "$tmp/rc-stub"
+  chmod +x "$tmp/rc-stub"
+  export REPLY_COVERAGE_BIN="$tmp/rc-stub"
 
   # 1. 入力の検証
   expect_ok "入力: 適合する入力が通る" build "$valid"
@@ -161,6 +191,18 @@ selftest() {
   mutate '.format_version = 4' old-version
   mutate '(.items[] | select(.kind == "fact") | .rec_option) = "do-me"' fact-rec-option-of-other-kind
   mutate '(.items[] | select(.kind == "report") | .rec_option) = "yes"' report-rec-option-of-fact
+  mutate '.drafts[0].text = "NOT-CHECKED " + .drafts[0].text' unchecked-draft
+  mutate 'del(.drafts[0].thread)' draft-without-thread
+  mutate 'del(.drafts[0].asks)' draft-without-asks
+  mutate '.drafts[0].thread = "x"' bad-draft-thread
+  mutate '.drafts[0].asks[0].status = "unanswered"' unanswered-ask-in-draft
+  mutate '.drafts[0].asks[0].extra = 1' extra-ask-field
+  for f in unchecked-draft draft-without-thread draft-without-asks bad-draft-thread unanswered-ask-in-draft extra-ask-field; do
+    expect_fail "入力: $f は落ちる" build "$tmp/$f.json"
+  done
+  expect_fail "入力: reply-coverage が無いと、drafts[] のあるページは作らない" env REPLY_COVERAGE_BIN="$tmp/none" bash "$0" --data "$valid"
+  jq 'del(.drafts)' "$valid" > "$tmp/no-drafts.json"
+  expect_ok "入力: drafts[] が無ければ reply-coverage は要らない" env REPLY_COVERAGE_BIN="$tmp/none" bash "$0" --data "$tmp/no-drafts.json"
   for f in bad-key bad-key-dot dup-id dup-key missing-required missing-run-label extra-top extra-item wrong-version bad-when-class bad-id bad-draft-key missing-kind bad-kind bad-rec-option rec-option-of-other-kind old-version fact-rec-option-of-other-kind report-rec-option-of-fact; do
     expect_fail "入力: $f は落ちる" build "$tmp/$f.json"
   done
