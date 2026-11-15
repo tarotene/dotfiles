@@ -231,6 +231,13 @@ ja-polish bench crates/ja-polish/bench/samples.txt [--variants model[@level],…
   protected by critical priority)とある。無料枠の最新モデルが混んでいる、という読みは、この記述からの推論で、
   混雑の理由そのものは未確認。なお、この引用は後で再確認できていない: 同じ日に状態ページをブラウザで開くと
   「Failed to list incidents history: authentication error」と出て、本文が読めなかった(ADR-1387 の改訂)。
+- 無料枠の 1 日の上限(実測 2026-11-15、vega、`llm prompt -m gemini-3.6-flash -n --no-stream …` を直接実行):
+  `You exceeded your current quota … Quota exceeded for metric: generativelanguage.googleapis.com/
+  generate_content_free_tier_requests, limit: 20, model: gemini-3.6-flash, description: Generate content
+  requests per day limit exceeded on Free Tier. … Please retry in 2h38m48s` が返った。無料枠は、モデルごとに
+  1 日 20 リクエストで、使い切ると、その日は(次の再開まで)そのモデルが使えない。ja-polish は 1 回の実行で
+  段落の束ごとに依頼を送るので、実行を重ねると上限に届く、と読める(依頼の数の内訳は未確認)。上限に当たったときの
+  `ja-polish` の動きは「失敗したとき」の節を参照。
 - 戻す条件: `llm prompt -m gemini-3.8-flash -n --no-stream 'こんにちは'` が 30 秒以内に応答すること。
   満たしたら `home/modules/ja-polish.nix` と `crates/ja-polish/src/config.rs` の既定値を戻す。
 
