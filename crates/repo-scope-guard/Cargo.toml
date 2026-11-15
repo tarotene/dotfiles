@@ -1,0 +1,15 @@
+[package]
+name = "repo-scope-guard"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "個人の契約の機体で、別の側・表に無い持ち主の非公開リポジトリを読む gh の呼び出しを、実行前に拒否する(PreToolUse)"
+
+[dependencies]
+agent-session = { version = "0.1.0", path = "../agent-session" }
+command-inspection = { version = "0.1.0", path = "../command-inspection" }
+repo-scope = { version = "0.1.0", path = "../repo-scope" }
+
+[dev-dependencies]
+serde_json.workspace = true

@@ -1,0 +1,17 @@
+[package]
+name = "repo-scope"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "機体の Claude の契約の側(個人 / 会社)と、GitHub の持ち主の側の表から、読んでよいリポジトリかを決める共通の判定"
+
+[dependencies]
+dotfiles-identity = { version = "0.1.0", path = "../dotfiles-identity" }
+github-command = { version = "0.1.0", path = "../github-command" }
+process-env = { version = "0.1.0", path = "../process-env" }
+serde_json.workspace = true
+toml = { workspace = true, features = ["parse", "serde"] }
+
+[dev-dependencies]
+tempfile.workspace = true

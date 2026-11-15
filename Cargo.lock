@@ -1191,6 +1191,7 @@ dependencies = [
  "record-layer",
  "reply-coverage",
  "repo-create-guard",
+ "repo-scope-guard",
  "routines-write-guard",
  "rulesets-write-guard",
  "sandbox-compound-guard",
@@ -2020,6 +2021,28 @@ dependencies = [
  "github-command",
  "serde_json",
  "tempfile",
+]
+
+[[package]]
+name = "repo-scope"
+version = "0.1.0"
+dependencies = [
+ "dotfiles-identity",
+ "github-command",
+ "process-env",
+ "serde_json",
+ "tempfile",
+ "toml",
+]
+
+[[package]]
+name = "repo-scope-guard"
+version = "0.1.0"
+dependencies = [
+ "agent-session",
+ "command-inspection",
+ "repo-scope",
+ "serde_json",
 ]
 
 [[package]]

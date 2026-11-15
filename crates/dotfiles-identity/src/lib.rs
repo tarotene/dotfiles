@@ -149,6 +149,25 @@ pub fn verify(
     }
 }
 
+/// プロセスの環境(`DOTFILES_IDENTITY`・`DOTFILES_CLAUDE_ACCOUNT`・`CLAUDE_CONFIG_DIR`・`HOME`)と
+/// Claude の設定ファイルから [`verify`] を行う。CLI(`main.rs`)と、機体の側を引く他の道具
+/// (`repo-scope`)が、同じ読み方を使うための入口。
+pub fn verify_from_env() -> Result<&'static str, VerifyError> {
+    let identity = std::env::var("DOTFILES_IDENTITY").ok();
+    let expectation = std::env::var("DOTFILES_CLAUDE_ACCOUNT").ok();
+    // 読めないファイルと、読めたが中身が足りないファイルは、`verify` の側で別の理由になる。
+    let claude_json = claude_json_path(
+        std::env::var_os("CLAUDE_CONFIG_DIR"),
+        std::env::var_os("HOME"),
+    )
+    .and_then(|path| std::fs::read_to_string(path).ok());
+    verify(
+        identity.as_deref(),
+        expectation.as_deref(),
+        claude_json.as_deref(),
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
