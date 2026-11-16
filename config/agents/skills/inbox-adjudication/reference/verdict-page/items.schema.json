@@ -12,12 +12,17 @@
   "properties": {
     "format_version": {
       "description": "ページ形式の版。テンプレートと verdicts.schema.json が実装している版と一致していること。",
-      "const": 7
+      "const": 8
     },
     "run_label": {
       "description": "その回の呼び名。ページの冒頭に「<run_label>の一括処理」と出る。",
       "type": "string",
       "minLength": 1
+    },
+    "run_no": {
+      "description": "回の番号(任意)。紙に刷った番号と同じ値を持つ。ページは、キー入力を受ける前に、本人が打った番号とこの値が一致するかを照合する(保存先には書かない)。省くと、照合なしでキー入力を受ける。",
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{1,32}$"
     },
     "alert": {
       "description": "ページ上部の注意。省くと出ない。",
@@ -76,9 +81,9 @@
   },
   "$defs": {
     "key": {
-      "description": "<媒体>:<スレッド>/<受信>。媒体は gmail|linkedin|lapras|none。スレッドと受信は [A-Za-z0-9_=-]+。保存先の文書 id は、この鍵の : と / を . に換えたもの。",
+      "description": "<媒体>:<スレッド>/<受信>。媒体は gmail|linkedin|lapras|gh|none。スレッドと受信は [A-Za-z0-9_=-]+。保存先の文書 id は、この鍵の : と / を . に換えたもの。媒体 gh は GitHub の項目(`owner/repo#N`)で、スレッドが `owner/repo` の可逆な符号(`=` を escape に使い、`/` は `=2f`、`.` は `=2e`、`=` は `=3d`)、受信が番号 N。符号の往復は fixtures/gh-keys.json と build.sh --selftest が検査する。",
       "type": "string",
-      "pattern": "^(gmail|linkedin|lapras|none):[A-Za-z0-9_=-]+/[A-Za-z0-9_=-]+$"
+      "pattern": "^(gmail|linkedin|lapras|gh|none):[A-Za-z0-9_=-]+/[A-Za-z0-9_=-]+$"
     },
     "item": {
       "type": "object",
@@ -110,8 +115,33 @@
             "task",
             "fact",
             "report",
-            "sender"
+            "sender",
+            "pr",
+            "gh-notice",
+            "shelf",
+            "exam",
+            "property"
           ]
+        },
+        "rev": {
+          "description": "項目の版(任意。紙に刷った版の印。短い 16 進)。ページは項目の枠に小さく出す。",
+          "type": "string",
+          "pattern": "^[0-9a-f]{4,16}$"
+        },
+        "stale": {
+          "description": "紙に刷った版から変わった項目(任意。生成器が、同じ回の紙を刷ったときの版と今の版を比べて付ける)。ページは、この項目だけに「紙の版と違います」の印を付ける。束ごとは刷り直さない。",
+          "type": "boolean"
+        },
+        "source": {
+          "description": "原文の出典(任意)。ref は保存済みの原本の鍵、sha256 はその原本の hash。text は、紙と機体ローカルの PDF の生成器がコードで差し込む原文の全文で、HTML の裁定ページには載せない(build.sh が DATA を作る前に text を落とす)。",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["ref", "sha256"],
+          "properties": {
+            "ref": { "type": "string", "minLength": 1 },
+            "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+            "text": { "type": "string" }
+          }
         },
         "rec_option": {
           "description": "推奨の選択肢の id(options.json の、この項目の kind の選択肢)。ボタンに「推奨」の印が付き、推奨の行に選択肢の語が出る。選択肢にない id は build.sh が落とす。省くと印は付かない。",

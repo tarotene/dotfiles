@@ -110,6 +110,28 @@ Gmail の外の媒体(LinkedIn・LAPRAS・Findy)の返信は、下書きをこ�
 (決まり (a) の、読む側の契約の更新は要らない)。形式を 6 から 7 に上げた(`items.schema.json` の `const`、`fixtures/` の入力、
 `crates/issue-inbox/src/collect.rs` の `FORMAT_VERSION`。公開する Artifact の `label` は、次の公開で `形式 v7` にする)。
 
+### 紙と同じ順・同じ符号で打ち返す入力、種類の追加、GitHub の鍵、意味層(形式 8)
+
+紙(机の紙の生成器が組む)とこのページを、同じ項目の表から組み、本人が紙で考えたあと、紙と同じ順・同じ符号で 1 項目 1 キーで打ち返せるようにする。
+
+- **キー入力。** 符号は、`options.json` の並びから機械的に振る: `later` 以外の選択肢に、並びの順で `a` から。`later` は Space。画面の各ボタンに符号が出る。
+  符号の文字で選ぶと、次の項目へ進む。Space は「あとで」、Backspace は一つ戻る。「その他」の符号は、メモ欄へ入力を移す(メモ欄の中では Space・Backspace を
+  移動に使わず、Esc でメモ欄を出て次の項目へ)。Ctrl+Enter で確定する(1 回だけ。`その他` で指示が空の項目が残るあいだは確定させず、件数を出す)。
+  カーソルのある項目の題と選んだ語は、画面の上に大きく出る。保存は、選んだ時に項目ごとに済む(確定は保存先に何も書かない)。
+- **回の番号の照合。** 入力の `run_no`(任意)を、紙と画面の両方に持つ。画面は、本人が打った番号と一致するまで、キー入力を受けない(ボタンは押せる)。保存先の欄は足さない。
+  `items[].stale`(任意)が真の項目だけに、「紙の版と違います」の印が付く(束ごとは刷り直さない)。`items[].rev` は紙の版の印。
+- **種類の追加。** `pr`・`gh-notice`・`shelf`・`exam`・`property`。どの種類も `later` と `other` をちょうど 1 つ持つ(`build.sh --selftest` の既存の検査)。
+  `property` は、形式モデルの性質の確認(承認・直す・外す)で、`answer: true`。
+- **GitHub の鍵。** 媒体 `gh` を足した。鍵は `gh:<スレッド>/<受信>`、スレッドは `owner/repo` の可逆な符号で、`=` を escape にして `/` は `=2f`、`.` は `=2e`、`=` は `=3d`
+  (`gh-key.jq`。往復と、文書 id の 1 対 1 を `fixtures/gh-keys.json` と `--selftest` が検査する)。受信は番号。かつての `none:<owner>-<repo>-<番号>/issue` は、`.` を含む repo 名を
+  表せず、`a-b/c` と `a/b-c` が同じ形になって 1 対 1 でなかった。`verdicts.schema.json` の鍵の形が変わったので、決まり (a) のとおり、側ごとの読む側の pin の更新が要る。
+- **意味層。** `options.json` の各選択肢が、GTD の行き先 `gtd`(`do`・`delegate`・`defer`・`incubate`・`reference`・`trash`・`answer` の 7 語)を持ち、各 kind が
+  `gtd_required` の行き先にすべて到達できる(`--selftest` が検査する)。`gtd` は保存先に書かず、`option` の id から導く(保存先の欄は足さない)。
+- **原文の全文は載せない。** 入力の `items[].source`(出典 `ref`・原本の `sha256`・任意の `text`)のうち、`text`(原文の全文)は、紙と機体ローカルの PDF だけに載る。`build.sh` が
+  DATA を作る前に `text` を落とし、HTML には載らない(`--selftest` が、目印の文字列で確かめる)。
+- 形式を 7 から 8 に上げた(`items.schema.json` の `const`、`fixtures/` の入力、`crates/issue-inbox/src/collect.rs` の `FORMAT_VERSION`。公開する Artifact の `label` は、
+  次の公開で `形式 v8` にする)。
+
 ## ページの並べ方
 
 - 項目は `items[].kind` ごとに 1 つの枠(pane)にまとまる。枠の順と見出しは `options.json` の `kinds` の順と `pane`。

@@ -1,13 +1,16 @@
 {
-  "description": "メール裁定ページの選択肢の正本。ボタンの語・押したときに保存先へ書く値(verdict と owner)・押した後の分担の説明を、項目の種類(kind)ごとに持つ。画面(template.html)・保存先の形(verdicts.schema.json)・読む側の契約(机の手順 2b-0)は、この表から導く。verdict は decide=やる、pass=やらない、later=あとで、other=その他(記入欄が指示)。owner は decide のときだけ、me=本人、agent=おまかせ(エージェント)。各 kind は later と other をちょうど 1 つ持つ。answer が true の kind(fact=事実の確認、report=済んだかの報告)は、本人がやる・任せるを選ぶ項目ではなく、答えを返す項目で、decide は答え(はい・済んだ)、pass は答え(いいえ・やめた)を表す。画面の分担の表では「答えた」に分かれる。",
+  "description": "メール裁定ページの選択肢の正本。ボタンの語・押したときに保存先へ書く値(verdict と owner)・押した後の分担の説明・GTD の行き先(gtd)を、項目の種類(kind)ごとに持つ。画面(template.html)・保存先の形(verdicts.schema.json)・読む側の契約(机の手順 2b-0)・キー入力の符号は、この表から導く。verdict は decide=やる、pass=やらない、later=あとで、other=その他(記入欄が指示)。owner は decide のときだけ、me=本人、agent=おまかせ(エージェント)。各 kind は later と other をちょうど 1 つ持つ。answer が true の kind(fact=事実の確認、report=済んだかの報告、sender=差出人の扱い、property=モデルの性質の確認)は、本人がやる・任せるを選ぶ項目ではなく、答えを返す項目で、decide は答え(はい・済んだ)、pass は答え(いいえ・やめた)を表す。画面の分担の表では「答えた」に分かれる。gtd は選択肢ごとの GTD の行き先で、閉じた 7 語: do(自分でやる)・delegate(任せる)・defer(あとで)・incubate(いつか)・reference(資料として置く)・trash(捨てる・やらない)・answer(答える)。保存先には書かず、option の id から導く。gtd_required は、その kind が到達できなければならない行き先で、build.sh --selftest が、各 kind の選択肢がそれをすべて持つことを検査する。キー入力の符号は、later 以外の選択肢に、この表の並びの順で a から振る(later は Space、other は最後の符号)。",
+  "gtd_values": ["do", "delegate", "defer", "incubate", "reference", "trash", "answer"],
   "kinds": {
     "reply": {
       "pane": "返信を出す",
+      "gtd_required": ["do", "delegate", "trash", "defer"],
       "options": [
         {
           "id": "send-me",
           "verdict": "decide",
           "owner": "me",
+          "gtd": "do",
           "label": "自分で送る",
           "you": "下書きを直して、元の画面で送る",
           "agent": "送ったかを読み戻して、記録を閉じる"
@@ -16,6 +19,7 @@
           "id": "send-agent",
           "verdict": "decide",
           "owner": "agent",
+          "gtd": "delegate",
           "label": "おまかせで送る",
           "you": "送る直前に、画面・全文・宛先を見て、OK を 1 回返す",
           "agent": "次の机で、送信直前の画面・全文・宛先を見せる。OK のあとに送り、記録を閉じる"
@@ -23,6 +27,7 @@
         {
           "id": "skip",
           "verdict": "pass",
+          "gtd": "trash",
           "label": "返信しない",
           "you": "なし",
           "agent": "返信せずに閉じる"
@@ -30,6 +35,7 @@
         {
           "id": "later",
           "verdict": "later",
+          "gtd": "defer",
           "label": "あとで",
           "you": "なし",
           "agent": "何も記録しない。7 日後に再通知する"
@@ -37,6 +43,7 @@
         {
           "id": "other",
           "verdict": "other",
+          "gtd": "delegate",
           "label": "その他",
           "you": "下の欄に、どうしたいかを書く",
           "agent": "次の机で指示を読み、そのとおりに動く。分からなければ聞く"
@@ -45,10 +52,12 @@
     },
     "notice": {
       "pane": "通知を確かめる",
+      "gtd_required": ["do", "delegate", "trash", "defer"],
       "options": [
         {
           "id": "known",
           "verdict": "pass",
+          "gtd": "trash",
           "label": "心当たりあり(対応不要)",
           "you": "なし",
           "agent": "対応不要として閉じる"
@@ -57,6 +66,7 @@
           "id": "act-me",
           "verdict": "decide",
           "owner": "me",
+          "gtd": "do",
           "label": "対応が要る(自分でやる)",
           "you": "手続きや確認を、あなたがやる",
           "agent": "済んだかを読み戻して、記録を閉じる"
@@ -65,6 +75,7 @@
           "id": "act-agent",
           "verdict": "decide",
           "owner": "agent",
+          "gtd": "delegate",
           "label": "調べてもらう",
           "you": "報告を読んで判断する",
           "agent": "分かる範囲を調べて報告する。操作が要る手続きは、あなたに渡す"
@@ -72,6 +83,7 @@
         {
           "id": "later",
           "verdict": "later",
+          "gtd": "defer",
           "label": "あとで",
           "you": "なし",
           "agent": "何も記録しない。7 日後に再通知する"
@@ -79,6 +91,7 @@
         {
           "id": "other",
           "verdict": "other",
+          "gtd": "delegate",
           "label": "その他",
           "you": "下の欄に、どうしたいかを書く",
           "agent": "次の机で指示を読み、そのとおりに動く。分からなければ聞く"
@@ -87,11 +100,13 @@
     },
     "task": {
       "pane": "期限のある作業",
+      "gtd_required": ["do", "delegate", "trash", "defer"],
       "options": [
         {
           "id": "do-me",
           "verdict": "decide",
           "owner": "me",
+          "gtd": "do",
           "label": "自分でやる",
           "you": "作業をやる",
           "agent": "済んだかを読み戻して、記録を閉じる"
@@ -100,6 +115,7 @@
           "id": "do-agent",
           "verdict": "decide",
           "owner": "agent",
+          "gtd": "delegate",
           "label": "おまかせ",
           "you": "認証・支払い・送信のような、あなたの操作が要る段だけ",
           "agent": "できる範囲を進める。あなたの操作が要る段で止めて渡す"
@@ -107,6 +123,7 @@
         {
           "id": "drop",
           "verdict": "pass",
+          "gtd": "trash",
           "label": "やらない",
           "you": "なし",
           "agent": "やらないものとして閉じる"
@@ -114,6 +131,7 @@
         {
           "id": "later",
           "verdict": "later",
+          "gtd": "defer",
           "label": "あとで",
           "you": "なし",
           "agent": "何も記録しない。7 日後に再通知する"
@@ -121,6 +139,7 @@
         {
           "id": "other",
           "verdict": "other",
+          "gtd": "delegate",
           "label": "その他",
           "you": "下の欄に、どうしたいかを書く",
           "agent": "次の机で指示を読み、そのとおりに動く。分からなければ聞く"
@@ -130,11 +149,13 @@
     "fact": {
       "pane": "事実を確かめる",
       "answer": true,
+      "gtd_required": ["answer", "defer"],
       "options": [
         {
           "id": "yes",
           "verdict": "decide",
           "owner": "me",
+          "gtd": "answer",
           "label": "はい",
           "you": "なし(答えるだけ)",
           "agent": "次の机で答えを読み、答えで変わる下書き・記録を直す"
@@ -142,6 +163,7 @@
         {
           "id": "no",
           "verdict": "pass",
+          "gtd": "answer",
           "label": "いいえ",
           "you": "なし(答えるだけ)",
           "agent": "次の机で答えを読み、答えで変わる下書き・記録を直す"
@@ -149,6 +171,7 @@
         {
           "id": "later",
           "verdict": "later",
+          "gtd": "defer",
           "label": "まだ",
           "you": "なし",
           "agent": "何も記録しない。答えが要るあいだ、次の机でもう一度出す"
@@ -156,6 +179,7 @@
         {
           "id": "other",
           "verdict": "other",
+          "gtd": "delegate",
           "label": "その他",
           "you": "下の欄に、答えと理由を書く",
           "agent": "次の机で記入欄を読み、そのとおりに記録・下書きを直す。分からなければ聞く"
@@ -165,11 +189,13 @@
     "report": {
       "pane": "済んだかを報告する",
       "answer": true,
+      "gtd_required": ["answer", "defer"],
       "options": [
         {
           "id": "done",
           "verdict": "decide",
           "owner": "me",
+          "gtd": "answer",
           "label": "済んだ",
           "you": "なし(済んだと伝えるだけ)",
           "agent": "読める範囲で済んだことを読み戻して、記録を閉じる。読めなければ「未確認」と書いて閉じる"
@@ -177,6 +203,7 @@
         {
           "id": "dropped",
           "verdict": "pass",
+          "gtd": "answer",
           "label": "やめた(もう要らない)",
           "you": "なし",
           "agent": "やらないものとして閉じる"
@@ -184,6 +211,7 @@
         {
           "id": "later",
           "verdict": "later",
+          "gtd": "defer",
           "label": "まだ",
           "you": "なし",
           "agent": "何も記録しない。済むまで、次の机でもう一度出す"
@@ -191,6 +219,7 @@
         {
           "id": "other",
           "verdict": "other",
+          "gtd": "delegate",
           "label": "その他",
           "you": "下の欄に、状況を書く",
           "agent": "次の机で記入欄を読み、そのとおりに動く。分からなければ聞く"
@@ -200,10 +229,12 @@
     "sender": {
       "pane": "差出人の扱いを決める",
       "answer": true,
+      "gtd_required": ["answer", "defer"],
       "options": [
         {
           "id": "keep",
           "verdict": "pass",
+          "gtd": "answer",
           "label": "受信箱に残す",
           "you": "なし(答えるだけ)",
           "agent": "次の机で答えを読み、この差出人をフィルタにせず、受信箱に残す扱いにする"
@@ -212,6 +243,7 @@
           "id": "reading",
           "verdict": "decide",
           "owner": "me",
+          "gtd": "answer",
           "label": "読み物にする",
           "you": "なし(答えるだけ)",
           "agent": "次の机で答えを読み、この差出人を「読み物」のフィルタ(受信箱には出さず、読み物のラベルで取っておく)の定義にする。フィルタは PR にし、反映はあなたが確かめる"
@@ -220,6 +252,7 @@
           "id": "archive",
           "verdict": "decide",
           "owner": "me",
+          "gtd": "answer",
           "label": "既読で保管",
           "you": "なし(答えるだけ)",
           "agent": "次の机で答えを読み、この差出人を「既読にして保管」のフィルタの定義にする。フィルタは PR にし、反映はあなたが確かめる"
@@ -228,6 +261,7 @@
           "id": "trash",
           "verdict": "decide",
           "owner": "me",
+          "gtd": "answer",
           "label": "捨てる",
           "you": "なし(答えるだけ)",
           "agent": "次の机で答えを読み、この差出人を「捨てる」のフィルタの定義にする。フィルタは PR にし、反映はあなたが確かめる"
@@ -235,6 +269,7 @@
         {
           "id": "later",
           "verdict": "later",
+          "gtd": "defer",
           "label": "まだ",
           "you": "なし",
           "agent": "何も記録しない。答えが要るあいだ、次の机でもう一度出す"
@@ -242,9 +277,285 @@
         {
           "id": "other",
           "verdict": "other",
+          "gtd": "delegate",
           "label": "その他",
           "you": "下の欄に、どうしたいかを書く",
           "agent": "次の机で記入欄を読み、そのとおりに動く。分からなければ聞く"
+        }
+      ]
+    },
+    "pr": {
+      "pane": "PR を裁定する",
+      "gtd_required": ["do", "delegate", "incubate", "trash", "defer"],
+      "options": [
+        {
+          "id": "merge-me",
+          "verdict": "decide",
+          "owner": "me",
+          "gtd": "do",
+          "label": "自分でマージする",
+          "you": "CI とレビューを見て、自分でマージする(積まれた PR は最上段をマージする)",
+          "agent": "マージされたかを読み戻して、記録を閉じる"
+        },
+        {
+          "id": "merge-agent",
+          "verdict": "decide",
+          "owner": "agent",
+          "gtd": "delegate",
+          "label": "マージを任せる",
+          "you": "なし(この選択が、マージの明示の裁定になる)",
+          "agent": "最上段か確かめ、CI が緑なのを読んでからマージし、マージ後の状態を読み戻す"
+        },
+        {
+          "id": "fix-agent",
+          "verdict": "decide",
+          "owner": "agent",
+          "gtd": "delegate",
+          "label": "修正を任せる",
+          "you": "なし",
+          "agent": "指摘・衝突・CI の失敗を直して push する。マージはしない"
+        },
+        {
+          "id": "close-agent",
+          "verdict": "decide",
+          "owner": "agent",
+          "gtd": "trash",
+          "label": "close を任せる",
+          "you": "なし(この選択が、close の明示の裁定になる)",
+          "agent": "理由をコメントして close し、読み戻す"
+        },
+        {
+          "id": "keep",
+          "verdict": "pass",
+          "gtd": "incubate",
+          "label": "このまま残す",
+          "you": "なし",
+          "agent": "何もせず、開いたまま残す"
+        },
+        {
+          "id": "later",
+          "verdict": "later",
+          "gtd": "defer",
+          "label": "あとで",
+          "you": "なし",
+          "agent": "何も記録しない。次の机でもう一度出す"
+        },
+        {
+          "id": "other",
+          "verdict": "other",
+          "gtd": "delegate",
+          "label": "その他",
+          "you": "下の欄に、どうしたいかを書く",
+          "agent": "次の机で指示を読み、そのとおりに動く。分からなければ聞く"
+        }
+      ]
+    },
+    "gh-notice": {
+      "pane": "GitHub の通知を裁定する",
+      "gtd_required": ["do", "delegate", "reference", "trash", "defer"],
+      "options": [
+        {
+          "id": "act-me",
+          "verdict": "decide",
+          "owner": "me",
+          "gtd": "do",
+          "label": "自分で対応する",
+          "you": "通知の先を開いて、対応する",
+          "agent": "対応されたかを読み戻して、通知を完了にする"
+        },
+        {
+          "id": "act-agent",
+          "verdict": "decide",
+          "owner": "agent",
+          "gtd": "delegate",
+          "label": "対応を任せる",
+          "you": "報告を読んで判断する",
+          "agent": "通知の先を読み、できる範囲を進めて報告する。操作が要る段は、あなたに渡す"
+        },
+        {
+          "id": "read",
+          "verdict": "pass",
+          "gtd": "reference",
+          "label": "既読にして置く",
+          "you": "なし",
+          "agent": "通知を既読にする(完了にはしない)"
+        },
+        {
+          "id": "done",
+          "verdict": "pass",
+          "gtd": "trash",
+          "label": "対応不要(完了にする)",
+          "you": "なし",
+          "agent": "通知を完了にする"
+        },
+        {
+          "id": "later",
+          "verdict": "later",
+          "gtd": "defer",
+          "label": "あとで",
+          "you": "なし",
+          "agent": "何も記録しない。次の机でもう一度出す"
+        },
+        {
+          "id": "other",
+          "verdict": "other",
+          "gtd": "delegate",
+          "label": "その他",
+          "you": "下の欄に、どうしたいかを書く",
+          "agent": "次の机で指示を読み、そのとおりに動く。分からなければ聞く"
+        }
+      ]
+    },
+    "shelf": {
+      "pane": "棚に載せるかを決める",
+      "gtd_required": ["do", "delegate", "incubate", "trash", "defer"],
+      "options": [
+        {
+          "id": "shelve",
+          "verdict": "decide",
+          "owner": "me",
+          "gtd": "do",
+          "label": "棚に載せる(今やる)",
+          "you": "棚に載せた作業を、今やる",
+          "agent": "`shelf:now` を付ける。棚が満杯なら、戻す 1 件を聞く"
+        },
+        {
+          "id": "trivial",
+          "verdict": "decide",
+          "owner": "me",
+          "gtd": "do",
+          "label": "自明にする",
+          "you": "次の机で、3 条件を確かめて片付ける",
+          "agent": "`trivial` を付ける"
+        },
+        {
+          "id": "to-agent",
+          "verdict": "decide",
+          "owner": "agent",
+          "gtd": "delegate",
+          "label": "エージェントに渡す",
+          "you": "なし",
+          "agent": "`ball:agent` に変えて、次の契機を書く"
+        },
+        {
+          "id": "someday",
+          "verdict": "pass",
+          "gtd": "incubate",
+          "label": "いつか(棚の外のまま)",
+          "you": "なし",
+          "agent": "何も付けない。月次の振り返りで一覧する"
+        },
+        {
+          "id": "drop",
+          "verdict": "pass",
+          "gtd": "trash",
+          "label": "捨てる(やらない)",
+          "you": "なし",
+          "agent": "理由をコメントして、not planned で閉じる"
+        },
+        {
+          "id": "later",
+          "verdict": "later",
+          "gtd": "defer",
+          "label": "あとで",
+          "you": "なし",
+          "agent": "何も記録しない。次の机でもう一度出す"
+        },
+        {
+          "id": "other",
+          "verdict": "other",
+          "gtd": "delegate",
+          "label": "その他",
+          "you": "下の欄に、どうしたいかを書く",
+          "agent": "次の机で指示を読み、そのとおりに動く。分からなければ聞く"
+        }
+      ]
+    },
+    "exam": {
+      "pane": "試験の関門を決める",
+      "gtd_required": ["do", "trash", "defer"],
+      "options": [
+        {
+          "id": "apply",
+          "verdict": "decide",
+          "owner": "me",
+          "gtd": "do",
+          "label": "申し込む",
+          "you": "申込の手続きを、自分で行う(支払いが生じる)",
+          "agent": "済んだと聞いたら、試験の記録を applied に直す"
+        },
+        {
+          "id": "decline",
+          "verdict": "pass",
+          "gtd": "trash",
+          "label": "見送る",
+          "you": "なし",
+          "agent": "試験の記録を declined と理由に直す(失敗ではない)"
+        },
+        {
+          "id": "later",
+          "verdict": "later",
+          "gtd": "defer",
+          "label": "あとで",
+          "you": "なし",
+          "agent": "何も記録しない。申込の期限の前に、次の机でもう一度出す"
+        },
+        {
+          "id": "other",
+          "verdict": "other",
+          "gtd": "delegate",
+          "label": "その他",
+          "you": "下の欄に、どうしたいかを書く",
+          "agent": "次の机で指示を読み、そのとおりに動く。分からなければ聞く"
+        }
+      ]
+    },
+    "property": {
+      "pane": "モデルの性質を確かめる",
+      "answer": true,
+      "gtd_required": ["answer", "defer"],
+      "options": [
+        {
+          "id": "approve",
+          "verdict": "decide",
+          "owner": "me",
+          "gtd": "answer",
+          "label": "承認",
+          "you": "なし(答えるだけ)",
+          "agent": "承認として記録し、以降の前提にする"
+        },
+        {
+          "id": "revise",
+          "verdict": "decide",
+          "owner": "me",
+          "gtd": "answer",
+          "label": "直す",
+          "you": "下の欄に、どう直すかを書く",
+          "agent": "次の机で記入欄を読み、仕様を直して、もう一度出す"
+        },
+        {
+          "id": "drop",
+          "verdict": "pass",
+          "gtd": "answer",
+          "label": "外す",
+          "you": "なし(答えるだけ)",
+          "agent": "この性質を仕様から外す"
+        },
+        {
+          "id": "later",
+          "verdict": "later",
+          "gtd": "defer",
+          "label": "あとで",
+          "you": "なし",
+          "agent": "何も記録しない。次の機会にもう一度出す"
+        },
+        {
+          "id": "other",
+          "verdict": "other",
+          "gtd": "delegate",
+          "label": "その他",
+          "you": "下の欄に、どうしたいかを書く",
+          "agent": "次の机で指示を読み、そのとおりに動く。分からなければ聞く"
         }
       ]
     }

@@ -1,6 +1,7 @@
 {
-  "format_version": 7,
+  "format_version": 8,
   "run_label": "テスト回",
+  "run_no": "20260101-1",
   "alert": {
     "title": "期限が近い項目があります",
     "body": "架空の注意文です。"
@@ -74,6 +75,68 @@
       "from": "差出人(週 2 通、10 回受信)",
       "rec": "読み物にして、受信箱を空に保つ",
       "why": "架空の根拠。直近 10 通のうち 10 通が本文に返信の要求を含まない配信。"
+    },
+    {
+      "id": "p1",
+      "key": "gh:example=2fsample=2eapp/42",
+      "kind": "pr",
+      "rec_option": "merge-me",
+      "rev": "a1b2c3d4",
+      "stale": true,
+      "when": "今回",
+      "title": "架空の PR の裁定",
+      "from": "架空のリポジトリ",
+      "rec": "CI が緑で、レビューも済んでいる",
+      "why": "架空の根拠。",
+      "source": {
+        "ref": "gh-json:example/sample.app#42",
+        "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+        "text": "FULLTEXT-SENTINEL-DO-NOT-RENDER 原文の全文は、HTML の裁定ページに載せない。"
+      }
+    },
+    {
+      "id": "g1",
+      "key": "gh:example=2fsample/n123",
+      "kind": "gh-notice",
+      "rec_option": "read",
+      "when": "期限なし",
+      "title": "架空の GitHub の通知",
+      "from": "架空のリポジトリ",
+      "rec": "既読にして置く",
+      "why": "架空の根拠。"
+    },
+    {
+      "id": "h1",
+      "key": "gh:example=2fsample/7",
+      "kind": "shelf",
+      "rec_option": "shelve",
+      "when": "外部の期限が 14 日以内",
+      "title": "架空の棚の補充",
+      "from": "棚の外の自分のボール",
+      "rec": "期限が近いので、棚に上げる",
+      "why": "架空の根拠。"
+    },
+    {
+      "id": "x2",
+      "key": "none:exam-sample/exam",
+      "kind": "exam",
+      "rec_option": "decline",
+      "when": "申込の最終週",
+      "title": "架空の試験の関門",
+      "from": "架空の学習用リポジトリ",
+      "rec": "計画の 80% に届かないので、見送る",
+      "why": "架空の根拠。"
+    },
+    {
+      "id": "m1",
+      "key": "none:model-p1/property",
+      "kind": "property",
+      "rec_option": "approve",
+      "when": "レビュー",
+      "title": "架空の性質: 紙に載った項目は回の終わりに処分を持つ",
+      "from": "形式モデル",
+      "rec": "反例が見つからず、到達性も確かめた",
+      "why": "架空の根拠。"
     }
   ],
   "drafts": [

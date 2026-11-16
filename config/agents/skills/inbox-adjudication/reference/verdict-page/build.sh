@@ -102,7 +102,8 @@ build() {
   done
   # 版、選択肢、データの順に置き換える: データ側の文字列に差し込み点の語があっても、書き換わらない。
   jq -nj --rawfile tpl "$TEMPLATE" --slurpfile d "$data" --slurpfile o "$OPTIONS_FILE" '
-    ($d[0] | tojson | gsub("<"; "\\u003c")) as $json
+    # 原文の全文(items[].source.text)は、紙と機体ローカルの PDF だけに載せる。HTML の DATA を作る前に落とす(FORMAT.md)。
+    ($d[0] | (.items |= map(if has("source") then .source |= del(.text) else . end)) | tojson | gsub("<"; "\\u003c")) as $json
     | ($o[0] | del(.description) | tojson | gsub("<"; "\\u003c")) as $opts
     | $tpl
     | sub("__FORMAT_VERSION__"; ($d[0].format_version | tostring))
@@ -142,10 +143,14 @@ html_checks() {
   awk '/^<script>$/{on=1; next} /^<\/script>$/{on=0} on' "$html" > "$js"
   if node --check "$js" 2>/dev/null; then ok "$name: script が JavaScript として通る"; else ng "$name: script の構文エラー"; fi
   # DATA の行を JSON として読み戻し、入力と同じであること(< が元に戻る)。
-  if [ "$(grep '^const DATA = ' "$html" | sed 's/^const DATA = //; s/;$//' | jq -S .)" = "$(jq -S . "$src")" ]; then
-    ok "$name: DATA が入力と一致する"
+  if [ "$(grep '^const DATA = ' "$html" | sed 's/^const DATA = //; s/;$//' | jq -S .)" = "$(jq -S 'del(.items[].source.text)' "$src")" ]; then
+    ok "$name: DATA が入力と一致する(原文の全文 source.text を除く)"
   else
     ng "$name: DATA が入力と違う"
+  fi
+  # 原文の全文は、HTML のどこにも載らない(入力に目印の文字列がある見本で確かめる)。
+  if jq -e '[.items[].source.text // empty] | length > 0' "$src" >/dev/null 2>&1; then
+    if grep -q 'FULLTEXT-SENTINEL-DO-NOT-RENDER' "$html"; then ng "$name: 原文の全文が HTML に載っている"; else ok "$name: 原文の全文は HTML に載らない"; fi
   fi
   # OPTIONS の行を JSON として読み戻し、options.json(description を除く)と同じであること。
   if [ "$(grep '^const OPTIONS = ' "$html" | sed 's/^const OPTIONS = //; s/;$//' | jq -S .)" = "$(jq -S 'del(.description)' "$OPTIONS_FILE")" ]; then
@@ -191,6 +196,11 @@ selftest() {
   mutate '.format_version = 4' old-version
   mutate '(.items[] | select(.kind == "fact") | .rec_option) = "do-me"' fact-rec-option-of-other-kind
   mutate '(.items[] | select(.kind == "report") | .rec_option) = "yes"' report-rec-option-of-fact
+  mutate '.items[0].key = "gh:a.b/c"' bad-gh-key-dot
+  mutate '.run_no = "a b"' bad-run-no
+  mutate '.items[0].rev = "XYZ"' bad-rev
+  mutate '.items[0].source = {ref: "x"}' source-without-sha
+  mutate '(.items[] | select(.kind == "pr") | .rec_option) = "send-me"' pr-rec-option-of-other-kind
   mutate '.drafts[0].text = "NOT-CHECKED " + .drafts[0].text' unchecked-draft
   mutate 'del(.drafts[0].thread)' draft-without-thread
   mutate 'del(.drafts[0].asks)' draft-without-asks
@@ -203,7 +213,7 @@ selftest() {
   expect_fail "入力: reply-coverage が無いと、drafts[] のあるページは作らない" env REPLY_COVERAGE_BIN="$tmp/none" bash "$0" --data "$valid"
   jq 'del(.drafts)' "$valid" > "$tmp/no-drafts.json"
   expect_ok "入力: drafts[] が無ければ reply-coverage は要らない" env REPLY_COVERAGE_BIN="$tmp/none" bash "$0" --data "$tmp/no-drafts.json"
-  for f in bad-key bad-key-dot dup-id dup-key missing-required missing-run-label extra-top extra-item wrong-version bad-when-class bad-id bad-draft-key missing-kind bad-kind bad-rec-option rec-option-of-other-kind old-version fact-rec-option-of-other-kind report-rec-option-of-fact; do
+  for f in bad-key bad-key-dot dup-id dup-key missing-required missing-run-label extra-top extra-item wrong-version bad-when-class bad-id bad-draft-key missing-kind bad-kind bad-rec-option rec-option-of-other-kind old-version fact-rec-option-of-other-kind report-rec-option-of-fact bad-gh-key-dot bad-run-no bad-rev source-without-sha pr-rec-option-of-other-kind; do
     expect_fail "入力: $f は落ちる" build "$tmp/$f.json"
   done
   printf '{' > "$tmp/not-json.json"
@@ -284,6 +294,45 @@ selftest() {
   if [ "$want" = "$got" ]; then ok "見本: valid.items.json が全 kind を含む ($got)"; else ng "見本: valid.items.json の kind [$got] が options.json [$want] と違う"; fi
   # 見本の項目の rec_option が、その kind の選択肢にあること(生成が通ることの裏づけ。build が検査する)。
   expect_ok "見本: 全 kind の項目を含む入力から HTML が組める" build "$valid"
+
+  # 6. 意味層(GTD の行き先): 各選択肢が閉じた 7 語のどれかを持ち、各 kind が gtd_required の行き先にすべて到達できる。
+  got=$(jq -r '. as $o | [.kinds | to_entries[] | .key as $k | .value as $v
+      | ([$v.options[].gtd] | map(select(. == null or (. as $g | $o.gtd_values | index($g)) == null))) as $badg
+      | ($v.gtd_required // []) as $req
+      | ([$req[] | select(. as $r | ([$v.options[].gtd] | index($r)) == null)]) as $miss
+      | select(($badg | length) > 0 or ($miss | length) > 0 or ($req | length) == 0) | $k] | join(",")' "$OPTIONS_FILE")
+  if [ -z "$got" ]; then ok "意味層: 各選択肢が gtd を持ち、各 kind が gtd_required の行き先にすべて到達できる"; else ng "意味層: 不整合のある kind [$got]"; fi
+
+  # 7. キー入力の符号: options.json と画面の入力が双方向に一致する(符号は重複せず、符号から選択肢へ戻れ、Space は later だけ)。
+  local js
+  js="$(grep '^function codesOf' "$TEMPLATE")"$'\n'"$(grep '^function optionForKey' "$TEMPLATE")"$'\n'"
+    const O = JSON.parse(require('fs').readFileSync(process.argv[1], 'utf8'));
+    const bad = [];
+    for (const [k, v] of Object.entries(O.kinds)) {
+      const m = codesOf(v.options);
+      const codes = Object.values(m);
+      if (new Set(codes).size !== codes.length) bad.push(k + ': 符号の重複');
+      for (const o of v.options) {
+        const back = optionForKey(v.options, m[o.id]);
+        if (!back || back.id !== o.id) bad.push(k + '/' + o.id + ': 符号から戻れない');
+        if ((o.verdict === 'later') !== (m[o.id] === ' ')) bad.push(k + '/' + o.id + ': Space は later だけ');
+      }
+      if (optionForKey(v.options, '~') !== null) bad.push(k + ': 割り当てていない鍵が選択肢に当たる');
+    }
+    console.log(bad.join(','));"
+  got=$(node -e "$js" "$OPTIONS_FILE")
+  if [ -z "$got" ]; then ok "キー入力: options.json の並びから振った符号が、画面の入力と双方向に一致する"; else ng "キー入力: $got"; fi
+  if grep -q 'keydown' "$TEMPLATE"; then ok "テンプレート: keydown の入力処理がある"; else ng "テンプレート: keydown の入力処理が無い"; fi
+
+  # 8. GitHub の鍵(gh)の符号: owner/repo の可逆な符号で、往復し、文書 id が 1 対 1 になる(`a-b/c` と `a/b-c` が衝突しない)。
+  got=$(jq -r -L "$HERE" 'include "gh-key";
+    [.[] | (.ref | split("#")) as $p
+      | select(($p[0] | gh_enc) != .thread or (.thread | gh_dec) != $p[0] or $p[1] != .receipt
+               or (("gh:" + .thread + "/" + .receipt) | test("^gh:[A-Za-z0-9_=-]+/[A-Za-z0-9_=-]+$") | not))
+      | .ref] | join(",")' "$HERE/fixtures/gh-keys.json")
+  if [ -z "$got" ]; then ok "gh の鍵: 符号が往復し、鍵の文字種に収まる"; else ng "gh の鍵: 往復しない [$got]"; fi
+  got=$(jq -r '[.[] | "gh." + .thread + "." + .receipt] | (length) - (unique | length)' "$HERE/fixtures/gh-keys.json")
+  if [ "$got" = 0 ]; then ok "gh の鍵: 文書 id が 1 対 1(衝突しない)"; else ng "gh の鍵: 文書 id が衝突する($got 件)"; fi
 
   echo "pass=$PASS fail=$FAIL"
   [ "$FAIL" -eq 0 ]

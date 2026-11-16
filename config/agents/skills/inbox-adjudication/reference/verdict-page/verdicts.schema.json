@@ -21,7 +21,7 @@
         "key": {
           "description": "<媒体>:<スレッド>/<受信>。items.schema.json の key と同じ形。",
           "type": "string",
-          "pattern": "^(gmail|linkedin|lapras|none):[A-Za-z0-9_=-]+/[A-Za-z0-9_=-]+$"
+          "pattern": "^(gmail|linkedin|lapras|gh|none):[A-Za-z0-9_=-]+/[A-Za-z0-9_=-]+$"
         },
         "verdict": {
           "description": "どうするか。decide=やる、pass=やらない、later=あとで、other=その他(note が指示)。空文字は、メモだけが書かれて裁定が未選択の文書で、裁定として読まない。語の意味の正本は options.json。",

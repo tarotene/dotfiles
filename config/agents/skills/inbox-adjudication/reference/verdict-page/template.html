@@ -101,16 +101,34 @@ label.note .warn { color: var(--warn); font-size: 0.8rem; }
 .status { font-size: 0.85rem; color: var(--muted); }
 .status.bad { color: var(--warn); }
 #summary { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; background: var(--panel); border: 1px solid var(--rule); border-radius: 6px; padding: 12px; font-size: 0.85rem; }
+.cursorbar { position: sticky; top: 0; z-index: 5; background: var(--panel); border: 2px solid var(--accent); border-radius: 6px; padding: 8px 14px; font-size: 1.15rem; font-weight: 700; display: none; gap: 2px; }
+.cursorbar.on { display: grid; }
+.cursorbar .cb-sel { color: var(--accent); }
+.item[data-cur="1"] { outline: 3px solid var(--accent); outline-offset: 2px; }
+.opts button .code { font-family: var(--font-mono); font-size: 0.8rem; margin-right: 6px; padding: 0 5px; border: 1px solid var(--rule); border-radius: 3px; }
+.opts button[aria-checked="true"] .code { border-color: var(--accent-ink); }
+.badge { font-family: var(--font-mono); font-size: 0.75rem; padding: 1px 8px; border-radius: 3px; border: 1px solid var(--rule); color: var(--muted); }
+.badge.stale { background: var(--warn-bg); color: var(--warn); border-color: transparent; font-weight: 700; }
+.runcheck { display: grid; gap: 4px; }
+.runcheck input { font: inherit; font-family: var(--font-mono); padding: 4px 8px; border: 1px solid var(--rule); border-radius: 4px; background: var(--ground); color: var(--ink); }
 @media (prefers-reduced-motion: no-preference) { button { transition: background 0.12s, border-color 0.12s; } }
 </style>
 </head><body>
 <main>
+  <div class="cursorbar" id="cursorbar" role="status" aria-live="polite"></div>
   <header style="display:grid;gap:10px">
     <h1>メール裁定</h1>
     <p class="sub"><span id="run-label"></span>。各項目で「どうするか」と「誰がやるか」を一緒に選びます。選んだ内容は保存先に残り、次の机か次のセッションが読んで、記録(<span class="mono">worklog</span>)に書きます。</p>
     <div class="counts" id="counts"></div>
     <section class="handoff" id="handoff" aria-live="polite" aria-label="この選択のあとの分担"></section>
     <p class="status" id="dbstatus">保存先に接続中です。</p>
+    <div class="runcheck" id="runcheck" hidden>
+      <label for="run-check">紙の回の番号(紙の右上に刷ってあります)を打つと、キー入力が使えます</label>
+      <input id="run-check" autocomplete="off" size="14" aria-describedby="run-status">
+      <span class="status" id="run-status"></span>
+    </div>
+    <p class="sub" id="keys-help">キー入力: 符号(a・b・…)で選びます。Space は「あとで」、Backspace は一つ戻る、「その他」はメモ欄に移り、Esc で次の項目へ。Ctrl+Enter で確定します。</p>
+    <p class="status" id="confirmstatus"></p>
   </header>
 
   <section class="alert" id="alert" aria-label="注意" hidden></section>
@@ -159,6 +177,13 @@ function docId(key) { return key.replace(/[:\/]/g, "."); }
 function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
 function hhmm(iso) { try { const d = new Date(iso); return d.toLocaleString("ja-JP", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }); } catch (e) { return ""; } }
 function optsOf(it) { return OPTIONS.kinds[it.kind].options; }
+/* キー入力の符号。later 以外の選択肢に、options.json の並びの順で a から振る。later は Space(" ")。紙と同じ表から導く(FORMAT.md)。 */
+function codesOf(opts) { const m = {}; let n = 0; for (const o of opts) { m[o.id] = o.verdict === "later" ? " " : String.fromCharCode(97 + n++); } return m; }
+function optionForKey(opts, k) { const m = codesOf(opts); const key = k === " " ? " " : String(k).toLowerCase(); return opts.find(o => m[o.id] === key) || null; }
+const ORDER = [];          // 画面に出る順の項目 id(キー入力の順)
+let cur = 0;               // キー入力のカーソル(ORDER の添字)
+let keysOn = !DATA.run_no; // 回の番号を照合するまで、キー入力は受けない(run_no が無い入力は、すぐ受ける)
+let confirmed = false;     // Ctrl+Enter の確定は 1 回だけ
 
 /* 保存された裁定から、押されたボタンを決める。option が無い古い文書は、verdict と owner から選ぶ。 */
 function optionOf(it, s) {
@@ -219,6 +244,9 @@ function render() {
       const w = el("span", "when", it.when);
       if (it.when_class === "urgent" || it.when_class === "near") w.classList.add(it.when_class);
       meta.append(w, el("span", "title", it.title));
+      if (it.stale) meta.append(el("span", "badge stale", "紙の版と違います"));
+      if (it.rev) meta.append(el("span", "badge", "版 " + it.rev));
+      ORDER.push(it.id);
       const from = el("div", "from", it.from);
       const recOpt = optsOf(it).find(o => o.id === it.rec_option);
       const rec = el("div", "rec"); rec.append("推奨: ", Object.assign(el("b"), { textContent: (recOpt ? recOpt.label + "。" : "") + it.rec }));
@@ -231,8 +259,10 @@ function render() {
         why = el("div", "why", it.why);
       }
       const group = el("div", "opts"); group.setAttribute("role", "radiogroup"); group.setAttribute("aria-label", "この項目をどうするか");
+      const codes = codesOf(optsOf(it));
       for (const o of optsOf(it)) {
         const b = el("button", null, o.label); b.type = "button"; b.id = "b-" + it.id + "-" + o.id; b.dataset.o = o.id;
+        b.prepend(el("span", "code", codes[o.id] === " " ? "␣" : codes[o.id]));
         b.setAttribute("role", "radio"); b.setAttribute("aria-checked", "false");
         if (it.rec_option === o.id) { b.dataset.rec = "1"; b.append(el("span", "tag", "推奨")); }
         b.addEventListener("click", () => choose(it, o));
@@ -324,7 +354,69 @@ function summary() {
     h.append(cols);
   }
   h.append(el("p", "sub", "やらない " + passed + " 件。あとで " + later + " 件。未選択 " + none + " 件。その他で指示が空 " + waiting + " 件。"));
+  showCursor();
 }
+
+/* カーソルのある項目の題と、選んだ語を、大きく出す。 */
+function showCursor() {
+  const bar = document.getElementById("cursorbar");
+  const id = ORDER[cur];
+  for (const c of Object.values(cards)) c.dataset.cur = "";
+  if (!id || !keysOn) { bar.className = "cursorbar"; bar.textContent = ""; return; }
+  const it = ITEM[id], o = optionOf(it, state[id]);
+  if (cards[id]) cards[id].dataset.cur = "1";
+  bar.className = "cursorbar on"; bar.textContent = "";
+  bar.append(el("span", null, (cur + 1) + "/" + ORDER.length + "  " + it.title), el("span", "cb-sel", o ? "選択: " + o.label : "選択: まだ"));
+}
+function moveTo(i) {
+  cur = Math.max(0, Math.min(ORDER.length - 1, i));
+  showCursor();
+  const c = cards[ORDER[cur]]; if (c && c.scrollIntoView) c.scrollIntoView({ block: "center" });
+}
+function emptyOthers() {
+  return ITEMS.filter(it => { const s = state[it.id], o = optionOf(it, s); return !!o && o.verdict === "other" && !(s.note && s.note.trim()); });
+}
+/* Ctrl+Enter: 確定は 1 回だけ。その他で指示が空の項目が残るあいだは確定させず、件数を出す。保存は選んだ時にもう済んでいる。 */
+function confirmAll() {
+  if (confirmed) return;
+  const st = document.getElementById("confirmstatus");
+  const bad = emptyOthers();
+  if (bad.length) { st.className = "status bad"; st.textContent = "その他で指示が空の項目が " + bad.length + " 件あります。書くか、選び直してください(確定していません)"; moveTo(ORDER.indexOf(bad[0].id)); return; }
+  confirmed = true;
+  const decided = ITEMS.filter(it => settled(state[it.id]) || (optionOf(it, state[it.id]) || {}).verdict === "later").length;
+  st.className = "status"; st.textContent = "確定しました(" + decided + " 件を選んだ。未選択 " + (ITEMS.length - decided) + " 件)。これ以降のキー入力は受けません";
+  showCursor();
+}
+function typingTarget(t) { return !!t && (t.tagName === "TEXTAREA" || t.tagName === "INPUT" || t.isContentEditable === true); }
+document.addEventListener("keydown", e => {
+  if (e.ctrlKey && e.key === "Enter") { e.preventDefault(); confirmAll(); return; }
+  if (typingTarget(e.target)) {
+    /* メモ欄の中では、Space・Backspace を移動に使わない。Esc でメモ欄を出て、次の項目へ。 */
+    if (e.key === "Escape" && e.target.tagName === "TEXTAREA" && /^n-/.test(e.target.id || "")) { e.target.blur(); moveTo(ORDER.indexOf(e.target.id.slice(2)) + 1); }
+    return;
+  }
+  if (e.ctrlKey || e.metaKey || e.altKey || !keysOn || confirmed) return;
+  const id = ORDER[cur]; if (!id) return;
+  if (e.key === "Backspace") { e.preventDefault(); moveTo(cur - 1); return; }
+  const o = optionForKey(optsOf(ITEM[id]), e.key);
+  if (!o) return;
+  e.preventDefault();
+  choose(ITEM[id], o);
+  if (o.verdict !== "other") moveTo(cur + 1);
+});
+/* 回の番号の照合: 紙の番号を打つまで、キー入力を受けない(保存先には書かない)。 */
+(function () {
+  if (!DATA.run_no) return;
+  document.getElementById("runcheck").hidden = false;
+  const inp = document.getElementById("run-check"), st = document.getElementById("run-status");
+  inp.addEventListener("input", () => {
+    const ok = inp.value.trim() === DATA.run_no;
+    keysOn = ok;
+    st.className = ok ? "status" : "status bad";
+    st.textContent = ok ? "一致しました。キー入力が使えます" : "紙の回の番号と違います。キー入力は使えません(ボタンは押せます)";
+    showCursor();
+  });
+})();
 
 function persist(it) {
   if (!col) return;
