@@ -125,6 +125,9 @@ SessionEnd で何かを起票させる案は、ドキュメント上の制約で
   (JST の ISO 8601、`YYYY-MM-DDTHH:MM:SS+09:00`)を先頭に足す。渡された `ts` はそのまま残す。
   `{"title","detail"}` だけを渡せばよく、`$(date -Iseconds)` を手で埋め込まない(`$(…)` は
   sandbox の除外パターンにも合わない)。`title` の無い値は、従来どおり `jq -ce .` 相当で通す。
+  **余分な引数は止める。** `--add` は `<inbox> <json>` の 2 つだけを取る。`--repo owner/repo` などを後ろに足すと、
+  終了コード 64 で止まり、何も書かない(以前は黙って捨て、cwd のリポジトリのノートに追記された。2026-11-16)。
+  行き先のリポジトリは、JSON の `"repo"` に書く(`--repo` を受け取るのは `--list-open`・`--collect`・`--set-status` など)。
 - `--list-open [--repo R] [--json]` — 状態が open の気づきを、再発の行数の多い順に出す。vault が無い
   機体では jsonl の行を同じ形で出す。vault の絶対パスは出さない。`/my-cleanup` の唯一の収集口。
   `--json` には `signal`・`mechanism`・`existing`(無ければ空文字)も出る。

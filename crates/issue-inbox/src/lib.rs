@@ -1506,6 +1506,16 @@ pub fn gate_main(self_path: &str, args: &[String]) -> Code {
             "--add" => {
                 let inbox = need(1, "usage: wrapup-stop-gate.sh --add <inbox> <json>")?;
                 let line = need(2, "usage: wrapup-stop-gate.sh --add <inbox> <json>")?;
+                // 行き先のリポジトリは JSON の "repo" で決まる。`--repo` などの余分な引数を黙って捨てると、
+                // 別のリポジトリのノートに追記されても気づけない(読み戻して初めて分かった)ので、止める。
+                if args.len() > 3 {
+                    eprintln!(
+                        "wrapup-stop-gate: --add: 余分な引数があります({})。--add は <inbox> <json> だけを取ります。\
+                         行き先のリポジトリは、JSON の \"repo\" に \"owner/repo\" で書いてください",
+                        args[3..].join(" ")
+                    );
+                    return Ok(64);
+                }
                 add(inbox, line)
             }
             "--check-dup" => {
