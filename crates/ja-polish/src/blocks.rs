@@ -190,6 +190,14 @@ fn take_trailing_newline(s: &mut String) -> String {
     }
 }
 
+/// Markdown の表の段落か(空でない行がすべて `|` で始まる)。表は、セルの切れ目を LLM に書き直させると、
+/// 行頭の記法や列がずれ、依頼の書式(`<before>`・`<after>`)も応答に混ざりやすい(2026-11-16 に、表のある計画ファイルの
+/// 8 段落が素通しになった)。書き直しの対象にしない。
+pub fn is_table(text: &str) -> bool {
+    let mut lines = text.lines().filter(|l| !l.trim().is_empty()).peekable();
+    lines.peek().is_some() && lines.all(|l| l.trim_start().starts_with('|'))
+}
+
 /// かな・漢字の字数(半角カナを含む)。
 pub fn jp_count(s: &str) -> usize {
     s.chars().filter(|c| is_jp(*c)).count()
@@ -297,6 +305,18 @@ mod tests {
         assert!(blocks[1].verbatim);
         assert_eq!(blocks[1].text, "```\ncode\n\nmore\n```");
         assert!(!blocks[2].verbatim);
+    }
+
+    #[test]
+    fn a_table_is_a_paragraph_whose_lines_all_start_with_a_pipe() {
+        assert!(is_table("| 項目 | 値 |\n|---|---|\n| 件数 | 3 |"));
+        assert!(is_table("  | インデントした表 |"));
+        assert!(
+            !is_table("表の前の説明です。\n| 項目 | 値 |"),
+            "導入の行が混ざる段落は表でない"
+        );
+        assert!(!is_table("日本語の段落です。"));
+        assert!(!is_table(""));
     }
 
     #[test]

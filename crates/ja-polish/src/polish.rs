@@ -50,6 +50,7 @@ fn pending_indexes(
         .iter()
         .enumerate()
         .filter(|(_, b)| !b.verbatim)
+        .filter(|(_, b)| !blocks::is_table(&b.text))
         .filter(|(_, b)| is_japanese(&b.text))
         .filter(|(_, b)| {
             !is_recorded(b, records)
@@ -168,6 +169,13 @@ fn verify(input: &str, output: &str) -> Result<String, String> {
         return Err("応答の段落が空です".to_string());
     }
     if out.contains("<para") || out.contains("</para") || out.contains("<text>") {
+        return Err("応答に依頼の書式が混ざっています".to_string());
+    }
+    // 文脈の欄(<before>・<after>)だけを写した応答も、依頼の書式の混入。段落の本文が、これらの語を元から持つときは除く。
+    if ["<before>", "</before>", "<after>", "</after>"]
+        .iter()
+        .any(|t| out.contains(t) && !input.contains(t))
+    {
         return Err("応答に依頼の書式が混ざっています".to_string());
     }
     let (mut a, mut b) = (mask::token_ids(input), mask::token_ids(out));
@@ -665,6 +673,38 @@ mod tests {
         let mut rec = HashSet::new();
         rec.insert(blocks::hash("日本語の段落です。"));
         assert!(pending("日本語の段落です。\n", None, &rec).is_empty());
+    }
+
+    #[test]
+    fn a_table_paragraph_is_not_pending_and_stays_as_written() {
+        let text = "表の前の説明をする文章です。\n\n| 項目 | 内容 |\n|---|---|\n| 先行例 | 既存の仕組みを使う |\n\n表の後の説明をする文章です。\n";
+        let p = pending(text, None, &HashSet::new());
+        assert_eq!(
+            p.iter().map(|x| x.text.as_str()).collect::<Vec<_>>(),
+            vec![
+                "表の前の説明をする文章です。",
+                "表の後の説明をする文章です。"
+            ],
+            "表は書き直しの対象にしない"
+        );
+    }
+
+    #[test]
+    fn verify_refuses_a_response_that_echoes_the_context_fields() {
+        let input = "一つ目の段落です。";
+        for echoed in [
+            "<before>前の段落</before>一つ目の段落です。",
+            "一つ目の段落です。<after>後の段落</after>",
+        ] {
+            assert_eq!(
+                verify(input, echoed),
+                Err("応答に依頼の書式が混ざっています".to_string()),
+                "{echoed}"
+            );
+        }
+        // 段落の本文が、元からこの語を持つときは、混入とみなさない。
+        let doc = "依頼の書式にある <before> という語を説明する段落です。";
+        assert!(verify(doc, doc).is_ok());
     }
 
     #[test]
