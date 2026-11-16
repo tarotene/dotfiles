@@ -28,8 +28,13 @@
   # (assertPlatform)ため isLinux ガードは必須ではないが、drift.nix の書式に
   # 揃えて明示する。
   # pipeline-node: downloads-clean
+  #
+  # 朝の机の紙(本文を含む印刷物の元)の出力先も、同じ年齢の掃除に載せる: 14 日より古いものは消える。ディレクトリは 0700
+  # (中のファイルは、生成器が 0600 で作る)。机の起動に頼らず、規則で掃除する(宣言 > 手続き)。この束縛は
+  # pipeline-map が `# pipeline-node:` の 1 つの節点にしか結べないので、新しい束縛を足さず、同じリストに置く。
   systemd.user.tmpfiles.rules = lib.mkIf pkgs.stdenv.isLinux [
     "d %h/Downloads - - - 14d"
+    "d %h/.local/state/claude/desk/sheets 0700 - - 14d"
   ];
 
   # launchd 版。TCC(macOS のプライバシー制御)は LaunchAgent が起動する実行体
