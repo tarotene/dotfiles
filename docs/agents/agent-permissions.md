@@ -186,6 +186,12 @@ docs のビルドは、intersphinx が `docs.python.org` を読む。同じ型�
 `hms` と `hms *` の両方を書く。宣言後の読み戻し(確認の画面が出ること、許可すると適用ロックが取れて通ること)は未実施で、
 `hms` の後の新しいセッションで確かめる。画面が出ないと分かったら、除外を外す(ask は除外と対にする)。
 
+**`lp` を sandbox の外で動かす(2026-11-17)**: 朝の机の紙を家のプリンタへ刷る `lp` は、CUPS に Unix ソケットで届くので、sandbox の中では
+落ちると推定して(未実測: この機体は CUPS が動いておらず、`lpstat` が「Scheduler is not running」を返した)、`excludedCommands` に足した。外では全権限で動くので、
+`google-chrome --headless=new *`・`hms *` と同じ型で、同じパターン `Bash(lp *)` を `askRules` にも足し、刷るたびに確認を出す(除外と対)。
+紙の出力先 `~/.local/state/claude/desk/sheets` は、`home/modules/downloads.nix` の `systemd.user.tmpfiles.rules` に、14 日の年齢の掃除として足した(ディレクトリは 0700)。
+宣言後の読み戻し(`hms` の後の新しいセッションで、確認の画面が出ること、プリンタを設定した機体で `lp` が通ること)は未実施。
+
 **cargo のレジストリと headless Chrome(2026-11-05、#1334)**: sandbox の中の `cargo metadata --offline --locked` が、
 `~/.cargo/registry/src` を作れず `Read-only file system (os error 30)` で落ちた(`cargo run -p pipeline-map -- render` の最初の段)。
 uv のキャッシュと同じ型なので、`runtimes.nix` が `~/.cargo/registry` だけを `allowWrite` に足した(`~/.cargo/bin` は足さない)。

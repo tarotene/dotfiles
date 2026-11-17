@@ -91,11 +91,16 @@ let
   # `Read-only file system` で取れない(2026-11-08)ので excludedCommands で外に出す。外では全権限で動くので、
   # 歯止めはこの ask だけで、除外と必ず対にする。引数なしの `hms` は `hms *` に一致するかを測っていないので、
   # 両方を書く。
+  #
+  # `lp *` も同じ型の ask。lp は紙に刷る(家のプリンタへ送る)ので、送るたびに確認を出す。CUPS には Unix ソケットで
+  # 届くので、sandbox の中では落ちると推定して excludedCommands で外に出す(未測定: この機体は CUPS が動いておらず、
+  # `lpstat` が「Scheduler is not running」を返した 2026-11-17)。外では全権限で動くので、歯止めはこの ask だけで、除外と必ず対にする。
   askRules = [
     "Bash(/usr/bin/pkexec *)"
     "Bash(google-chrome --headless=new *)"
     "Bash(hms)"
     "Bash(hms *)"
+    "Bash(lp *)"
   ];
   retiredAskRules = [ ];
 
@@ -338,6 +343,12 @@ in
         # alone (a chained call stays sandboxed, see the matching note at the top of this list).
         "hms"
         "hms *"
+        # `lp` hands a job to CUPS over a Unix domain socket, which the sandbox is presumed to deny
+        # (not measured: CUPS was not running on the machine where this was written, 2026-11-17).
+        # It is excluded only in this form, `lp <args>`, and runs with full access, so `askRules`
+        # above carries the same pattern and every print asks first. Call it alone (a chained call
+        # or a redirect stays sandboxed, see the matching note at the top of this list).
+        "lp *"
       ]
       # ja-polish calls `llm`, which reads its key from ~/.config/io.datasette.llm (a secret
       # path the sandbox hides) and reaches generativelanguage.googleapis.com (not a declared
