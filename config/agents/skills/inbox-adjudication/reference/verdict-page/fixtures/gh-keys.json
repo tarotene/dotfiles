@@ -1,0 +1,8 @@
+[
+  { "ref": "example/sample#12", "thread": "example=2fsample", "receipt": "12" },
+  { "ref": "example/sample.app#42", "thread": "example=2fsample=2eapp", "receipt": "42" },
+  { "ref": "a-b/c#1", "thread": "a-b=2fc", "receipt": "1" },
+  { "ref": "a/b-c#1", "thread": "a=2fb-c", "receipt": "1" },
+  { "ref": "x_y/z_w#7", "thread": "x_y=2fz_w", "receipt": "7" },
+  { "ref": "o=k/r.s#3", "thread": "o=3dk=2fr=2es", "receipt": "3" }
+]
