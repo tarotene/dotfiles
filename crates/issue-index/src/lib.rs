@@ -277,7 +277,7 @@ fn human_text(raw: &str) -> String {
 }
 
 /// 軽い人手タスクの節の見出し(`build` と `build_human_only` で共有する)。
-const HUMAN_HEADING: &str = "軽い人手タスク(handoff:human かつ handoff:light で、自分に assign された open Issue。待ち(blocked_by)があるものは「(待ち N 件)」と添える。待ちがあっても、連鎖ごと、着手可能になる前に、handoff スキル §7 で予定に入れる):\n";
+const HUMAN_HEADING: &str = "軽い人手タスク(handoff:human かつ handoff:light で、自分に assign された open Issue。待ち(blocked_by)があるものは「(待ち N 件)」と添える。待ちがあっても、連鎖ごと、着手可能になる前に、handoff スキル §7 に従う。予定データのリポジトリが作業の枠を持たないと宣言していれば、予定に入れず、そのリポジトリの手順に従う):\n";
 
 /// cwd のリポジトリに open Issue が 1 件も無いときの注入。軽い人手タスクが
 /// あれば、その節だけを出す(#831)。人手タスクは作業中のリポジトリと無関係な場所で
