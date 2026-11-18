@@ -151,20 +151,20 @@ fn strip_trailing_newlines(s: &str) -> &str {
 }
 
 /// `^## 執行点[[:space:]]*$`(新規 ADR の節見出し)。
-fn is_adr_exec_heading(line: &str) -> bool {
+pub(crate) fn is_adr_exec_heading(line: &str) -> bool {
     line.strip_prefix("## 執行点")
         .is_some_and(|rest| rest.chars().all(is_space))
 }
 
 /// `^### 執行点[[:space:]]*$`(Amendment 内の節見出し)。
-fn is_amendment_exec_heading(line: &str) -> bool {
+pub(crate) fn is_amendment_exec_heading(line: &str) -> bool {
     line.strip_prefix("### 執行点")
         .is_some_and(|rest| rest.chars().all(is_space))
 }
 
 /// `^#{1,6}[[:space:]]`(節の終わりになる見出し行。`#` が 1〜6 個の直後に
 /// 空白 1 文字)。
-fn is_any_heading(line: &str) -> bool {
+pub(crate) fn is_any_heading(line: &str) -> bool {
     let hashes = line.bytes().take_while(|&b| b == b'#').count();
     (1..=6).contains(&hashes) && line[hashes..].chars().next().is_some_and(is_space)
 }
