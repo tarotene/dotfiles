@@ -113,7 +113,7 @@ What runs automatically, when, and on which stack: see the [pipeline map](pipeli
 - [ADR-1573](adr/1573-personal-company-symmetric-pair.md) — 個人と会社は、Slack の有無と GitHub アカウントの共用を除いて、対称な対にする
 - [ADR-1585](adr/1585-reply-coverage.md) — 相手のいる会話への返信は、会話の全文を読み、相手の未決の依頼すべてに答えた証拠を残してから作る
 - [ADR-1608](adr/1608-repo-scope-by-machine-contract.md) — 個人の契約の機体は、別の側の持ち主の非公開リポジトリを読まない
-- [ADR-0000](adr/0000-agent-session-mode.md) — セッション単位のモードは、起動時に 1 つの宣言から展開し、展開できないときは通常のセッションに倒さない
+- [ADR-1633](adr/1633-agent-session-mode.md) — セッション単位のモードは、起動時に 1 つの宣言から展開し、展開できないときは通常のセッションに倒さない
 <!-- END GENERATED -->
 
 ## 運用・調査・設計(`docs/` 直下)
