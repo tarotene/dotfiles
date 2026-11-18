@@ -81,7 +81,11 @@ SessionStart 以外への付与は、nix の評価で落ちる(`injectGate`)。
 2. **第 2 段(通常のセッション)**: 一覧に出た決定だけを読み、覆す決定ごとに、新しい ADR(見出しの `- Supersedes:` で宣言する。
    ADR-0008 の 2026-11-09 の Amendment)を、**同じブランチ**に足す。その ADR の執行点は、第 1 段の変更に含まれる。
 
-触れた決定の一覧の機械化(`decision-colocation-touched`)は、同じスタックの別の段で足す。
+`## 触れた決定` の節は、`decision-colocation-touched --base origin/main` が出す(`docs/agents/decision-colocation.md`
+「旧 ADR の執行点に触れた一覧」)。base 時点の ADR の `## 執行点` のうち、変更・削除・改名されたものを ADR ごとに出し、
+あわせて、消した・変えたテストと CI の設定を出す。PR 本文にそのまま貼る。
+通常のセッション(第 2 段)は、一覧の各 ADR について、覆すなら新しい ADR を足し(見出しに `- Supersedes: ADR-<番号>`)、
+維持するなら理由を PR 本文に 1 行書く。一覧が空のときは、旧 ADR の執行点に触れていない。
 
 ## 実測(段1)
 
