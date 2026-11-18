@@ -115,9 +115,14 @@ impl Home {
                 .join("SKILL.md")
                 .is_file(),
             "hook" => hook_exists(&self.0.join(".claude/hooks"), name),
-            "agents-md" => [".agents/AGENTS.md", ".claude/CLAUDE.md"]
-                .iter()
-                .any(|f| file_contains(&self.0.join(f), name)),
+            "agents-md" => [
+                ".agents/AGENTS.md",
+                ".claude/CLAUDE.md",
+                // 決定の記録に関わる節を切り出した配備先(home/lib/split-regions.nix)。節の見出しは、ここにある。
+                ".claude/CLAUDE.decisions.md",
+            ]
+            .iter()
+            .any(|f| file_contains(&self.0.join(f), name)),
             _ => false,
         }
     }

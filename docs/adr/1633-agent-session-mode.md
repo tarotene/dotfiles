@@ -56,6 +56,16 @@ SessionStart の宣言は bool の `injects` を必ず持つ(付け忘れは nix
 base 時点の ADR の `## 執行点` のうち、変更・削除・改名されたものを ADR ごとに出し、あわせて、消した・変えたテストと CI の設定を出す。
 PR 本文の `## 触れた決定` に貼り、通常のセッションが、覆す決定ごとに新しい ADR(見出しの `- Supersedes:`)を同じブランチへ足す。
 
+### D7: 共通規約の「決定の記録に関わる節」は、正本を 1 ファイルのまま印で囲み、Claude 用に切り分けて、モードが外す
+
+`config/agents/AGENTS.md` と `config/claude/CLAUDE.md` は、決定の記録に関わる節を `<!-- agent-mode:decisions:begin -->` と
+`<!-- agent-mode:decisions:end -->` で囲む。`home/lib/split-regions.nix` が、印の中(decisions)と外(core)に分け、
+`~/.agents/AGENTS.core.md`・`~/.agents/AGENTS.decisions.md`・`~/.claude/CLAUDE.md`(core)・`~/.claude/CLAUDE.decisions.md` を配る。
+`~/.claude/CLAUDE.md` の先頭の import が、その 3 つを読む。モードは decisions の 2 つを `claudeMdExcludes`(宣言の `[norms].excludes`)で
+外す。Codex・Copilot・`~/.agents/AGENTS.md` は全文のまま(印が増えるだけ)。印の誤り(入れ子・対応の無い印・領域が無い)は nix の評価で落ちる。
+
+2026-11-18 の実測で、`claudeMdExcludes` が `@import` の先と rules のファイルの両方に効くことを確かめた(`docs/agents/agent-mode.md`)。
+
 ## 先行例との対比
 
 - D1: 起動時に、宣言から設定・追記する文・環境変数を束ねて渡す
@@ -83,11 +93,18 @@ PR 本文の `## 触れた決定` に貼り、通常のセッションが、覆�
   差分: 異なる — 既存は新しい ADR の執行点が実在するかだけを見る。旧 ADR の執行点が消えたことは、どの検査も見ない
   軸: 表現不可能 — 単一正本(ADR の執行点)から導く > 人が書く一覧
 
+- D7: 正本を複写せず、1 ファイルの中の領域を印で示して、配備のときに切り分ける
+  先行例: Anthropic, "How Claude remembers your project", https://code.claude.com/docs/en/memory (取得 2026-11-18)。`claudeMdExcludes` は絶対パスの glob で、`@path` の import 先に効くかの記述は無かった
+  先行例: 2026-11-18 の実測(スクラッチのプロジェクト、`claude -p --model haiku`)。import 先と rules のファイルの両方が、除外で `NOT-VISIBLE` になった
+  差分: 異なる — 公式の用法は monorepo で他チームの CLAUDE.md を外すこと。ここでは、1 つの正本から切り分けた import 先を外す。実測で、効くことを確かめた
+  軸: 表現不可能 — 読み込まれない状態にする > 「適用しない」と書く。正本は 1 ファイルのまま(単一正本 > 複写 + 同期)
+
 ## Consequences
 
 - 同じ worktree で、通常のセッションとモードのセッションを並べられる(モードは起動したプロセスだけに効く)。
-- 共通規約の本文(`@~/.agents/AGENTS.md` の import)は、段1 では読み込まれたままで、追記する文で適用外を宣言する。
-  読み込まれない状態にするのは、同じスタックの後の段。
+- 共通規約の「決定の記録に関わる節」は、モードのセッションでは読み込まれない(D7)。印で囲む節を足す・動かすときは、安全に関わる節を
+  囲まない。`~/.claude/CLAUDE.md` は、store への symlink でなく、切り分けた本体の文章になる。`feedback-target-guard` は、切り出した節の
+  見出しも `~/.claude/CLAUDE.decisions.md` から探す。
 - CI の検査(`decision-colocation-check` など)と `pr-gate` は止まらない。
 - モードの間も、`session-wrapup-start`(未裁定の気づきの案内)と `pr-gate-session-start`(残骸ブランチの通知)の注入は残る。
   どちらも、状態の書き込み・登録と同じ hook の中にあり、注入だけを分けるには、その hook の中で出力を止める必要がある。
@@ -100,3 +117,6 @@ PR 本文の `## 触れた決定` に貼り、通常のセッションが、覆�
 - config/zsh/modules/53-tools-claude.zsh
 - home/modules/agents.nix
 - crates/decision-colocation/src/touched.rs
+- home/lib/split-regions.nix
+- home/modules/claude.nix
+- crates/feedback-target-guard/src/lib.rs

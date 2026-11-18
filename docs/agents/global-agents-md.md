@@ -3,7 +3,10 @@
 共有正本は `config/agents/AGENTS.md`。`home/modules/agents.nix` が
 `~/.agents/AGENTS.md` と `~/.copilot/copilot-instructions.md` へ配る。
 `home/modules/codex.nix` は同じ正本に Codex 固有の施行配線を加え、`~/.codex/AGENTS.md` へ配る。
-Claude の固有指示は `~/.agents/AGENTS.md` を import する。決定の経緯・根拠は ADR-0032。
+Claude の固有指示は、同じ正本を 2 つに分けた派生物(`~/.agents/AGENTS.core.md` と `~/.agents/AGENTS.decisions.md`)を import する
+(ADR-1633。印 `agent-mode:decisions` で囲んだ「決定の記録に関わる節」を、`home/lib/split-regions.nix` が切り分ける。
+agent-mode が後者を `claudeMdExcludes` で外す。`docs/agents/agent-mode.md`)。正本は 1 ファイルのままで、`~/.agents/AGENTS.md`・
+Codex・Copilot は全文を読む。決定の経緯・根拠は ADR-0032。
 
 ## なぜ Claude 専用のまま成長していたか
 

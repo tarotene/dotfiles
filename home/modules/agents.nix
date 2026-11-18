@@ -568,6 +568,11 @@
 }:
 let
   hooksDir = "${config.home.homeDirectory}/.claude/hooks";
+  # 共有 AGENTS.md(正本)を、「決定の記録に関わる節」の印(agent-mode:decisions)で core と decisions に分ける。
+  # Claude Code の import 先に使う(下の home.file)。home/lib/split-regions.nix。
+  agentsMdSplit = (import ../lib/split-regions.nix { inherit lib; }) (
+    builtins.readFile (repoConfig + "/agents/AGENTS.md")
+  );
   # #412 (ADR-0024 Stage 4b): ExitPlanMode の plan hook 5 本(copilot-plan-review /
   # plan-view / plan-scope-gate / plan-precedent-gate / plan-fresh-gate)は Rust
   # バイナリ(crates/<name>、pkgs.dotfiles-tools)になり、下の home.file が
@@ -2599,6 +2604,14 @@ assert lib.assertMsg (lib.all skillNameMatches skillNames)
   # 同型。詳細は docs/agents/global-agents-md.md。
   home.file.".agents/AGENTS.md".source = repoConfig + "/agents/AGENTS.md";
   home.file.".copilot/copilot-instructions.md".source = repoConfig + "/agents/AGENTS.md";
+
+  # Claude Code は、上の ~/.agents/AGENTS.md(全文。ほかの読み手と feedback-target-guard が見る)ではなく、
+  # 同じ正本を印(agent-mode:decisions)で 2 つに分けた派生物を、~/.claude/CLAUDE.md から import する:
+  # 決定の記録に関わる節(decisions)と、それ以外(core)。agent-mode が decisions を `claudeMdExcludes` で
+  # 読み込まれなくする(docs/agents/agent-mode.md)。正本は 1 ファイルのまま、分け方は印と
+  # home/lib/split-regions.nix だけが持つ。Codex・Copilot が読む文面は変わらない。
+  home.file.".agents/AGENTS.core.md".text = agentsMdSplit.core;
+  home.file.".agents/AGENTS.decisions.md".text = agentsMdSplit.decisions;
 
   # ~/.codex/AGENTS.md: 共有 AGENTS.md(正本) + Codex 固有の施行配線
   # (config/codex/AGENTS.codex.md)を nix 評価時に結合した派生物。Codex は
