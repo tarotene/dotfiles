@@ -730,6 +730,49 @@ to a marker-less or not-yet-renamed hostname with no matching
 run `dotfiles/host` marker placement (ADR-0019) or add the host's module
 before trusting a clean `sync` exit.
 
+## Publishing the everyday SSH public key (the `[A]` subkey) on GitHub
+
+Each identity's card-backed `[A]` subkey is its everyday SSH key (ADR-0003
+Amendment 6), and `services.gpg-agent.enableSshSupport` makes `gpg-agent` serve
+it to `ssh` (`home/modules/gpg.nix`). The public half is already committed in
+`keys/<identity>.pub`, so deriving it needs no card. Use a throwaway keyring so
+nothing is imported into the real one:
+
+```bash
+tmp="$(mktemp -d)"; chmod 700 "$tmp"
+gpg --homedir "$tmp" --quiet --import keys/<identity>.pub
+gpg --homedir "$tmp" --show-keys --with-subkey-fingerprint keys/<identity>.pub   # find the sub line marked [A]
+gpg --homedir "$tmp" --export-ssh-key '<[A] subkey fingerprint>!'                # the "!" pins that exact subkey
+rm -rf "$tmp"
+```
+
+Register the printed `ssh-ed25519 …` line in the GitHub web UI: profile picture →
+Settings → "Access" → SSH and GPG keys → New SSH key, key type authentication
+(GitHub Docs, "Adding a new SSH key to your GitHub account", retrieved
+2026-11-18). It is done by hand on purpose: the `gh` token has no
+`admin:public_key` scope, and giving it one would let the token holder add keys
+to the account (ADR-0003 Amendment 6, item 4).
+
+Read it back from the public list, which is what a third party sees
+("Lists the verified public SSH keys for a user. This is accessible by anyone.",
+GitHub Docs, REST "SSH keys", retrieved 2026-11-18):
+
+```bash
+curl -s https://github.com/<login>.keys
+```
+
+To let a server accept the key, append that output to the server user's
+`~/.ssh/authorized_keys`. Removing a key from GitHub does not remove it from a
+server that already copied it; revoke it on each server too.
+
+Check that the card really answers (card inserted; the second command asks for
+the card PIN and proves the registered public key pairs with the card):
+
+```bash
+ssh-add -L          # lists the [A] key as "cardno:…"
+ssh -T git@github.com   # "Hi <login>! You've successfully authenticated"
+```
+
 ## System layer: CPU priorities of the COSMIC desktop (system76-scheduler)
 
 Rationale and measurements: the ADR-0001 Amendment for #1056. Pop!_OS's

@@ -137,23 +137,30 @@ in
     # what #348's investigation did.
     noAllowExternalCache = true;
 
-    # No `enableSshSupport` here, deliberately (#33). The [A] subkey does exist
-    # on the card (keygrip AC6226020D13A46E0CD8E47A8C08C5D01C142127), but it was
-    # never registered in ~/.gnupg/sshcontrol and nothing on any host speaks SSH:
-    # there is no ~/.ssh, and git remotes are HTTPS via `gh auth git-credential`
-    # (see git.nix). The declaration was therefore inert.
+    # SSH support is on again (ADR-0003 Amendment 6). #33 had removed it because
+    # it was inert: nothing on any host spoke SSH, and an agent that claims
+    # SSH_AUTH_SOCK while holding no identity turns the first real use of ssh into
+    # a `Permission denied (publickey)` whose cause is nowhere near ssh. That
+    # reason no longer holds — the [A] subkeys (the card-backed authentication
+    # subkey of each identity) are now the SSH identity whose public halves are
+    # published on GitHub, so the agent must serve them.
     #
-    # Inert is not free. `enableSshSupport = true` makes gpg-agent claim
-    # SSH_AUTH_SOCK, so the day someone does start using ssh, gpg-agent answers
-    # as an ssh-agent holding zero identities and the result is a
-    # `Permission denied (publickey)` whose cause is nowhere near ssh. An unused
-    # declaration that breaks the first use of the thing it names is a liability,
-    # not a convenience — so it is gone, along with the defaultCacheTtlSsh /
-    # maxCacheTtlSsh question it dragged along (those were never set, leaving the
-    # SSH cache at the 30m/2h default, asymmetric with the [S] policy above).
+    # No `sshKeys` (the ~/.gnupg/sshcontrol list) on purpose. GnuPG's own manual
+    # says "Active cards (inserted into a card reader or plugged in tokens) are
+    # always tried" and "Note that the sshcontrol file is deprecated"
+    # (https://www.gnupg.org/documentation/manuals/gnupg/Agent-Options.html,
+    # retrieved 2026-11-18). Measured on this host with the company card inserted:
+    # `ssh-add -L` against the agent's SSH socket returned the [A] key with no
+    # sshcontrol entry, so a keygrip list would only duplicate what the card says.
     #
-    # Reversible in one line: the subkey stays on the card, so re-enabling this
-    # and writing the keygrip into ~/.gnupg/sshcontrol is all it would take.
+    # Effect: home-manager's sshAuthSock module points SSH_AUTH_SOCK at
+    # `gpgconf --list-dirs agent-ssh-socket` in every local shell (it keeps a
+    # forwarded agent, i.e. when SSH_CONNECTION is set), so keys loaded in the
+    # GNOME keyring agent are no longer offered through the agent; ssh still
+    # reads default-named files under ~/.ssh by itself. Nothing from ~/.ssh is
+    # imported into the agent (`ssh-add`), so no on-disk secret key is copied
+    # under ~/.gnupg; defaultCacheTtlSsh / maxCacheTtlSsh stay unset.
+    enableSshSupport = true;
   };
 
   dotfiles.binaries.".local/bin" = [
