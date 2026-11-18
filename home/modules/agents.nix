@@ -2497,7 +2497,16 @@ assert lib.assertMsg (lib.all skillNameMatches skillNames)
     # browser-settings (docs/agents/browser-settings.md, #1420): read / paste / verify one settings
     # field in a dedicated-profile Chrome. Manual CLI; the saving step is always the user's.
     "browser-settings"
+    # agent-mode (docs/agents/agent-mode.md): `CLAUDE_MODE=<name> claude` の展開役。zsh の `claude` 関数が
+    # 呼ぶ(config/zsh/modules/53-tools-claude.zsh)。手動の入口で、hook ではない。
+    "agent-mode"
   ];
+
+  # agent-mode の宣言(モードごとに <名前>.toml と、追記する文のファイル)。Literal file を配る(ADR-0002)。
+  # 宣言は crates/agent-mode が読み、検証する。
+  xdg.configFile."dotfiles/agent-modes/refactor.toml".source =
+    repoConfig + "/agents/modes/refactor.toml";
+  xdg.configFile."dotfiles/agent-modes/refactor.md".source = repoConfig + "/agents/modes/refactor.md";
 
   # browser-settings' per-service screen data (selectors). Literal file, edited in the repo (ADR-0002).
   xdg.configFile."browser-settings/services.toml".source =

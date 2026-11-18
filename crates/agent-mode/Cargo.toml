@@ -1,0 +1,20 @@
+[package]
+name = "agent-mode"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# セッション単位のモード(docs/agents/agent-mode.md)。宣言(TOML)から、読み取り禁止の設定・追記する文・
+# 止める検査の束を展開して `claude` を exec する。依存は共有ライブラリ(agent-session の逃げ道の表、
+# process-env の XDG)だけ。
+
+[dependencies]
+agent-session = { version = "0.1.0", path = "../agent-session" }
+process-env = { version = "0.1.0", path = "../process-env" }
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+toml = { workspace = true, features = ["parse", "serde"] }
+
+[dev-dependencies]
+tempfile.workspace = true

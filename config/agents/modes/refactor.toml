@@ -1,0 +1,35 @@
+# refactor モード: 決定の記録(ADR・設計文書)に縛られない整理のための、セッション単位のモード。
+# 使い方: `CLAUDE_MODE=refactor claude`(zsh の `claude` 関数が `agent-mode exec` に渡す)。
+# 設計と手順: docs/agents/agent-mode.md。この宣言は crates/agent-mode が読み、検証する
+# (未知のキー・表に無い stem・読めない宣言は、通常のセッションに倒さず起動を失敗させる)。
+
+description = "決定の記録(ADR・設計文書)を読まず・書かず、落ちる検査(テスト・型・CI)だけに従って整理する"
+
+# 追記する文(--append-system-prompt-file)。このファイルと同じディレクトリに置く。
+prompt = "refactor.md"
+
+# セッション開始時の文脈の注入(Issue の索引・朝の机・未裁定の気づきなど)。"off" で止める
+# (段2 で、注入する hook を `agent-mode inject-gate` で包んだあとから効く)。
+injection = "off"
+
+# このセッションだけ止める検査。stem は crates/agent-session の escape::ALL の表にあるもの
+# (セッション単位 = 人が起動前に立てる SKIP_<STEM>=1)。
+# pr-gate は止めない(PR を作る完了の定義と、closing keyword・stack の検査まで外れるため)。
+skip = [
+  "PLAN_PRECEDENT_GATE", # 計画の「先行例との対比」の書式
+  "PLAN_SCOPE_GATE",     # 計画の「要求インベントリ」の書式
+  "DECISION_COLOCATION_GUARD", # ADR を足すときの「執行点を同じ PR に」(CI 側の検査は止まらない)
+  "NEW_TOOL_GUARD",      # 新しい道具を書く前の「既存手段」の登録
+]
+
+[records]
+# 読めず・書けないパス(gitignore 形式)。Claude Code の Read の deny は、同じパスへの Edit・Write も
+# 止めるので、第 1 段(このモード)では記録を足せない。覆す ADR は、通常のセッションで足す。
+globs = [
+  "**/docs/adr/**",
+  "**/docs/adrs/**",
+  "**/docs/decisions/**",
+  "**/adr/**",
+  "**/docs/agents/**", # 機構ごとの設計文書(dotfiles)
+  "**/docs/claude/**", # hook・skill の設計文書(dotfiles)
+]

@@ -113,6 +113,7 @@ What runs automatically, when, and on which stack: see the [pipeline map](pipeli
 - [ADR-1573](adr/1573-personal-company-symmetric-pair.md) — 個人と会社は、Slack の有無と GitHub アカウントの共用を除いて、対称な対にする
 - [ADR-1585](adr/1585-reply-coverage.md) — 相手のいる会話への返信は、会話の全文を読み、相手の未決の依頼すべてに答えた証拠を残してから作る
 - [ADR-1608](adr/1608-repo-scope-by-machine-contract.md) — 個人の契約の機体は、別の側の持ち主の非公開リポジトリを読まない
+- [ADR-0000](adr/0000-agent-session-mode.md) — セッション単位のモードは、起動時に 1 つの宣言から展開し、展開できないときは通常のセッションに倒さない
 - [ADR-1660](adr/1660-personal-web-app-standard.md) — 入力と保存を持つ private な個人用 Web アプリは、Worker + D1 + Access を標準にし、マイグレーションと About の URL を共通 action に載せる
 <!-- END GENERATED -->
 
@@ -157,6 +158,7 @@ What runs automatically, when, and on which stack: see the [pipeline map](pipeli
 <!-- BEGIN GENERATED: docs-index agents -->
 - [`agents/adr-numbering.md`](agents/adr-numbering.md) — adr-numbering — ADR 番号をローカル連番でなく導入 PR の番号にする
 - [`agents/agent-libraries.md`](agents/agent-libraries.md) — エージェント向け共通ライブラリ
+- [`agents/agent-mode.md`](agents/agent-mode.md) — agent-mode — 決定の記録に縛られない整理のための、セッション単位のモード
 - [`agents/agent-permissions.md`](agents/agent-permissions.md) — Claude と Codex はそれぞれの native 権限設定を使う
 - [`agents/agent-settings-reconcile.md`](agents/agent-settings-reconcile.md) — agent-settings-reconcile — 宣言を settings 系ファイルへ反映する
 - [`agents/agent-tooling-authoring.md`](agents/agent-tooling-authoring.md) — agent-tooling-authoring スキル
