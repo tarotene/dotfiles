@@ -40,6 +40,7 @@ agent-mode check refactor            # 展開の結果(設定の JSON・追記�
 | `injection` | `"off"` で、セッション開始時の文脈の注入を止める(下の「セッション開始時の注入を止める」。`inject-gate` が読む) |
 | `skip` | 止める検査の stem(`crates/agent-session/src/escape.rs` の `ALL`)。`SKIP_<STEM>=1` が立つ |
 | `[records].globs` | 読めず・書けないパス(gitignore 形式)。`permissions.deny` の `Read(..)` と `Edit(..)` になる |
+| `[norms].excludes` | 読み込まれなくする指示のファイル(絶対パスに照合する glob)。`claudeMdExcludes` になる。省略可 |
 
 `skip` の stem は、逃げ道の表が唯一の正本で、宣言には stem だけを書く(名前の文字列を手で書かない。ADR-1040 の
 2026-11-09 の Amendment)。表に無い stem と、呼び出し単位だけの guard(セッション単位を持たないもの)は、起動を失敗させる。
@@ -54,9 +55,38 @@ agent-mode check refactor            # 展開の結果(設定の JSON・追記�
 - **止める検査**: `SKIP_<STEM>=1` はセッション単位の逃げ道で、hook のプロセスの環境変数として読まれる。hook は
   起動したシェルの環境変数を受け継ぐ(Anthropic, "Hooks reference", https://code.claude.com/docs/en/hooks, 取得 2026-11-18)。
 - **止まらないもの**: CI の検査(`decision-colocation-check`・`adr-number-check`・`docs-index`)は、セッションのフラグでは外れない。
-  `pr-gate` も止めない(PR を作る完了の定義と、closing keyword・stack の検査まで外れるため)。共通規約の本文
-  (`@~/.agents/AGENTS.md` の import)は、段1 では読み込まれたままで、追記する文で「このセッションでは適用しない」節を宣言する
-  (文脈として扱われるので、守られる保証はない。段3 が、読み込まれない状態にする)。
+  `pr-gate` も止めない(PR を作る完了の定義と、closing keyword・stack の検査まで外れるため)。
+
+## 共通規約の「決定の記録に関わる節」を、読み込まれなくする
+
+共通規約(`config/agents/AGENTS.md`)と Claude 用規約(`config/claude/CLAUDE.md`)は、1 ファイルずつの単一の正本のまま、
+決定の記録に関わる節(先行例の確認・既存の裁定を探すこと・決定成果物と執行点・技術選定の 3 軸・既存手段を問うこと・
+Plan mode での先行例の書式・ADR-396 と ADR-543 の形式検査)を、2 行の印で囲む。
+
+```
+<!-- agent-mode:decisions:begin -->
+…
+<!-- agent-mode:decisions:end -->
+```
+
+`home/lib/split-regions.nix` が、印の中(decisions)と外(core)に分け、Claude 用に 3 つのファイルを配る。
+`~/.claude/CLAUDE.md` の先頭の 3 行の import が、その 3 つを読む。
+
+| 配備先 | 中身 |
+|---|---|
+| `~/.agents/AGENTS.core.md` | 共通規約の、印の外(安全に関わる節を含む) |
+| `~/.agents/AGENTS.decisions.md` | 共通規約の、印の中 |
+| `~/.claude/CLAUDE.md` / `~/.claude/CLAUDE.decisions.md` | Claude 用規約の、印の外 / 印の中 |
+
+- モードは、decisions の 2 つを `claudeMdExcludes`(`[norms].excludes`)で外す。**2026-11-18 の実測で、`@import` の先も rules のファイルも、
+  `claudeMdExcludes` で読み込まれなくなることを確かめた**(スクラッチのプロジェクト、`claude -p --model haiku`、除外なしでは両方の目印が見え、
+  除外ありでは両方 `NOT-VISIBLE`)。実ホームの symlink(home-manager の配備)でも効くかは未実測(`#1539` の台帳に積んだ)。
+- `~/.agents/AGENTS.md`(全文)と `~/.copilot/copilot-instructions.md`・`~/.codex/AGENTS.md` は、これまでどおり全文を読む(印の 8 行が増えるだけ)。
+  `feedback-target-guard` の `Target: agents-md/<節見出し>` も、全文と `~/.claude/CLAUDE.decisions.md` から見出しを探す。
+- 印の誤りは、nix の評価で落ちる(入れ子・対応の無い印・領域が 1 つも無い)。印で囲む節を足す・動かすときは、安全に関わる節
+  (外部送信・機体の契約の外の非公開リポジトリ・本物の checkout の保護・PR までを完了とすること)を囲まない。
+- 方針の問いの節(「方針レベルの問いは、聞く前に既存の裁定を探す」)は、冒頭の「既存の裁定を探す」部分だけを囲み、質問の書き方の規範は残す。
+  「発明する前に先行例を確認する」も、先行例の部分だけを囲み、本人の権利・記録に関わる判断基準と定型の書式の規範は残す。
 
 ## セッション開始時の注入を止める(`injection = "off"`)
 
@@ -87,16 +117,25 @@ SessionStart 以外への付与は、nix の評価で落ちる(`injectGate`)。
 通常のセッション(第 2 段)は、一覧の各 ADR について、覆すなら新しい ADR を足し(見出しに `- Supersedes: ADR-<番号>`)、
 維持するなら理由を PR 本文に 1 行書く。一覧が空のときは、旧 ADR の執行点に触れていない。
 
-## 実測(段1)
+## 実測(2026-11-18)
 
-次の 4 点は、plan mode では実行できなかったので、実装の段で確かめる。結果は、確かめたあとに、この節へ書く。
+スクラッチの空プロジェクト(`docs/adr/`・`secret1/`・`src/` を持ち、`secret1` は project の設定で deny)で、`claude -p --model haiku
+--setting-sources project`(実ホームの設定と hook を読ませない)を、本人の端末で実行した(Claude Code 2.1.322)。
 
-- (a) `--settings` の `permissions.deny` が、既存の設定に足し合わされ、`**/docs/adr/**` がどこでも当たるか。
-- (b) Read の deny が、Bash の `cat` と、sandbox の中の子プロセスにも効くか。
-- (c) hook が、起動したシェルの環境変数(`SKIP_*`)を継承するか。
-- (d) `--append-system-prompt-file` が、resume でどう扱われるか。
+| 確かめたこと | 結果 |
+|---|---|
+| (a) `--settings` の deny が、既存の設定に足し合わされ、`**/docs/adr/**` がどこでも当たるか | ✅ `docs/adr/0001-x.md` も、project の設定の `secret1/a.txt` も、`File is in a directory that is denied by your permission settings.` で拒否された。`src/c.txt` は読めた(足し合わされる) |
+| (b) Read の deny が、sandbox の中の子プロセスにも効くか | ✅ sandbox を有効にした実行で、`python3` の `open()` が `FileNotFoundError`(`PermissionError` ではない。パスが隠れる)。ファイルは実在する(`ls` で確認) |
+| (b') Bash の `cat`・`python3`・Write への効き方 | ⚠️ sandbox なしの実行では、モデルが、拒否された経路の回避だと判断して実行しなかったので、ツール側の拒否は直接確かめられていない。公式文書の記述(Read の deny は Edit・Write も止め、`cat` を認識する)に依る |
+| (c) hook が、起動したシェルの環境変数を継承するか | ✅ `SKIP_POC_FOO=1` で起動し、SessionStart の hook が `env` に `SKIP_POC_FOO=1` を見た |
+| (e) `claudeMdExcludes` が `@import` の先と rules のファイルに効くか | ✅ 除外なしでは、import 先の目印も rules の目印も見え、除外ありでは、どちらも `NOT-VISIBLE` |
+| (d) `--append-system-prompt-file` が、resume でどう扱われるか | 未実測(公式の「resumed conversations」の節は未読) |
 
-未確認: herdr のペインが zsh の `claude` 関数を通るか。通らない場合は、`agent-mode exec refactor -- claude` を直接呼ぶ。
+残る未確認:
+
+- (e) の除外が、home-manager の配備(`~/.agents/AGENTS.decisions.md` が nix store への symlink)でも効くか(公式は、symlink は、リンクのパスと
+  リンク先のどちらに照合しても除外する、と書く。取得 2026-11-18)。
+- herdr のペインが zsh の `claude` 関数を通るか。通らない場合は、`agent-mode exec refactor -- claude` を直接呼ぶ。
 
 ## 出典
 

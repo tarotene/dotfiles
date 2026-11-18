@@ -216,6 +216,13 @@ fn target_forms_and_claude_md_fallback() {
         "CLAUDE.md の見出しも照合",
         "gh issue create --label feedback --body 'Target: agents-md/CLAUDE 側の節'",
     );
+    // 決定の記録に関わる節を切り出した配備先の見出しも照合する(home/lib/split-regions.nix)
+    std::fs::write(h.join(".claude/CLAUDE.decisions.md"), "## 切り出した節\n").unwrap();
+    pass(
+        &f,
+        "CLAUDE.decisions.md の見出しも照合",
+        "gh issue create --label feedback --body 'Target: agents-md/切り出した節'",
+    );
     // 種別なし・空の名前・未知の種別は実在しない扱い
     for t in ["skill", "skill/", "other/x", "/x"] {
         deny(

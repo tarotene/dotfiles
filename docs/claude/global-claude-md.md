@@ -7,7 +7,9 @@
 
 **ADR-0032 以降、本文の正本は `config/agents/AGENTS.md`(agent 非依存の
 共有規範、`docs/agents/global-agents-md.md` 参照)に移り、このファイルは
-`@~/.agents/AGENTS.md` を import する router + Claude Code 固有の施行配線
+共有 AGENTS.md を import する router(ADR-1633 以降は、`@~/.agents/AGENTS.core.md`・`@~/.agents/AGENTS.decisions.md`・
+`@~/.claude/CLAUDE.decisions.md` の 3 行。このファイル自身も、印 `agent-mode:decisions` の領域を `home/lib/split-regions.nix` が
+切り分けて配る。`docs/agents/agent-mode.md`)+ Claude Code 固有の施行配線
 (gate スクリプトの自己検査手順・ExitPlanMode・AskUserQuestion まわり)だけを
 持つ。**以下の節は移設前の経緯として残すが、本文の内容そのものは共有
 AGENTS.md 側を参照すること。
