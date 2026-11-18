@@ -283,3 +283,46 @@ a vulnerability on this basis).
   the `gpg-agent` level.
 - `docs/agents/gpg-prewarm.md`'s parallel claim is corrected in the
   same PR.
+
+## Amendment 6 (2026-11 — SSH public keys on GitHub)
+
+The Decision says SSH auth uses the identity's subkey on the smartcard, but
+#33 had removed `services.gpg-agent.enableSshSupport` because nothing on any
+host spoke SSH, so the decision was not wired anywhere. A request to make the
+everyday SSH public key retrievable from GitHub (`https://github.com/<login>.keys`)
+brought it back.
+
+1. **The everyday SSH key is each identity's `[A]` subkey.** Its public half
+   is derived from the committed `keys/<identity>.pub`
+   (`gpg --export-ssh-key <fingerprint>!`, no card needed) and registered on
+   the GitHub account as an authentication key. Both identities' `[A]` keys are
+   registered on the same account, by the owner's decision (2026-11-18).
+2. **`enableSshSupport` is on again, without `sshKeys`.** GnuPG's manual says
+   "Active cards (inserted into a card reader or plugged in tokens) are always
+   tried" and "Note that the sshcontrol file is deprecated"
+   (<https://www.gnupg.org/documentation/manuals/gnupg/Agent-Options.html>,
+   retrieved 2026-11-18). Measured 2026-11-18 on arcturus with the company card
+   inserted: `ssh-add -L` against `S.gpg-agent.ssh` returned the `[A]` key with
+   no `sshcontrol` entry. The personal card is not measured yet (it is
+   covered by the verification ledgers of the hosts that hold it).
+3. **Existing `~/.ssh` keys are not imported into the agent.** Importing would
+   copy an on-disk secret key under `~/.gnupg`. The agent now owns
+   `SSH_AUTH_SOCK` in local shells, so a key that used to be offered by the GNOME
+   keyring agent is no longer offered through the agent; `ssh` still reads
+   default-named files in `~/.ssh` itself.
+4. **The GitHub registration is done by the owner in the web UI,** not through
+   `gh`: the agent's token lacks the `admin:public_key` scope, and adding it
+   would let the token holder add keys to the account (a key on the account is
+   an authentication key for every repository the account can reach).
+
+### 執行点
+
+- `home/modules/gpg.nix` — `services.gpg-agent.enableSshSupport = true;`(Amendment 6)
+
+## Consequences (Amendment 6)
+
+- `#33`'s "inert declaration" objection no longer applies: the agent serves a
+  real identity, and the SSH public keys are published.
+- A key copied out of GitHub into a third party's `authorized_keys` stays there
+  after it is removed from GitHub; revoking means removing it on every server.
+- The personal `[A]` registration is tracked separately (#1638).
