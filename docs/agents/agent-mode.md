@@ -2,7 +2,7 @@
 
 実装: `crates/agent-mode`(Rust)。宣言: `config/agents/modes/<名前>.toml`(配備先 `~/.config/dotfiles/agent-modes/`)。
 起動: zsh の `claude` 関数(`config/zsh/modules/53-tools-claude.zsh`)。
-決定の記録: ADR `docs/adr/0000-agent-session-mode.md`(仮番号。PR を作ったあとに改番する)。
+決定の記録: ADR `docs/adr/1633-agent-session-mode.md`(仮番号。PR を作ったあとに改番する)。
 Issue: No-Issue(巨大なリポジトリで、ADR のような覆しにくい決定に引きずられずに整理を進めたい、という本人の依頼。2026-11-18)
 
 ## 動機
