@@ -202,7 +202,16 @@ in
   options.dotfiles.claudePermissions = {
     extraAllow = lib.mkOption {
       type = lib.types.listOf lib.types.str;
-      default = config.dotfiles.agentPermissions.mcp_allow;
+      default = config.dotfiles.agentPermissions.mcp_allow ++ [
+        # An away run writes the owner's Calendar after the owner has left: it creates
+        # events, retitles one with the code the owner chose, and deletes the short blocks the
+        # owner's rules permit, each with `notificationLevel: NONE` and each read back.
+        # Claude only: Codex does not run it, so this is not in `agentPermissions.mcp_allow`,
+        # which both read. `respond_to_event` (declining meetings) is not here.
+        "mcp__claude_ai_Google_Calendar__create_event"
+        "mcp__claude_ai_Google_Calendar__update_event"
+        "mcp__claude_ai_Google_Calendar__delete_event"
+      ];
       description = "Additional native Claude permission allowances.";
     };
     sandboxBinPath = lib.mkOption {
@@ -327,6 +336,20 @@ in
         # worktree can be cut from a stale local `main`, so `git fetch origin` in it first
         # (config/claude/CLAUDE.md).
         "herdr worktree create *"
+        # An away run (an attendance sync the owner approves once and then leaves running): none
+        # of these may stop for a permission decision nobody is there to answer. `ts-browser` starts a visible Chromium, which creates Unix
+        # domain sockets and so cannot run in the sandbox (measured inside it 2026-10-30:
+        # `Operation not permitted`); `wl` reaches oauth2.googleapis.com, which is not a declared
+        # domain (`TransportError: Tunnel connection failed: 403`, 2026-11-11); and the plan
+        # script runs both, plus `sops`, which needs the smartcard the sandbox hides. They run with
+        # full access, and `uv run --project <dir>` runs the code at that path in whichever
+        # directory the session is in, so a repository with the same path gets the same
+        # treatment. There is no `askRules` entry: a question per call is what an away run
+        # cannot answer. What bounds a write is the tool itself (a digest-bound preview, a
+        # read-back, the write guard, `labor-core away decide`), not the permission layer.
+        "uv run --project timesheet/tools ts-browser *"
+        "uv run --project worklog/tools wl *"
+        "./scripts/work-sync-plan.sh *"
         # Headless Chrome creates Unix domain sockets (its IPC and crash handler), which the
         # sandbox denies (#1334; measured inside the sandbox 2026-11-05). It is excluded only
         # in this exact form, `google-chrome --headless=new <args>`, so a bare `google-chrome`
