@@ -139,7 +139,7 @@ label.note .warn { color: var(--warn); font-size: 0.8rem; }
     <div class="list" id="list"></div>
     <div class="guidance">
       <h2 style="font-size:1rem">今後の裁定へのフィードバック</h2>
-      <p class="sub">この裁定と、これ以降の推奨の出し方への注文を、自由に書いてください(例: セキュリティ通知は期限が無くても先に出す)。次の机が読んで、推奨に反映します。メモには結論と理由だけを書き、パスワードやアドレスは書かないでください。</p>
+      <p class="sub">この裁定と、これ以降の推奨の出し方への注文を、自由に書いてください(例: セキュリティ通知は期限が無くても先に出す)。次の机が読んで、推奨に反映します。メモには結論と理由だけを書き、パスワードやアドレスは書かないでください。前に保存した入力が残っているときは、このページで書き換えるまで、「回答をまとめる」に含めません。</p>
       <textarea id="g-text" maxlength="2000" rows="3" placeholder="全体へのフィードバック"></textarea>
       <span class="saved" id="g-saved"></span>
     </div>
@@ -173,7 +173,10 @@ for (const it of ITEMS) ITEM[it.id] = it;
 let col = null;            // db collection, null when unavailable
 const chain = {};          // id -> Promise, 1 doc 1 write at a time
 
-function docId(key) { return key.replace(/[:\/]/g, "."); }
+/* 文書 id: 鍵の `:` と `/` を `.` に、`=`(GitHub の鍵の escape。gh-key.jq)を `+` に換える。db の文書 id が許す文字は
+   英数字と _ - . ~ : @ + だけで、`=` を残すと GitHub の鍵のカードの答えが 1 件も保存されない(2026-11-18・19 に実測)。
+   `+` は鍵の文字種([A-Za-z0-9_=-] と `:` `/`)に無いので、換えは 1 対 1 で、衝突しない。読む側は data.key で引くので、id は位置にすぎない。 */
+function docId(key) { return key.replace(/[:\/]/g, ".").replace(/=/g, "+"); }
 function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
 function hhmm(iso) { try { const d = new Date(iso); return d.toLocaleString("ja-JP", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }); } catch (e) { return ""; } }
 function optsOf(it) { return OPTIONS.kinds[it.kind].options; }
@@ -413,8 +416,11 @@ document.addEventListener("keydown", e => {
     const ok = inp.value.trim() === DATA.run_no;
     keysOn = ok;
     st.className = ok ? "status" : "status bad";
-    st.textContent = ok ? "一致しました。キー入力が使えます" : "紙の回の番号と違います。キー入力は使えません(ボタンは押せます)";
+    st.textContent = ok ? "一致しました。キー入力が使えます(入力欄から外れました)" : "紙の回の番号と違います。キー入力は使えません(ボタンは押せます)";
     showCursor();
+    /* 欄にフォーカスが残ると、keydown は typingTarget として何もせず戻り、キー入力が効かない(2026-11-19 に本人が指摘)。
+       番号が一致した時点で欄から出し、キーを文書に渡す。 */
+    if (ok) inp.blur();
   });
 })();
 
@@ -452,7 +458,11 @@ function noteInput(it, text) {
   timers[it.id] = setTimeout(() => { persist(it); paint(it.id); }, 900);
 }
 let gTimer = null;
+/* 「今後の裁定へのフィードバック」は、固定の 1 文書(guidance/standing)で、ページを開くたびに前の入力が読み込まれる。
+   「回答をまとめる」には、このページを開いてから書き換えたときだけ含める(古い入力を、毎回の答えとして貼らない。2026-11-19 に、11/11 の入力が出た)。 */
+let gEdited = false;
 function guidanceInput(text) {
+  gEdited = true;
   clearTimeout(gTimer);
   gTimer = setTimeout(() => {
     if (!gdoc) return;
@@ -493,7 +503,7 @@ document.getElementById("summarize").addEventListener("click", async () => {
     if (o) picked++;
     lines.push("- " + it.title + (o ? " → " + o.label : "") + (s.note ? "\n  " + (o && o.verdict === "other" ? "指示: " : "メモ: ") + s.note : ""));
   }
-  const g = document.getElementById("g-text").value.trim();
+  const g = gEdited ? document.getElementById("g-text").value.trim() : "";
   const rest = ITEMS.length - picked;
   const text = (lines.length ? lines.join("\n") + "\n" : "") + "(未選択 " + rest + " 件は推奨どおりでよい)" + (g ? "\n今後へのフィードバック: " + g : "");
   const pre = document.getElementById("summary"); pre.textContent = text; pre.hidden = false;
