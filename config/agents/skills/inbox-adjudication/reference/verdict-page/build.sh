@@ -259,6 +259,12 @@ selftest() {
   if grep -qF 'db.doc("guidance/standing")' "$TEMPLATE"; then ok "テンプレート: 文書 guidance/standing"; else ng "テンプレート: guidance/standing が無い"; fi
   got=$(node -e "$(grep '^function docId' "$TEMPLATE"); console.log(docId('gmail:AbC_1/dEf-2'))")
   if [ "$got" = "gmail.AbC_1.dEf-2" ]; then ok "テンプレート: docId の換え方"; else ng "テンプレート: docId が $got"; fi
+  # docId は、db の文書 id が許す文字(英数字と _ - . ~ : @ +)だけで書けて、1 対 1 であること。`=` を残すと、GitHub の鍵のカードの答えが
+  # 1 件も保存されない(2026-11-18・19 に実測。かつての検査は、換えの 1 対 1 だけを見て、許される文字を見ていなかった)。
+  got=$(node -e "$(grep '^function docId' "$TEMPLATE"); const rows = JSON.parse(require('fs').readFileSync(process.argv[1], 'utf8')); const ids = rows.map(r => docId('gh:' + r.thread + '/' + r.receipt)); const bad = ids.filter(i => !/^[A-Za-z0-9_.~:@+-]+\$/.test(i)); console.log(bad.length + ',' + (ids.length - new Set(ids).size))" "$HERE/fixtures/gh-keys.json")
+  if [ "$got" = "0,0" ]; then ok "テンプレート: GitHub の鍵の docId が、db の許す文字だけで、衝突しない"; else ng "テンプレート: GitHub の鍵の docId に、許されない文字か衝突がある(違反,衝突=$got)"; fi
+  if grep -qF 'inp.blur()' "$TEMPLATE"; then ok "テンプレート: 回の番号が一致したら入力欄から出る(キー入力が効く)"; else ng "テンプレート: 回の番号が一致しても入力欄に残る(キー入力が効かない)"; fi
+  if grep -qF 'gEdited' "$TEMPLATE"; then ok "テンプレート: 古いフィードバックを回答に含めない"; else ng "テンプレート: 古いフィードバックを回答に含める"; fi
 
   # 5. 選択肢の正本(options.json)が、画面・保存先の形・項目の kind と食い違わないこと
   want=$(jq -r '."$defs".item.properties.kind.enum | sort | join(",")' "$ITEMS_SCHEMA")
