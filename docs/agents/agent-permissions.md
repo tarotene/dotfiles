@@ -192,6 +192,20 @@ docs のビルドは、intersphinx が `docs.python.org` を読む。同じ型�
 紙の出力先 `~/.local/state/claude/desk/sheets` は、`home/modules/downloads.nix` の `systemd.user.tmpfiles.rules` に、14 日の年齢の掃除として足した(ディレクトリは 0700)。
 宣言後の読み戻し(`hms` の後の新しいセッションで、確認の画面が出ること、プリンタを設定した機体で `lp` が通ること)は未実施。
 
+**離席実行のコマンドと Calendar の書き込み(2026-11-19)**: 勤怠の同期を、本人が出発前に 1 回承認してから席を離れて動かす運用に
+する。離席中に許可の確認で止まると、その run は戻るまで進まない。
+止まるのは 2 か所だった。(1) `ts-browser`(画面付きの Chromium を起動し、Unix ソケットを作れず sandbox の中では起動できない。2026-10-30 に実測)・`wl`
+(`oauth2.googleapis.com` に届かない。2026-11-11 に実測)・`work-sync-plan.sh`(その 2 つと、スマートカードの要る `sops` を呼ぶ)は、`excludedCommands` に
+無く、外へ出すたびに許可の判定を通る必要があった。(2) Calendar の `update_event`・`delete_event` は事前許可に無かった(`create_event` は本線の
+`settings.local.json` にだけあった)。そこで `excludedCommands` に `uv run --project timesheet/tools ts-browser *`・`uv run --project worklog/tools wl *`・
+`./scripts/work-sync-plan.sh *` を、`claudePermissions.extraAllow` に Calendar の `create_event`・`update_event`・`delete_event` を足した。
+**広がる範囲**: 外では全権限で動く。`uv run --project <dir>` は、セッションのディレクトリの `<dir>` にあるコードをそのまま実行するので、別のリポジトリでも同じパスの
+コードがあれば同じ扱いになる。Calendar の書き込みも、どのセッションでも確認なしになる。`google-chrome --headless=new *`・`hms *`・`lp *` とは違い、`askRules` には
+足さない(確認を出すと離席実行の意味が無い)。書き込みの歯止めは許可の層ではなく、道具自身にある(プレビューのダイジェストへの束縛・読み戻し・書き込みガード・
+`labor-core away decide`)。`respond_to_event`(`/leave` の辞退)と `ts-browser punch` の個別の許可は足さない。Codex には足さない(`mcp_allow` は Codex も読むので使わない)。
+宣言後の読み戻し(`hms` の後の新しいセッションで、確認の画面なしにこの 3 つのコマンドと Calendar の 3 ツールが通ること、自動モードの分類器が止めないこと)は未実施。
+分類器が止めると分かったときに限り、`auto_mode_allow` に 1 文足す。画面ロック中の Chromium の描画も未実測で、初回は本人が同席して試運転する。
+
 **cargo のレジストリと headless Chrome(2026-11-05、#1334)**: sandbox の中の `cargo metadata --offline --locked` が、
 `~/.cargo/registry/src` を作れず `Read-only file system (os error 30)` で落ちた(`cargo run -p pipeline-map -- render` の最初の段)。
 uv のキャッシュと同じ型なので、`runtimes.nix` が `~/.cargo/registry` だけを `allowWrite` に足した(`~/.cargo/bin` は足さない)。
