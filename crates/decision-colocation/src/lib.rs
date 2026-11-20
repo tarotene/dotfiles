@@ -7,6 +7,9 @@
 //! - [`guard`]: PreToolUse hook の判定(bash 版
 //!   `config/claude/hooks/decision-colocation-guard.sh`)。コマンド解析は
 //!   `command-inspection`。
+//! - [`touched`]: 触れた決定の一覧(PR 本文の `## 触れた決定`)。旧 ADR の執行点が消えた・変わったことを
+//!   機械的に出す(`docs/agents/agent-mode.md`)。`decision-colocation-touched` bin の本体。
 
 pub mod check;
 pub mod guard;
+pub mod touched;

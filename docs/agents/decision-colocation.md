@@ -138,6 +138,23 @@ main へ入った既存の ADR を新規と誤読して deny する。ローカ�
   バイナリへの symlink にする。旧 `bash '….sh'` の hook command は
   `retiredHookEntries` で完全一致削除する。
 
+## 旧 ADR の執行点に触れた一覧(`decision-colocation-touched`)
+
+この検査(`run_check`)は、足された ADR の執行点が実在するかを見る。**旧 ADR の執行点が消えた・変わったこと**は、
+どの検査も見ない。決定の記録に縛られずに整理するセッション(`docs/agents/agent-mode.md`)の PR は、その穴を通るので、
+一覧を機械的に出す。
+
+```
+decision-colocation-touched --base origin/main      # PR 本文の `## 触れた決定` の節をそのまま出す
+```
+
+- base 時点の `docs/adr/` の各 ADR を読み(`git show <base>:<path>`。この PR が ADR を書き換えても、変わる前の決定を見る)、
+  `## 執行点` と Amendment の `### 執行点` のパスのうち、`base..HEAD` で変更・削除・改名(移動元)されたものを、ADR ごとに出す。
+- あわせて、削除・変更されたテストと CI の設定(`.github/workflows/`・`tests/` 配下・`test_*`・`*_test.*`・`*.test.*`・`*.spec.*`)を出す。
+  ADR を持たないリポジトリでは、こちらだけが手がかりになる。
+- 何も書き換えない。一覧が空でも終了コード 0。base が解決できないときは(黙って空にせず)終了コード 2。
+- 実体: `crates/decision-colocation/src/touched.rs`。判定の読み方(`extract_paths`・見出しの述語)は `check.rs` と共有する。
+
 ## `github-audit` にドメインを作らない理由
 
 本件の判定はこの repo 固有のパス述語(`docs/adr/`・`docs/claude/`・
