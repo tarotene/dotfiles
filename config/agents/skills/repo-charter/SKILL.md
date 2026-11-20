@@ -408,7 +408,11 @@ apply を両方行う。まだ CI が 1 度も走っていないため apply は
 rulesets の呼び出し順、`ci.yml`・`CI passed`・rulesets の宣言を同じ段に置くこと)は、
 `repo-governance` SKILL.md の「Without a language profile (`core`)」節が正本である。
 `create-repo.sh --type core` はその節の最初の 2 コマンドを呼び、失敗したときのフォールバック
-もその節にある。ここには複写しない。
+もその節にある。ここには複写しない。続けて、作業先に**根コミット**まで作る(`root_commit`、F57): 作業先が git の作業ツリーでなければ
+`git init -b main`、origin を **https** の URL で足し(SSH の URL で足すと、鍵の無い環境で push が publickey で落ちた)、
+播種したファイルを 1 つのコミットにする。署名は利用者の git の設定どおりなので、**sandbox の外で**(署名の鍵が見える場で)実行する。
+すでにコミットがあれば何もしない(続きから進められる)。push は、資格情報が要るので、案内(`next:`)に出すだけにする。
+main への直コミットは、HEAD が未生成の間だけ pre-commit が通す(`docs/git-sync.md`)ので、`GIT_ALLOW_MAIN_COMMIT` は要らない。
 
 review 層(Copilot code review + 会話 resolve 必須)は ADR-0021 のとおり
 初期は付けない。開発初期フェーズを過ぎたら `--with-review` を付けて再実行する。

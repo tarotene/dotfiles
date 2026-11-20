@@ -12,6 +12,7 @@ set -euo pipefail
 
 SELF="$(realpath "${BASH_SOURCE[0]}")"
 GH="${CREATE_REPO_GH_BIN:-gh}"
+GIT="${CREATE_REPO_GIT_BIN:-git}"
 SKILLS_DIR="${CREATE_REPO_SKILLS_DIR:-$HOME/.claude/skills}"
 AUDIT_DIR="${GITHUB_AUDIT_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/github-audit}"
 
@@ -99,6 +100,32 @@ vocab_check() {
 }
 
 # ---- 実行 -------------------------------------------------------------------
+
+# 作業先に根コミットを作る(--type core)。作業先が git の作業ツリーでなければ `git init -b main`、origin が無ければ
+# https の URL で足し、播種したファイルを 1 つのコミットにする(署名は、利用者の git の設定どおり)。
+# コミットが既にあれば何もしない(続きから進める)。push は、資格情報が要るので案内だけにする。
+# https にするのは、SSH の URL で足すと、鍵の無い環境で push が publickey で落ちたため(F57、2026-11-15)。
+# main への直コミットは、HEAD が未生成の間だけ pre-commit が通す(config/git/hooks/pre-commit)ので、
+# `GIT_ALLOW_MAIN_COMMIT` の前置は要らない。
+root_commit() {
+  local dest="$1" slug="$2"
+  local url="https://github.com/$slug.git"
+  if ! $DRY && "$GIT" -C "$dest" rev-parse --verify --quiet HEAD > /dev/null 2>&1; then
+    echo "skip: $dest には既にコミットがあります(根コミットは作りません)"
+    return 0
+  fi
+  if $DRY || ! "$GIT" -C "$dest" rev-parse --git-dir > /dev/null 2>&1; then
+    run "$GIT" -C "$dest" init -b main
+  fi
+  if $DRY || ! "$GIT" -C "$dest" remote get-url origin > /dev/null 2>&1; then
+    run "$GIT" -C "$dest" remote add origin "$url"
+  else
+    echo "note: origin は既にあります。https でなければ直してください: git -C $dest remote set-url origin $url"
+  fi
+  run "$GIT" -C "$dest" add -A
+  run "$GIT" -C "$dest" commit -m "chore: seed repository governance files"
+  echo "next: $dest で push してください: git -C $dest push -u origin main(コミットは作成済みです)"
+}
 
 DRY=false
 run() {
@@ -193,7 +220,8 @@ main() {
     core)
       run "$SKILLS_DIR/repo-governance-common/scripts/apply-repo-settings.sh" --owner "$owner" --repo "$repo"
       run "$SKILLS_DIR/repo-governance-common/scripts/copy-files.sh" --owner "$owner" --repo "$repo" --dest "$dest"
-      echo "next: $dest で commit + push してから、"
+      root_commit "$dest" "$slug"
+      echo "next: push してから、"
       if $plan_free_private; then
         echo "      rulesets は適用できません(無料プランの非公開)。宣言ファイル(.github/rulesets/*.json)は Team 切替用に残ります。"
         echo "      Team に切り替えるときの手順: docs/agents/free-plan-declaration.md"
@@ -227,7 +255,19 @@ STUB
   for s in repo-governance-common/scripts/apply-repo-settings.sh repo-governance-common/scripts/copy-files.sh repo-governance/rust/scripts/seed.sh; do
     printf '#!/usr/bin/env bash\nprintf "%s %%s\\n" "$*" >> "$STUB_LOG"\n' "$(basename "$s")" > "$tmp/skills/$s"
   done
-  chmod +x "$tmp/gh" "$tmp"/skills/*/scripts/*.sh "$tmp"/skills/repo-governance/*/scripts/*.sh
+  # git: 呼び出しを記録する。STUB_GIT_REPO_RC は `rev-parse --git-dir`(作業ツリーか)、STUB_GIT_HEAD_RC は
+  # `rev-parse --verify HEAD`(コミットがあるか)の終了コード(既定は、どちらも無い = 1)。origin は無い。
+  cat > "$tmp/git" <<'STUB'
+#!/usr/bin/env bash
+printf 'git %s\n' "$*" >> "$STUB_LOG"
+case "$*" in
+  *"rev-parse --git-dir"*) exit "${STUB_GIT_REPO_RC:-1}" ;;
+  *"rev-parse --verify"*) exit "${STUB_GIT_HEAD_RC:-1}" ;;
+  *"remote get-url"*) exit 1 ;;
+esac
+exit 0
+STUB
+  chmod +x "$tmp/gh" "$tmp/git" "$tmp"/skills/*/scripts/*.sh "$tmp"/skills/repo-governance/*/scripts/*.sh
 
   # case <name> <want-rc> <log-pattern | !log-pattern | -> <args…>
   case_run() {
@@ -235,7 +275,7 @@ STUB
     shift 3
     : > "$tmp/log"
     local rc=0
-    STUB_LOG="$tmp/log" CREATE_REPO_GH_BIN="$tmp/gh" CREATE_REPO_SKILLS_DIR="$tmp/skills" \
+    STUB_LOG="$tmp/log" CREATE_REPO_GH_BIN="$tmp/gh" CREATE_REPO_GIT_BIN="$tmp/git" CREATE_REPO_SKILLS_DIR="$tmp/skills" \
       GITHUB_AUDIT_CONFIG_DIR="$tmp/audit" bash "$SELF" "$@" > "$tmp/out" 2>&1 || rc=$?
     local ok=true
     [ "$rc" = "$want_rc" ] || ok=false
@@ -267,6 +307,12 @@ STUB
   case_run "core: settings then files" 0 "apply-repo-settings.sh --owner o --repo acme" --repo acme --class naming-codename --type core --dest "$tmp" "${base[@]}"
   case_run "rust: seed.sh gets passthrough" 0 "seed.sh --owner o --repo acme --dest $tmp --canonical-crate c" \
     --repo acme --class naming-codename --type rust --dest "$tmp" "${base[@]}" -- --canonical-crate c
+  # F57: --type core は、根コミットまで作る(git init → https の origin → add → commit)。コミットがあれば作らない。
+  case_run "core: root commit with https origin" 0 "git -C $tmp commit -m chore: seed" --repo acme --class naming-codename --type core --dest "$tmp" "${base[@]}"
+  case_run "core: git init when the dest is not a work tree" 0 "git -C $tmp init -b main" --repo acme --class naming-codename --type core --dest "$tmp" "${base[@]}"
+  case_run "core: origin is https" 0 "remote add origin https://github.com/o/acme.git" --repo acme --class naming-codename --type core --dest "$tmp" "${base[@]}"
+  STUB_GIT_REPO_RC=0 STUB_GIT_HEAD_RC=0 case_run "core: an existing commit is left alone" 0 "!commit -m" --repo acme --class naming-codename --type core --dest "$tmp" "${base[@]}"
+  STUB_GIT_REPO_RC=0 case_run "core: no git init inside a work tree" 0 "!git -C $tmp init" --repo acme --class naming-codename --type core --dest "$tmp" "${base[@]}"
   case_run "--type needs --dest" 2 "!gh repo" --repo acme --class naming-codename --type core "${base[@]}"
   case_run "dry-run calls no gh" 0 "!gh repo" --repo acme --class naming-codename --dry-run "${base[@]}"
 
@@ -289,7 +335,7 @@ STUB
     --repo acme --class naming-codename --plan free --dry-run "${base[@]}"
   STUB_PLAN=free case_run "core + free: settings still applied" 0 "apply-repo-settings.sh --owner o --repo acme" \
     --repo acme --class naming-codename --type core --dest "$tmp" "${base[@]}"
-  if STUB_PLAN=free STUB_LOG="$tmp/log" CREATE_REPO_GH_BIN="$tmp/gh" CREATE_REPO_SKILLS_DIR="$tmp/skills" \
+  if STUB_PLAN=free STUB_LOG="$tmp/log" CREATE_REPO_GH_BIN="$tmp/gh" CREATE_REPO_GIT_BIN="$tmp/git" CREATE_REPO_SKILLS_DIR="$tmp/skills" \
     GITHUB_AUDIT_CONFIG_DIR="$tmp/audit" bash "$SELF" --repo acme --class naming-codename --type core --dest "$tmp" "${base[@]}" 2>&1 \
     | grep -q "apply-rulesets.sh"; then
     echo "FAIL core + free: next: must not suggest apply-rulesets.sh"
@@ -300,7 +346,7 @@ STUB
 
   # 既存リポジトリ(gh repo view が成功)では作成を飛ばし、topic の反映へ進む
   : > "$tmp/log"
-  STUB_VIEW_RC=0 STUB_LOG="$tmp/log" CREATE_REPO_GH_BIN="$tmp/gh" CREATE_REPO_SKILLS_DIR="$tmp/skills" \
+  STUB_VIEW_RC=0 STUB_LOG="$tmp/log" CREATE_REPO_GH_BIN="$tmp/gh" CREATE_REPO_GIT_BIN="$tmp/git" CREATE_REPO_SKILLS_DIR="$tmp/skills" \
     GITHUB_AUDIT_CONFIG_DIR="$tmp/audit" bash "$SELF" --repo acme --class naming-codename "${base[@]}" > /dev/null 2>&1 || true
   if ! grep -q "gh repo create" "$tmp/log" && grep -q "gh repo edit o/acme" "$tmp/log"; then
     echo "ok   existing repo: create skipped, topics still applied"
