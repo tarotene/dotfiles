@@ -41,6 +41,14 @@ Claude Code の `Read` の deny は、同じパスへの Edit・Write も止め�
 `--draft` で出し、本文の `## 触れた決定` に、消した・変えた検査・設定・文書を残す。通常のセッションで、覆す決定ごとに新しい ADR を
 **同じブランチ**に足す。
 
+### D5: セッション開始時の文脈の注入は、hook の宣言の `injects` で分け、`true` の hook を包んで、モードの間だけ無音にする
+
+SessionStart の宣言は bool の `injects` を必ず持つ(付け忘れは nix の評価で落ちる)。`true` は文脈を足すだけの hook
+(Issue の索引・朝の机・未裁定の気づきの件数など)で、Claude の登録だけを `agent-mode inject-gate -- <元のコマンド>` で包む。
+モードが注入を止めている間(`DOTFILES_AGENT_MODE_INJECTION=off`)は元の hook を実行しない。`false` は、注入のほかに状態の書き込み・
+登録を担う hook(`session-wrapup-start`・`pr-gate-session-start` など)で、包まない(Stop の検査が前提を失うため)。Codex・Copilot の
+登録は包まない(command が変わると、Codex の hook の信頼がやり直しになる)。
+
 ## 先行例との対比
 
 - D1: 起動時に、宣言から設定・追記する文・環境変数を束ねて渡す
@@ -56,12 +64,20 @@ Claude Code の `Read` の deny は、同じパスへの Edit・Write も止め�
   差分: 一致 — 拘束を変える仕組みは、失敗したら緩める側ではなく、止める側に倒す
   軸: 表現不可能 — 失敗の状態から、通常のセッションに入る経路を無くす
 
+- D5: 注入する hook を、宣言の 1 属性で分けて、実行時に判定する包みで止める
+  先行例: home/modules/agents.nix の `enabledClaudeHookDeclarations` (取得 2026-11-18)。option で宣言を出し入れする
+  差分: 異なる — 既存は機体単位(`hms` の適用時に固定)で、セッションごとには切り替えられない。モードは起動ごとに変わるので、実行時に判定する。
+  各 hook の crate に同じ判定を散らさず、宣言の 1 属性に寄せる
+  軸: 表現不可能 — 閉語彙(`injects` が無い宣言は評価で落ちる)。単一正本 > 複写
+
 ## Consequences
 
 - 同じ worktree で、通常のセッションとモードのセッションを並べられる(モードは起動したプロセスだけに効く)。
 - 共通規約の本文(`@~/.agents/AGENTS.md` の import)は、段1 では読み込まれたままで、追記する文で適用外を宣言する。
   読み込まれない状態にするのは、同じスタックの後の段。
 - CI の検査(`decision-colocation-check` など)と `pr-gate` は止まらない。
+- モードの間も、`session-wrapup-start`(未裁定の気づきの案内)と `pr-gate-session-start`(残骸ブランチの通知)の注入は残る。
+  どちらも、状態の書き込み・登録と同じ hook の中にあり、注入だけを分けるには、その hook の中で出力を止める必要がある。
 - モードを足すには、`config/agents/modes/<名前>.toml` と追記する文を足し、`home/modules/agents.nix` の配備に 2 行を足す。
 
 ## 執行点
@@ -69,3 +85,4 @@ Claude Code の `Read` の deny は、同じパスへの Edit・Write も止め�
 - crates/agent-mode/src/lib.rs
 - config/agents/modes/refactor.toml
 - config/zsh/modules/53-tools-claude.zsh
+- home/modules/agents.nix

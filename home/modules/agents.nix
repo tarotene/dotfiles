@@ -1231,6 +1231,9 @@ let
     {
       event = "SessionStart";
       node = "session-wrapup-start";
+      # false: 文脈の注入のほかに、このセッションの印(feedback の stamp)を書く。包んで走らせないと、
+      # Stop の検査が「今セッションの印」を失う(agent-mode では注入が残る。docs/agents/agent-mode.md)。
+      injects = false;
       command = wrapupSessionStartCmd;
     }
     # plan-view は plan-review gate と同じ matcher に、別エントリとして並ぶ。
@@ -1264,6 +1267,7 @@ let
     {
       event = "SessionStart";
       node = "issue-index";
+      injects = true;
       matcher = "startup|resume|compact";
       command = issueIndexCmd;
       timeout = 10;
@@ -1273,6 +1277,7 @@ let
     {
       event = "SessionStart";
       node = "esa-mirror-context";
+      injects = true;
       matcher = "startup|resume|compact";
       command = esaMirrorContextCmd;
       timeout = 10;
@@ -1282,6 +1287,7 @@ let
     {
       event = "SessionStart";
       node = "daily-desk-reminder";
+      injects = true;
       matcher = "startup";
       command = deskStartCmd;
       timeout = 10;
@@ -1291,6 +1297,7 @@ let
     {
       event = "SessionStart";
       node = "worklog";
+      injects = true;
       matcher = "startup";
       command = worklogStartCmd;
       timeout = 10;
@@ -1302,6 +1309,7 @@ let
     {
       event = "SessionStart";
       node = "gpg-prewarm";
+      injects = false;
       matcher = "startup|resume";
       command = signPrewarmCmd;
       timeout = 120;
@@ -1314,6 +1322,7 @@ let
     {
       event = "SessionStart";
       node = "worktree-base-sync";
+      injects = false;
       matcher = "startup|resume";
       command = worktreeFreshBaseCmd;
       timeout = 30;
@@ -1324,6 +1333,7 @@ let
     {
       event = "SessionStart";
       node = "herdr-status-advisory";
+      injects = true;
       matcher = "startup|resume";
       command = herdrStatusAdvisoryCmd;
       timeout = 10;
@@ -1334,6 +1344,7 @@ let
     {
       event = "SessionStart";
       node = "gate-failopen-advisory";
+      injects = true;
       matcher = "startup|resume";
       command = gateFailopenAdvisoryCmd;
       timeout = 10;
@@ -1346,6 +1357,9 @@ let
     {
       event = "SessionStart";
       node = "pr-gate-session-start";
+      # false: 状態の一覧のほかに、この repo を Stop の gate の対象として登録する。包んで走らせないと、
+      # Stop の完了の検査が働かなくなる(agent-mode では、残骸ブランチの通知が残る)。
+      injects = false;
       command = prGateSessionStartCmd;
       timeout = 10;
     }
@@ -1436,6 +1450,7 @@ let
     {
       event = "SessionStart";
       node = "herdr-agent-metadata";
+      injects = false;
       command = herdrMetadataCmd;
       timeout = 10;
     }
@@ -1468,6 +1483,7 @@ let
     {
       event = "SessionStart";
       node = "worktree-audit-context";
+      injects = true;
       matcher = "startup|resume";
       command = worktreeAuditContextCmd;
       timeout = 30;
@@ -1528,6 +1544,7 @@ let
     {
       event = "SessionStart";
       node = "calendar-handshake-reminder";
+      injects = true;
       matcher = "startup";
       command = calendarHandshakeStartCmd;
       timeout = 10;
@@ -1554,7 +1571,29 @@ let
       "hook の宣言(claude/copilotHookDeclarations): node が無い宣言がある (event = ${d.event}, command = ${d.command})";
     assert lib.assertMsg (builtins.elem d.node pipelineNodeIds)
       "hook の宣言(claude/copilotHookDeclarations): node `${d.node}` が pipeline-map.toml に定義されていない";
-    builtins.removeAttrs d [ "node" ];
+    builtins.removeAttrs d [
+      "node"
+      "injects"
+    ];
+
+  # セッション開始時の文脈の注入を、agent-mode(docs/agents/agent-mode.md)が、セッションごとに止められるようにする。
+  # SessionStart の宣言は `injects`(bool)を必ず持つ(付け忘れ・SessionStart 以外への付与は、評価で落ちる)。
+  #   true  — 文脈を足すだけの hook(additionalContext を返し、状態を書かない)。Claude の登録だけを
+  #           `agent-mode inject-gate -- <元のコマンド>` で包む。モードが注入を止めている間(DOTFILES_AGENT_MODE_INJECTION=off)は、
+  #           元の hook を実行せず無音で終わり、止めていないときは、元の hook を exec する(終了コード・出力は変わらない)。
+  #   false — 注入のほかに、状態の書き込み・登録を担う hook(包むと、Stop の検査が前提を失う)。包まない。
+  # Codex・Copilot の登録は包まない(command が変わると、Codex の hook の信頼が、機体ごとにやり直しになる)。
+  agentModeBin = "'${config.home.homeDirectory}/.local/bin/agent-mode'";
+  injectGate =
+    d:
+    assert lib.assertMsg (!(d ? injects) || d.event == "SessionStart")
+      "hook の宣言(claudeHookDeclarations): `injects` は SessionStart の宣言だけが持つ (event = ${d.event}, node = ${d.node})";
+    assert lib.assertMsg (d.event != "SessionStart" || (d ? injects && builtins.isBool d.injects))
+      "hook の宣言(claudeHookDeclarations): SessionStart の宣言は bool の `injects` を持つこと (node = ${d.node}、docs/agents/agent-mode.md)";
+    if d.event == "SessionStart" && d.injects then
+      d // { command = "${agentModeBin} inject-gate -- ${d.command}"; }
+    else
+      d;
 
   # Codex の `/hooks` は、statusMessage の無い hook をすべて `Unnamed hook` と表示する(#1122)。
   # 表示名は pipeline-map.toml のノードの label(ASCII)を使う。Claude の宣言には付けない
@@ -1568,7 +1607,7 @@ let
 
   claudeHooksSpec = builtins.toJSON {
     retire = retiredHookEntries;
-    register = map declareHook enabledClaudeHookDeclarations;
+    register = map (d: declareHook (injectGate d)) enabledClaudeHookDeclarations;
     # 所有の記録(crates/agent-settings-reconcile の managed)。前回書いた (event, command) の集合を
     # ここに残し、次の switch で宣言から外れたものを settings.json から消す。
     state = "${config.home.homeDirectory}/.local/state/dotfiles/managed-hooks-claude.json";

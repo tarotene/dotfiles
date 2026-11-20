@@ -8,8 +8,9 @@ description = "決定の記録(ADR・設計文書)を読まず・書かず、落
 # 追記する文(--append-system-prompt-file)。このファイルと同じディレクトリに置く。
 prompt = "refactor.md"
 
-# セッション開始時の文脈の注入(Issue の索引・朝の机・未裁定の気づきなど)。"off" で止める
-# (段2 で、注入する hook を `agent-mode inject-gate` で包んだあとから効く)。
+# セッション開始時の文脈の注入(Issue の索引・朝の机・カレンダーの案内など)。"off" で止める
+# (home/modules/agents.nix の `injects = true` の hook が、`agent-mode inject-gate` で無音になる。
+# 状態の書き込みと同居する hook の注入は残る: docs/agents/agent-mode.md)。
 injection = "off"
 
 # このセッションだけ止める検査。stem は crates/agent-session の escape::ALL の表にあるもの
