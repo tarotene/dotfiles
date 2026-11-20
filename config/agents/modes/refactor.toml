@@ -34,3 +34,12 @@ globs = [
   "**/docs/agents/**", # 機構ごとの設計文書(dotfiles)
   "**/docs/claude/**", # hook・skill の設計文書(dotfiles)
 ]
+
+[norms]
+# 読み込まれなくする指示のファイル(`claudeMdExcludes`)。共通規約(config/agents/AGENTS.md)と Claude 用規約
+# (config/claude/CLAUDE.md)の「決定の記録に関わる節」を、印(agent-mode:decisions)で囲んだ領域として、
+# home/lib/split-regions.nix が別ファイルに切り出して配る。その配備先を外す。安全に関わる節は、切り出していない。
+excludes = [
+  "**/.agents/AGENTS.decisions.md",
+  "**/.claude/CLAUDE.decisions.md",
+]

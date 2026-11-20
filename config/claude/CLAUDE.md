@@ -1,10 +1,19 @@
-@~/.agents/AGENTS.md
+@~/.agents/AGENTS.core.md
+@~/.agents/AGENTS.decisions.md
+@~/.claude/CLAUDE.decisions.md
 
 <!-- Claude Code 固有の施行配線。原則そのものは上記 import 先(共有
      AGENTS.md、Codex/Copilot とも共有)を正本とする。ここに残るのは
      Claude Code のツール(ExitPlanMode・AskUserQuestion・PreToolUse/Stop
-     hook)に紐づく書式・自己検査手順だけ。 -->
+     hook)に紐づく書式・自己検査手順だけ。
 
+     import は 3 行: 共有 AGENTS.md と、この CLAUDE.md の、それぞれ「決定の記録に関わる節」
+     (`agent-mode:decisions` の印で囲んだ領域)を、home/lib/split-regions.nix が本体
+     (core)と decisions に分けて配る。decisions は、agent-mode(`CLAUDE_MODE=<名前> claude`)が
+     `claudeMdExcludes` で読み込まれなくする(docs/agents/agent-mode.md)。印で囲む節を足す・
+     動かすときは、安全に関わる節を囲まない。 -->
+
+<!-- agent-mode:decisions:begin -->
 ## 先行例確認: Plan mode での書式と自己検査
 
 Plan mode で非自明な設計判断を書くときは、Plan に `## 先行例との対比` 節を
@@ -30,6 +39,7 @@ Plan mode で非自明な設計判断を書くときは、Plan に `## 先行例
 `Dn` に現れると同じ gate が deny する。書式は technology-selection
 スキルに従い、自己検査は同じ `plan-precedent-gate --check` コマンド
 1 本でまとめて行う(新しい gate は呼ばない)。
+<!-- agent-mode:decisions:end -->
 
 ## フィードバックの Issue 化(auto memory 固有の配線)
 
@@ -49,6 +59,7 @@ stacked PR に積む原則そのものは共有 AGENTS.md に従う。形式検�
 (Stop block)が担う。gate に当たる前に自発的に積むこと — gate は漏れを
 拾うためのもので、一次的な手段ではない。
 
+<!-- agent-mode:decisions:begin -->
 ## 決定成果物の執行点の形式検査(ADR-396)
 
 決定成果物と執行点を同じ PR に出す原則そのものは共有 AGENTS.md に従う。
@@ -58,6 +69,7 @@ required check(`decision-colocation-check`、どちらも `crates/decision-coloc
 gate に当たる前に自発的に執行点を含めること — gate は漏れを拾うためのもので、
 一次的な手段ではない。**「実装を後続 Issue に分離する」という選択肢は
 実行不能なので、`AskUserQuestion` の選択肢に出さない。**
+<!-- agent-mode:decisions:end -->
 
 ## 要求インベントリの書式と自己検査
 
@@ -230,6 +242,7 @@ sandbox の中と外の線引き(#1103。2026-10-28 に vega で実測した範�
 gate に当たる前に最初から括弧の技で書くこと — gate は漏れを拾うためのもので、一次的な手段ではない。
 正当な理由があるときだけ、コマンドに `PKILL_GUARD_ALLOW=1` を足す。
 
+<!-- agent-mode:decisions:begin -->
 ## 既存手段の前倒し接地と決定論への昇格(ADR-543)
 
 共有 AGENTS.md「道具を新設する前に既存手段を問い、決定論化は段階で
@@ -247,6 +260,7 @@ gate に当たる前に最初から括弧の技で書くこと — gate は漏�
   `cmd-hash-log`・gate イベント記録)と、昇格・降格候補の日次検出
   (`promotion-detect` の timer)は実装済み。パスは ADR-543 の
   `## 執行点` を参照。
+<!-- agent-mode:decisions:end -->
 
 ## GitHub 投稿の生成元明示(Claude Code のフッター文言)
 

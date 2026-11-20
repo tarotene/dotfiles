@@ -14,6 +14,9 @@ let
   legacyStatusLineCmd = "bash '${hooksDir}/claude-statusline.sh'";
   retiredStatusLineCommands = [ legacyStatusLineCmd ];
   planModelBin = "${pkgs.dotfiles-tools}/bin/claude-plan-model";
+  # 「決定の記録に関わる節」を印(agent-mode:decisions)で囲んだ領域と、それ以外に分ける(home/lib/split-regions.nix)。
+  splitRegions = import ../lib/split-regions.nix { inherit lib; };
+  claudeMdSplit = splitRegions (builtins.readFile (repoConfig + "/claude/CLAUDE.md"));
   hasMidWildcard = rule: builtins.match ".*(\\(| )\\*[[:space:]]+[^)]+.*" rule != null;
 
   permissionRules_ = [
@@ -395,7 +398,11 @@ in
     # Native Claude sandbox dependencies remain available for restored settings.
     home.packages = sandboxDeps;
     xdg.configFile."agent-native/claude-permissions.json".text = builtins.toJSON permissionsSpec;
-    home.file.".claude/CLAUDE.md".source = repoConfig + "/claude/CLAUDE.md";
+    # ~/.claude/CLAUDE.md は、config/claude/CLAUDE.md(単一の正本)の「決定の記録に関わる節」を除いた本体で、
+    # 除いた節は ~/.claude/CLAUDE.decisions.md に配る。どちらも、CLAUDE.md の先頭の import が読む。
+    # agent-mode が、decisions の側を `claudeMdExcludes` で読み込まれなくする(docs/agents/agent-mode.md)。
+    home.file.".claude/CLAUDE.md".text = claudeMdSplit.core;
+    home.file.".claude/CLAUDE.decisions.md".text = claudeMdSplit.decisions;
     dotfiles.binaries.".claude/hooks" = [
       "claude-statusline"
       "claude-usage"

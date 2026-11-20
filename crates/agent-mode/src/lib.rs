@@ -47,6 +47,16 @@ pub struct Records {
     pub globs: Vec<String>,
 }
 
+/// 読み込まれなくする指示のファイル(共通規約の「決定の記録に関わる節」を切り出した import 先など)。
+/// `claudeMdExcludes` になる。省略したモードは、何も除外しない。
+#[derive(Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Norms {
+    /// 絶対パスに照合する glob(`**/.agents/AGENTS.decisions.md` など)。import 先にも rules にも効く
+    /// (2026-11-18 の実測、`docs/agents/agent-mode.md`)。
+    pub excludes: Vec<String>,
+}
+
 /// モードの宣言(`<名前>.toml`)。未知のキーは受けない。
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -58,6 +68,8 @@ pub struct Mode {
     /// 止める検査の stem(`escape::ALL` の `stem`)。
     pub skip: Vec<String>,
     pub records: Records,
+    #[serde(default)]
+    pub norms: Norms,
 }
 
 /// 検証に通ったモード。
@@ -137,6 +149,21 @@ fn valid_glob(glob: &str) -> bool {
             .any(|c| c.is_whitespace() || c.is_control() || c == '(' || c == ')')
 }
 
+/// glob の一覧の検証: 空・空白・制御文字・括弧を含まず、重複しない。
+fn check_globs(what: &'static str, globs: &[String]) -> Result<(), Error> {
+    let mut seen: Vec<&str> = Vec::new();
+    for glob in globs {
+        if !valid_glob(glob) {
+            return Err(Error::BadGlob(glob.clone()));
+        }
+        if seen.contains(&glob.as_str()) {
+            return Err(Error::Duplicate(what, glob.clone()));
+        }
+        seen.push(glob);
+    }
+    Ok(())
+}
+
 /// 検証(純粋)。`prompt_exists` は、prompt のファイルが在るかを呼び出し側が答える。
 fn validate(mode: &Mode, prompt_path: &Path, prompt_exists: bool) -> Result<(), Error> {
     let mut seen_stems: Vec<&str> = Vec::new();
@@ -153,16 +180,8 @@ fn validate(mode: &Mode, prompt_path: &Path, prompt_exists: bool) -> Result<(), 
         }
         seen_stems.push(stem);
     }
-    let mut seen_globs: Vec<&str> = Vec::new();
-    for glob in &mode.records.globs {
-        if !valid_glob(glob) {
-            return Err(Error::BadGlob(glob.clone()));
-        }
-        if seen_globs.contains(&glob.as_str()) {
-            return Err(Error::Duplicate("records.globs", glob.clone()));
-        }
-        seen_globs.push(glob);
-    }
+    check_globs("records.globs", &mode.records.globs)?;
+    check_globs("norms.excludes", &mode.norms.excludes)?;
     let p = mode.prompt.as_str();
     if p.is_empty() || p.contains('/') || p.contains("..") {
         return Err(Error::BadPrompt(mode.prompt.clone()));
@@ -201,7 +220,11 @@ pub fn expand(loaded: &Loaded) -> Expansion {
         .iter()
         .flat_map(|g| [format!("Read({g})"), format!("Edit({g})")])
         .collect();
-    let settings = serde_json::json!({ "permissions": { "deny": deny } }).to_string();
+    let mut settings = serde_json::json!({ "permissions": { "deny": deny } });
+    if !loaded.mode.norms.excludes.is_empty() {
+        settings["claudeMdExcludes"] = serde_json::json!(loaded.mode.norms.excludes);
+    }
+    let settings = settings.to_string();
 
     let mut env = vec![(MODE_ENV.to_string(), loaded.name.clone())];
     if loaded.mode.injection == Injection::Off {
@@ -633,6 +656,43 @@ mod tests {
         assert!(matches!(
             run(&args(&["inject-gate", "/bin/hook"]), &no_env),
             Outcome::Fail(_)
+        ));
+    }
+
+    #[test]
+    fn norms_excludes_become_claude_md_excludes_and_are_validated() {
+        let d = tempfile::tempdir().unwrap();
+        let with_norms = format!(
+            "{}\n[norms]\nexcludes = [\"**/.agents/AGENTS.decisions.md\"]\n",
+            mode_toml("", "\"**/adr/**\"")
+        );
+        write_mode(d.path(), "m", &with_norms);
+        let e = expand(&load(d.path(), "m").unwrap());
+        let settings: serde_json::Value = serde_json::from_str(&e.settings).unwrap();
+        assert_eq!(
+            settings["claudeMdExcludes"],
+            serde_json::json!(["**/.agents/AGENTS.decisions.md"])
+        );
+        // 省略したモードは、claudeMdExcludes を出さない。
+        write_mode(d.path(), "n", &mode_toml("", ""));
+        let e = expand(&load(d.path(), "n").unwrap());
+        let settings: serde_json::Value = serde_json::from_str(&e.settings).unwrap();
+        assert!(settings.get("claudeMdExcludes").is_none(), "{settings}");
+        // 不正な glob と重複は、records と同じく失敗させる。
+        let bad = format!("{}\n[norms]\nexcludes = [\"a b\"]\n", mode_toml("", ""));
+        write_mode(d.path(), "m", &bad);
+        assert!(matches!(
+            load(d.path(), "m").unwrap_err(),
+            Error::BadGlob(_)
+        ));
+        let dup = format!(
+            "{}\n[norms]\nexcludes = [\"x\", \"x\"]\n",
+            mode_toml("", "")
+        );
+        write_mode(d.path(), "m", &dup);
+        assert!(matches!(
+            load(d.path(), "m").unwrap_err(),
+            Error::Duplicate("norms.excludes", _)
         ));
     }
 
