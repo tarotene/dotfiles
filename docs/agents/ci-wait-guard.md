@@ -55,6 +55,12 @@ PR に紐づかない workflow run(release など)は `pr-checks-wait` の対象
 そのときは、コマンドに `CI_WAIT_GUARD_ALLOW=1` の語を足す(`CI_WAIT_GUARD_ALLOW=1 gh run watch <id> --exit-status`)。
 値は `1` だけ(呼び出し単位)。コマンドに残るので、あとから読める。人は、起動前に環境変数 `SKIP_CI_WAIT_GUARD=1` を設定してもよい(セッション単位)。PR の CI に使うのは、この逃げ道の趣旨に反する。名前と真偽は `agent_session::escape` の表が決める。
 
+**この前置を足した `gh` は、sandbox の外で動かす必要がある(F15)。** `gh` は `sandbox.excludedCommands`(sandbox の外で動かす道具)だが、
+`CI_WAIT_GUARD_ALLOW=1` は、Claude Code が除外パターンの照合の前に剥がす変数(既知の安全な変数)の外なので、前置があると呼び出し全体が除外に合わず、
+sandbox の中に残る(`gh` は HTTP 401)。`sandbox-compound-guard` もこの形を止める(前置の拒否)。外で動かすには、承認を得て
+`dangerouslyDisableSandbox: true` で呼ぶ(外の呼び出しは `sandbox-compound-guard` が止めない)。`SANDBOX_COMPOUND_GUARD_ALLOW=1` を足しても、
+呼び出し自体は sandbox の中に残るので、足りない。拒否文にも同じ案内を添える。
+
 ## 発火範囲
 
 全リポジトリ(`pr-followup-guard` と同じ)。`pr-checks-wait` は ruleset の無いリポジトリでも、報告された全チェックの

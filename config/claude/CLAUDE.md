@@ -125,7 +125,7 @@ Claude Code 本体が、前景の `sleep N` のあとにコマンドを続ける
 `No secret key` で失敗し、`nix` は `Read-only file system` になる。2026-10-28 に vega で、
 `gh auth status; echo "exit=$?"` が失敗し、`gh auth status` 単体が成功することを確かめた。
 
-- これらは単体で呼ぶ。`; echo …`・`cd <dir> &&`・`> file` のリダイレクト・`$(…)` を連結しない。
+- これらは単体で呼ぶ。`; echo …`・`cd <dir> &&`・`> file` のリダイレクト(`> /dev/null`・`2>/dev/null` も同じ。2026-11-20 に `gh api user --jq .login` で実測、どれも HTTP 401)・`$(…)` を連結しない。
 - git は worktree の cwd で、`-C` なしに呼ぶ。シェルの cwd が呼び出しをまたいで保たれるのは、プロジェクトの
   ディレクトリと追加したディレクトリ(`--add-dir`・`/add-dir`・`additionalDirectories`)の中だけで、外へ `cd` すると
   cwd は元に戻る(結果に `Shell cwd was reset to <dir>` が付く。Anthropic, "Tools reference"、
