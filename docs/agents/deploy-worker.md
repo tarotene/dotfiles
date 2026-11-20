@@ -4,12 +4,17 @@
 決定: `docs/adr/1553-deploy-worker-action.md`
 走る場所: サイトのリポジトリの GitHub Actions(`uses: tarotene/dotfiles/.github/actions/deploy-worker@main`)
 
+入力と保存を持つ app(Worker + D1)は、[`personal-web-app.md`](personal-web-app.md)(決定は `docs/adr/0000-personal-web-app-standard.md`)。
+その app が使う入力 `d1-database`(配信の前にマイグレーションを適用する)は、この action が持つ。配信のあとに、リポジトリの
+About の Website 欄を読み戻し、空なら警告する(静的サイトも同じ)。
+
 ## どちらに置くか
 
 | サイトのリポジトリ | 置き場 | 理由 |
 |---|---|---|
 | public | `GitHub Pages`(`repo-governance` の `astro-site` の雛形) | 誰でも見られてよい。Workers に寄せても得るものが無い |
 | private で、閲覧を絞りたい | `Cloudflare Workers`(この文書) | `GitHub Pages` は、private 公開を組織の `GitHub Enterprise Cloud` に限っている(ADR の Context) |
+| private で、画面から入力して保存する(本人だけ) | `Cloudflare Workers` + `D1`([`personal-web-app.md`](personal-web-app.md)) | 入力を受ける口と保存先が要る。閲覧の門はこの文書と同じ `Cloudflare Access` |
 | private で、誰でも見られてよい | どちらでもよい | 公開にするなら、Workers では「門を外す」宣言が 1 つ要るので、`GitHub Pages` が軽い |
 
 Workers に置いたサイトの閲覧は、`Cloudflare Access` が GitHub のログインで絞る。既定は「アカウントの全 Worker を
