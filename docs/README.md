@@ -113,6 +113,7 @@ What runs automatically, when, and on which stack: see the [pipeline map](pipeli
 - [ADR-1573](adr/1573-personal-company-symmetric-pair.md) — 個人と会社は、Slack の有無と GitHub アカウントの共用を除いて、対称な対にする
 - [ADR-1585](adr/1585-reply-coverage.md) — 相手のいる会話への返信は、会話の全文を読み、相手の未決の依頼すべてに答えた証拠を残してから作る
 - [ADR-1608](adr/1608-repo-scope-by-machine-contract.md) — 個人の契約の機体は、別の側の持ち主の非公開リポジトリを読まない
+- [ADR-1660](adr/1660-personal-web-app-standard.md) — 入力と保存を持つ private な個人用 Web アプリは、Worker + D1 + Access を標準にし、マイグレーションと About の URL を共通 action に載せる
 <!-- END GENERATED -->
 
 ## 運用・調査・設計(`docs/` 直下)
@@ -208,6 +209,7 @@ What runs automatically, when, and on which stack: see the [pipeline map](pipeli
 - [`agents/my-desk.md`](agents/my-desk.md) — my-desk — その日にさばく作業を、朝の机 1 か所に集める入口
 - [`agents/new-tool-guard.md`](agents/new-tool-guard.md) — new-tool-guard — 新しい道具・単位の着手前に、既存手段で足りないかを問う
 - [`agents/obsidian-livesync-cli.md`](agents/obsidian-livesync-cli.md) — obsidian-livesync-cli — vega の LiveSync を公式 CLI の daemon に置き換える運用
+- [`agents/personal-web-app.md`](agents/personal-web-app.md) — personal-web-app — 入力と保存を持つ private な個人用 Web アプリを、Worker + D1 + Access で作る標準
 - [`agents/pkexec-guard.md`](agents/pkexec-guard.md) — pkexec-guard — agent セッションから root 権限コマンドを polkit 経由で許す
 - [`agents/pkill-guard.md`](agents/pkill-guard.md) — pkill-guard — 検索語が自分のコマンド行に当たる `pkill -f` / `pgrep -f` を、実行前に止める
 - [`agents/plan-fresh-gate.md`](agents/plan-fresh-gate.md) — plan-fresh-gate — ExitPlanMode 直前のコードベース鮮度ゲート

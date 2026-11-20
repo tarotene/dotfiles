@@ -14,6 +14,13 @@ description: >-
   先に済ませる — token を持つ job で、この action が依存のスクリプトを
   走らせないため。
 
+  入力を持つ private な Web アプリ(Worker + D1、docs/agents/personal-web-app.md)
+  のために、次の 2 つを足した。`d1-database` を渡すと、`mode: deploy` は配信の
+  前に D1 のマイグレーションを適用し、失敗したら配信しない(スキーマが先、
+  コードが後の順序を、呼び出し側の step の並びに任せない)。配信のあとは、
+  リポジトリの About の Website 欄を読み戻し、空なら警告する(設定そのものは
+  管理者権限が要るので、人かエージェントが `gh repo edit --homepage` で行う)。
+
 inputs:
   mode:
     description: '`deploy`(本番へ配信)または `preview`(PR のプレビュー)'
@@ -37,6 +44,15 @@ inputs:
     description: wrangler.jsonc があるディレクトリ
     required: false
     default: '.'
+  d1-database:
+    description: >-
+      D1 のデータベース名(`wrangler.jsonc` の `database_name`)。渡すと、
+      `mode: deploy` は配信の前に `wrangler d1 migrations apply <名前> --remote`
+      を実行し、失敗したら配信しない。token には D1 の書き込み権限が要る。
+      `mode: preview` では使えない(プレビューの version は本番と同じ binding を
+      指す見込みで、未確認。personal-web-app.md)。
+    required: false
+    default: ''
 
 runs:
   using: composite
@@ -48,6 +64,7 @@ runs:
         MODE: ${{ inputs.mode }}
         API_TOKEN: ${{ inputs.api-token }}
         PR_NUMBER: ${{ github.event.pull_request.number }}
+        D1_DATABASE: ${{ inputs.d1-database }}
       run: |
         set -euo pipefail
         case "$MODE" in
@@ -57,18 +74,43 @@ runs:
               echo "::error::mode: preview は pull_request のイベントでだけ使えます" >&2
               exit 1
             fi
+            if [ -n "$D1_DATABASE" ]; then
+              echo "::error::d1-database は mode: deploy でだけ使えます(プレビューの version が本番の D1 を指さないことを、確かめていません)" >&2
+              exit 1
+            fi
             ;;
           *)
             echo "::error::mode は deploy か preview です(受け取った値: ${MODE})" >&2
             exit 1
             ;;
         esac
+        # 名前が `-` で始まると wrangler のオプションに読まれるので、英数字・`_`・`-` で、先頭は英数字に限る。
+        if [ -n "$D1_DATABASE" ] && ! [[ "$D1_DATABASE" =~ ^[A-Za-z0-9][A-Za-z0-9_-]*$ ]]; then
+          echo "::error::d1-database は英数字・_・- だけで、先頭は英数字にしてください(受け取った値: ${D1_DATABASE})" >&2
+          exit 1
+        fi
         if [ -z "$API_TOKEN" ]; then
           echo "::warning::api-token is not set; skipped the ${MODE}."
           echo "registered=false" >> "$GITHUB_OUTPUT"
         else
           echo "registered=true" >> "$GITHUB_OUTPUT"
         fi
+
+    # スキーマが先、コードが後(コードが先に新しくなって、古いスキーマを読むことを避ける)。
+    # 失敗したら set -e でここで止まり、次の配信の step は走らない。
+    - name: Apply the D1 migrations
+      if: ${{ steps.ready.outputs.registered == 'true' && inputs.mode == 'deploy' && inputs.d1-database != '' }}
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        CLOUDFLARE_API_TOKEN: ${{ inputs.api-token }}
+        CLOUDFLARE_ACCOUNT_ID: ${{ inputs.account-id }}
+        WRANGLER: ${{ inputs.wrangler }}
+        D1_DATABASE: ${{ inputs.d1-database }}
+      run: |
+        set -euo pipefail
+        read -ra wrangler <<< "$WRANGLER"
+        "${wrangler[@]}" d1 migrations apply "$D1_DATABASE" --remote
 
     - name: Deploy to Cloudflare Workers
       if: ${{ steps.ready.outputs.registered == 'true' && inputs.mode == 'deploy' }}
@@ -82,6 +124,25 @@ runs:
         set -euo pipefail
         read -ra wrangler <<< "$WRANGLER"
         "${wrangler[@]}" deploy
+
+    # 配信の最後の段: リポジトリの About の Website 欄に、配信した URL を載せる(private → workers.dev の URL、
+    # public → Pages の URL)。設定は管理者権限が要り、`GITHUB_TOKEN` では行えない見込みなので、ここは読み戻して
+    # 空なら警告するだけにする(失敗にはしない)。設定は `gh repo edit -R <リポジトリ> --homepage <URL>`。
+    - name: Check the repository's Website field
+      if: ${{ steps.ready.outputs.registered == 'true' && inputs.mode == 'deploy' }}
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        REPO: ${{ github.repository }}
+      run: |
+        set -uo pipefail
+        if ! homepage=$(gh api "repos/${REPO}" --jq '.homepage // ""' 2>/dev/null); then
+          echo "::warning::${REPO} の Website 欄を読めませんでした(確かめられていません)。"
+        elif [ -z "$homepage" ]; then
+          echo "::warning::${REPO} の About の Website 欄が空です。配信した URL を載せてください: gh repo edit -R ${REPO} --homepage <URL>"
+        else
+          echo "::notice::Website 欄: ${homepage}"
+        fi
 
     # PR のプレビュー: Worker の version を上げ、その URL を PR の 1 件のコメント
     # (マーカー付き)に上書きで載せる。呼び出し側の job には `pull-requests: write` が要る。
