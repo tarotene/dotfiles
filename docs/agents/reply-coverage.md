@@ -82,6 +82,14 @@ Codex は `home/modules/codex.nix` の rules)。sandbox の中では `Not logged
 - **下書きの作成口の関所**(PreToolUse の規則 `reply-coverage-gate`): Gmail の `create_draft`・`update_draft`・`reply` のうち、
   返信先(`replyToMessageId`)を持つ呼び出しを、`verify` が通らなければ拒否する。拒否の文面は、次の一手(会話を取得する、
   `check` を実行する、未回答の依頼に答える)を書く。返信でない新規の下書き・送信・転送は対象外。記録を引くだけで LLM は呼ばない。
+- **通知メール起点の会話は、ブラウザで読んだ会話の取り込みを要る**(F70、2026-11-19)。保存した会話の相手のメッセージの差出人が、媒体
+  (LinkedIn・LAPRAS・Findy)の通知メールのもの(`verify::NOTIFIER_MARKERS`)で、24 時間以内に Gmail 以外の会話(ブラウザの
+  `import`)の保存が無いときは、`verify`(下書きの作成口の関所と裁定ページの生成が呼ぶ)が `NotificationOnly` で止まる。通知は、同じ件名でも別の
+  スレッドに分かれ、本人が媒体で送った文は Gmail に残らない(通知のスレッドだけで組んだ下書きが検査を通ったが、同じ会話で本人が面談を見送り、相手が承知していた)。
+  どのブラウザの会話が、その通知に当たるかは、機械では結びつけない(会話の印を通知から導けない)ので、「24 時間以内のブラウザの取り込みが 1 件でもあるか」だけを見る
+  (取り込み忘れを塞ぐ。取り違えは塞がない: 検出のみ)。
+- **`reply-coverage ready --thread <媒体:id>`**(#1620): 返信案を作る・本人に見せる**前**の確認。会話の全文が保存済みで 24 時間以内か(通知メールの会話は、上の
+  取り込みもあるか)。0=読み込み済み、1=足りない(次の一手を書く)。下書きの検査(`check`)より前の段で、下書きは要らない。
 - 有効にした機体(`~/.config/dotfiles/reply-coverage` の目印がある機体。`home/modules/reply-coverage.nix` が既定で置く)だけで働く。
   目印が無ければ何もしない。判定不能(状態の置き場が無い、入力の形が違う)は、拒否に変えず通す。
 - **逃げ道**: `SKIP_REPLY_COVERAGE_GATE=1`(セッションの環境変数)。検出が使えない(通信・認証の失敗)とき、本人が決めて使う。
@@ -98,6 +106,7 @@ Codex は `home/modules/codex.nix` の rules)。sandbox の中では `Not logged
 |---|---|---|---|
 | Gmail の返信 | `get_thread` の応答を hook が自動で保存(段2) | 下書きの作成口の関所(`reply-coverage-gate`、段2) | Codex の MCP 名は未確認。`send_message`・`forward` は対象外 |
 | LinkedIn・LAPRAS・Findy のメッセージ | `browser_snapshot` の `filename` で保存し、`reply-coverage import` で取り込む | 裁定ページの生成(`build.sh` が `verify` を呼ぶ。形式 7) | 代行送信の入力(`browser_type`)は、どの hook も見ない。確認の表(依頼と処分)と本人の確認が代わり |
+| チャット(`AskUserQuestion`)で返信案を本人に見せる段 | 上の媒体のとおり(`reply-coverage ready` で、見せる前に確かめる) | **未実装(意図あり)**。`AskUserQuestion` の入力から本文を取り出す口(hook-router の規則)は技術的には作れるが、「返信案」の語に反応する規則は、返信と無関係な質問を止める誤検出が大きい。手順書(`ready` を見せる前に通す)だけが担う | 手順書だけ(検出のみ)。#1620 は、この口が入るまで open |
 | Slack | 未実装(意図あり) | 未実装(意図あり。入力のスレッド返信の欄が未確認) | — |
 | 日程調整・「いつ空いてる?」の返答 | 依頼が載っていた会話の全文を読む(`slot-availability` 手順 1-0) | 返信の下書きは上の媒体の口。調整さんへの書き込みは止める口が無い | 手順書だけが担う(検出のみ) |
 | カレンダー招待への返答(`respond_to_event`) | 招待の説明欄と他の出席者のコメントを読む(`slot-availability`) | 無い(下書きを経ない) | 手順書だけが担う(検出のみ) |

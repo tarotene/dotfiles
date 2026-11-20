@@ -11,6 +11,9 @@
 //!                                     (終了コード 0=合格、1=不合格、2=検査できない)
 //!   reply-coverage verify --thread <媒体:id> --draft <ファイル>
 //!                                     検査に合格した最終稿かを記録で照会する(0=合格、1=不合格・未検査)
+//!   reply-coverage ready --thread <媒体:id>
+//!                                     返信案を作る・本人に見せる前の確認: 会話の全文が保存済みで 24 時間以内か
+//!                                     (媒体の通知メールの会話は、ブラウザで読んだ会話の取り込みもあるか)。0=読み込み済み、1=足りない
 //!   reply-coverage bench --cases <dir>… [--variants m1,m2] [--repeat N] [--me <手がかり>]
 //!                                     見本でモデルごとの質と時間を測る(書き換えず、記録もしない)
 //!   reply-coverage sweep              期限(60 日)を過ぎた会話の全文と記録を消す
@@ -26,6 +29,7 @@ const USAGE: &str = "使い方:
   reply-coverage import-gmail --file <get_thread の結果の JSON>
   reply-coverage check --thread <媒体:id> --draft <ファイル> [--model <m>] [--me <手がかり>]
   reply-coverage verify --thread <媒体:id> --draft <ファイル>
+  reply-coverage ready --thread <媒体:id>
   reply-coverage bench --cases <dir>… [--variants m1,m2] [--repeat N] [--me <手がかり>]
   reply-coverage sweep";
 
@@ -175,6 +179,22 @@ fn run(args: &[String]) -> Result<ExitCode, String> {
             let thread = store.load_thread(id);
             match verify::verify(&store, thread.as_ref(), &draft, store::now()) {
                 Ok(()) => Ok(ExitCode::SUCCESS),
+                Err(f) => {
+                    eprintln!("{}", f.message(id));
+                    Ok(ExitCode::from(1))
+                }
+            }
+        }
+        "ready" => {
+            let Args { single: s, .. } = parse(rest, &["thread"], &[])?;
+            let store = open_store()?;
+            let id = need(&s, "thread")?;
+            let thread = store.load_thread(id);
+            match verify::thread_ready(&store, thread.as_ref(), store::now()) {
+                Ok(()) => {
+                    println!("ready: 会話 {id} の全文は取り込み済みです(24 時間以内)");
+                    Ok(ExitCode::SUCCESS)
+                }
                 Err(f) => {
                     eprintln!("{}", f.message(id));
                     Ok(ExitCode::from(1))

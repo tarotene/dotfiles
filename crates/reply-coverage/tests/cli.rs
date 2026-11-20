@@ -173,6 +173,69 @@ fn verify_without_a_saved_thread_says_to_read_the_conversation_first() {
 }
 
 #[test]
+fn ready_checks_that_the_conversation_is_read_and_notification_threads_need_a_browser_import() {
+    // F70・#1620: 返信案を作る・見せる前の確認。保存が無ければ 1。ある会話は 0。
+    let sb = Sandbox::new();
+    let o = sb.run(&["ready", "--thread", "gmail:none"]);
+    assert_eq!(code(&o), 1);
+    assert!(
+        text(&o.stderr).contains("最初から読んで"),
+        "{}",
+        text(&o.stderr)
+    );
+    let plain = sb.write("plain.txt", THREAD);
+    let imp = |id: &str, file: &str| {
+        sb.run(&[
+            "import",
+            "--id",
+            id,
+            "--file",
+            file,
+            "--format",
+            "normalized",
+        ])
+    };
+    assert_eq!(code(&imp("gmail:t1", &plain)), 0);
+    let o = sb.run(&["ready", "--thread", "gmail:t1"]);
+    assert_eq!(code(&o), 0, "{}", text(&o.stderr));
+    assert!(
+        text(&o.stdout).contains("取り込み済み"),
+        "{}",
+        text(&o.stdout)
+    );
+
+    // 媒体の通知メールの会話は、ブラウザで読んだ会話の取り込みが無いと、1。verify も同じ理由で止まる。
+    let notif = sb.write(
+        "notif.txt",
+        "# thread: gmail:t9\n## them 2026-11-19T10:00:00Z Someone via LinkedIn <messages-noreply@linkedin.com>\n新しいメッセージがあります。\n",
+    );
+    assert_eq!(code(&imp("gmail:t9", &notif)), 0);
+    let o = sb.run(&["ready", "--thread", "gmail:t9"]);
+    assert_eq!(code(&o), 1);
+    assert!(
+        text(&o.stderr).contains("通知メール") && text(&o.stderr).contains("reply-coverage import"),
+        "{}",
+        text(&o.stderr)
+    );
+    let d = sb.write("d.draft", "x");
+    let o = sb.run(&["verify", "--thread", "gmail:t9", "--draft", &d]);
+    assert_eq!(code(&o), 1);
+    assert!(
+        text(&o.stderr).contains("通知メール"),
+        "{}",
+        text(&o.stderr)
+    );
+    // ブラウザで読んだ会話(gmail: でない id)を取り込めば、通る。
+    let conv = sb.write(
+        "conv.txt",
+        "## them 2026-11-17 LinkedIn\n面談はまた今度に。\n",
+    );
+    assert_eq!(code(&imp("linkedin:conv1", &conv)), 0);
+    let o = sb.run(&["ready", "--thread", "gmail:t9"]);
+    assert_eq!(code(&o), 0, "{}", text(&o.stderr));
+}
+
+#[test]
 fn a_backend_failure_is_exit_2_and_leaves_no_record() {
     let sb = Sandbox::new();
     let thread = sb.write("thread.txt", THREAD);

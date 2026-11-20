@@ -128,7 +128,8 @@ impl Store {
         serde_json::from_str(&s).ok()
     }
 
-    fn all_threads(&self) -> Vec<StoredThread> {
+    /// 保存した会話すべて(順不同)。
+    pub fn all_threads(&self) -> Vec<StoredThread> {
         let Ok(rd) = fs::read_dir(self.threads_dir()) else {
             return Vec::new();
         };
