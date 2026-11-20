@@ -194,6 +194,18 @@ pub fn numbers(masked: &str) -> Vec<String> {
     v
 }
 
+/// 行頭(インデントの後)にある伏せ字の番号(出現順)。`No-Visual:` などのタグの接頭辞は、伏せ字になって行頭に
+/// あり、書き直しで文中へ動くと PR 本文の骨組みが壊れる。伏せ字の個数の照合は、位置を見ない。
+pub fn line_head_ids(s: &str) -> Vec<usize> {
+    s.lines()
+        .filter_map(|line| {
+            let t = line.trim_start_matches([' ', '\t']);
+            let c = token_re().captures(t)?;
+            (c.get(0)?.start() == 0).then(|| c[1].parse().ok())?
+        })
+        .collect()
+}
+
 /// 行頭の記法(見出し・箇条書き・番号付き・引用・表)を、インデントの幅つきで順に並べたもの。
 /// 前後で `==` なら、構造が変わっていない。番号付きの番号そのものは比べない。
 pub fn structure(s: &str) -> Vec<String> {
@@ -252,6 +264,13 @@ mod tests {
         let m = round_trip("[設計メモ](docs/design.md) を読む。");
         assert!(m.text.starts_with("[設計メモ]"));
         assert!(!m.text.contains("docs/design.md"));
+    }
+
+    #[test]
+    fn line_head_ids_lists_only_tokens_at_a_line_start() {
+        let s = "⟦P0⟧ 理由です。\n  ⟦P3⟧ 字下げの後。\n文中の ⟦P1⟧ は数えない。\n- ⟦P2⟧ 箇条書きの後は行頭でない。";
+        assert_eq!(line_head_ids(s), vec![0, 3]);
+        assert!(line_head_ids("伏せ字の無い文。").is_empty());
     }
 
     #[test]

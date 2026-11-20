@@ -102,7 +102,11 @@ Gmail・Slack の下書きや LinkedIn などの送信文は、`ja-polish --mess
    - 数値の集合(全角は半角にそろえる)が同じ
    - 行頭の記法(見出し・箇条書き・番号付き・引用・表)の並びとインデント幅が同じ
    - 分量が元の 4 割以上 2 倍以下
-   - 依頼の書式(`<para>`・`<text>`、文脈の欄の `<before>`・`<after>`)が混ざっていない(段落の本文が、`<before>` などを元から持つときは除く)
+   - 依頼の書式(`<para>`・`<text>`・`</text>`、文脈の欄の `<before>`・`<after>`)が混ざっていない(段落の本文が、`<before>` などを元から持つときは除く)。囲みの外れた `</text>` が単独で残る応答もここで外れる(F22)
+   - 行頭にあった伏せ字(`No-Visual:` などのタグの接頭辞)が、出力でも行頭にある(個数の照合は位置を見ないので、別に見る。F36)
+   - 括弧の幅(`(` `)` と `（` `）` の個数)が変わっていない。リポジトリの文書の括弧の流儀を、書き直しで変えない(F7)
+   - 入力に無い簡体字(日本語に出ない頻出の字の短い一覧 `SIMPLIFIED_ONLY`。F40)と、記号の実体参照(`&gt;` `&lt;` `&amp;` `&quot;`)の増加(F68)がない。字種を網羅する検査ではなく(符号化の表を持つ crate は依存に無い)、活用の崩れ(「頼まず」→「頼せず」)や意味の反転は、機械では止められず、出力の差分を読む設計のまま(ADR-1387)
+   - 再依頼(2 回目)は、前後の参考(`<before>`・`<after>`)を外して送る。応答に依頼の書式が混ざる型の失敗は、参考の欄の書式をなぞることで起きるため(F17・F21・F59)
 7. 通った段落は伏せ字を戻して差し替え、`records.jsonl` に書く。
 
 ## textlint の自動修正(Gemini の前後)
@@ -289,8 +293,8 @@ ja-polish bench crates/ja-polish/bench/samples.txt [--variants model[@level],…
   既定は指定なし)、`timeout_secs`(既定 45)。ほかに `chunk_paras`(8)・`parallel`(3)・`retries`(2)・
   `retry_base_ms`(2000)・`textlint`(既定 true)が書けるが、home-manager の option(`dotfiles.jaPolish.fallbackModel`・
   `thinkingLevel`・`timeoutSecs`・`textlint.enable`)があるのは、`chunk_paras`・`parallel`・`retries`・`retry_base_ms` を除く項目だけ。**このファイルの有無が、その機体で有効かどうかの
-  唯一の印**。無ければ関所は何も検査しない(置いていない機体では、関所も LLM への送信も起きない)。環境変数 `JA_POLISH_MODEL` で
-  その場だけ上書きできる。
+  唯一の印**。無ければ関所は何も検査しない(置いていない機体では、関所も LLM への送信も起きない)。環境変数 `JA_POLISH_MODEL` か、引数 `--model <名前>`(環境変数の前置が `sandbox-compound-guard` に拒否される場面の代わり。
+  `--model` が環境変数より優先)で、その場だけ上書きできる。
 - API キー: 各機体で一度 `llm keys set gemini` を手で実行する。キーは `llm keys path` が指す
   `keys.json`(Linux は `~/.config/io.datasette.llm/`、macOS は `~/Library/Application Support/
   io.datasette.llm/`)に入る。そのディレクトリは `agentPermissions.secret_paths` に入っていて、Claude の

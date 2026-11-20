@@ -171,8 +171,9 @@ fn verify(input: &str, output: &str) -> Result<String, String> {
     if out.contains("<para") || out.contains("</para") || out.contains("<text>") {
         return Err("応答に依頼の書式が混ざっています".to_string());
     }
-    // 文脈の欄(<before>・<after>)だけを写した応答も、依頼の書式の混入。段落の本文が、これらの語を元から持つときは除く。
-    if ["<before>", "</before>", "<after>", "</after>"]
+    // 文脈の欄(<before>・<after>)だけを写した応答や、囲みの外れた `</text>` が単独で残った応答も、依頼の書式の混入
+    // (`</text>` が文書に残る事故があった。F22)。段落の本文が、これらの語を元から持つときは除く。
+    if ["<before>", "</before>", "<after>", "</after>", "</text>"]
         .iter()
         .any(|t| out.contains(t) && !input.contains(t))
     {
@@ -190,12 +191,67 @@ fn verify(input: &str, output: &str) -> Result<String, String> {
     if mask::structure(input) != mask::structure(out) {
         return Err("行頭の記法(見出し・箇条書き・引用・表)が変わりました".to_string());
     }
+    // 行頭にあった伏せ字(`No-Visual:` などのタグの接頭辞)が、文中へ動くと、PR 本文の骨組みが壊れる(F36)。
+    // 個数は同じなので、伏せ字の照合では見えない。行頭だった伏せ字は、出力でも行頭に残す。
+    let heads_out = mask::line_head_ids(out);
+    if mask::line_head_ids(input)
+        .iter()
+        .any(|id| !heads_out.contains(id))
+    {
+        return Err("行頭にあった伏せ字(タグの接頭辞など)が行頭から動きました".to_string());
+    }
+    // 括弧の幅。リポジトリの文書の括弧の流儀(半角か全角か)を、書き直しで変えない(F7)。
+    if paren_widths(input) != paren_widths(out) {
+        return Err("括弧の幅(半角・全角)が変わりました".to_string());
+    }
+    // 元に無い、日本語に出ない簡体字(F40)と、記号の実体参照(`&gt;` など。F68)の混入。
+    if let Some(c) = new_simplified_char(input, out) {
+        return Err(format!("入力に無い簡体字「{c}」が混ざりました"));
+    }
+    if entity_refs(out) > entity_refs(input) {
+        return Err("記号の実体参照(&gt; など)が増えました".to_string());
+    }
     let (n_in, n_out) = (blocks::jp_count(input), blocks::jp_count(out));
     // 翻訳調を削ると半分近くまで縮むことがある。4 割を切るか 2 倍を超えたら、省いたか足したとみなす。
     if n_out * 10 < n_in * 4 || n_out > n_in * 2 {
         return Err("分量が大きく変わりました".to_string());
     }
     Ok(out.to_string())
+}
+
+/// 半角と全角の括弧の個数(`(` `)` `（` `）` の順)。伏せ字の中のコードや URL の括弧は数えない
+/// (呼び出し側が、伏せ字つきの本文を渡す)。
+fn paren_widths(s: &str) -> [usize; 4] {
+    let mut n = [0; 4];
+    for c in s.chars() {
+        match c {
+            '(' => n[0] += 1,
+            ')' => n[1] += 1,
+            '（' => n[2] += 1,
+            '）' => n[3] += 1,
+            _ => {}
+        }
+    }
+    n
+}
+
+/// 日本語に出ない、頻出の簡体字(日本語の字体では別の字になるもの)。書き直しの出力に、入力に無いこれらの字が
+/// 現れたら、簡体字の混入とみなす(2026-11-15 に「換」→「换」、2026-11-19 に「頼まず」→「頼せず」の型の誤りが
+/// 通った)。字種を網羅する検査ではない(JIS X 0208 の符号化の表を持つ crate は、依存に無い)。
+const SIMPLIFIED_ONLY: &str = "个们这说还对时发现么话为认让过书买样开关种车门见观线经给结约级统编项题问顺页类实动总务员单无听读记论设计识讲请谁谢访证评议调译试该语误谈质费资转轻较载输边达运进远连选适遗换";
+
+/// 出力にあって入力に無い、簡体字の最初の 1 字。
+fn new_simplified_char(input: &str, out: &str) -> Option<char> {
+    out.chars()
+        .find(|c| SIMPLIFIED_ONLY.contains(*c) && !input.contains(*c))
+}
+
+/// 記号の実体参照(`&gt;` `&lt;` `&amp;` `&quot;`)の個数。
+fn entity_refs(s: &str) -> usize {
+    ["&gt;", "&lt;", "&amp;", "&quot;"]
+        .iter()
+        .map(|e| s.matches(e).count())
+        .sum()
 }
 
 /// 応答の先頭として理由に添える文字数。
@@ -339,11 +395,23 @@ fn process_chunk(
         .map(|_| Err(Skip::permanent("依頼していません")))
         .collect();
     let mut todo: Vec<usize> = (0..ks.len()).collect();
-    for _attempt in 0..2 {
+    for attempt in 0..2 {
         if todo.is_empty() {
             break;
         }
-        let sub: Vec<Item> = todo.iter().map(|&p| items[ks[p]].clone()).collect();
+        // 2 回目は、前後の参考(<before>・<after>)を外して送る。応答に依頼の書式が混ざる型の失敗(F17・F21・F59)は、
+        // 参考の欄の書式を応答がなぞることで起きる。参考が無ければ、欄ごと依頼に出ない(`llm::user_message`)。
+        let sub: Vec<Item> = todo
+            .iter()
+            .map(|&p| {
+                let mut it = items[ks[p]].clone();
+                if attempt > 0 {
+                    it.before.clear();
+                    it.after.clear();
+                }
+                it
+            })
+            .collect();
         match call(backend, cfg, system, &llm::user_message(&sub)) {
             Err(skip) => {
                 for &p in &todo {
@@ -1206,6 +1274,86 @@ mod tests {
         assert!(verify(input, "<para n=\"1\">x")
             .unwrap_err()
             .contains("書式"));
+    }
+
+    #[test]
+    fn verify_rejects_a_stray_closing_text_tag() {
+        // F22: 囲みの外れた `</text>` が単独で残った応答は、文書に入れない。
+        let input = "一つ目の段落です。";
+        assert_eq!(
+            verify(input, "一つ目の段落だ。\n</text>"),
+            Err("応答に依頼の書式が混ざっています".to_string())
+        );
+        // 元から持つ段落は、混入とみなさない。
+        let doc = "閉じタグ </text> という語を説明する段落です。";
+        assert!(verify(doc, doc).is_ok());
+    }
+
+    #[test]
+    fn verify_keeps_the_paren_width_of_the_document() {
+        // F7: 半角の括弧の文書を、全角に書き直さない。
+        let input = "設定(既定の値)を直す段落です。";
+        assert!(verify(input, "設定(既定の値)を直す段落だ。").is_ok());
+        assert!(verify(input, "設定（既定の値）を直す段落だ。")
+            .unwrap_err()
+            .contains("括弧"));
+        // 全角の文書を半角にも変えない。
+        let wide = "設定（既定の値）を直す段落です。";
+        assert!(verify(wide, "設定(既定の値)を直す段落だ。")
+            .unwrap_err()
+            .contains("括弧"));
+        assert!(verify(wide, "設定（既定の値）を直す段落だ。").is_ok());
+    }
+
+    #[test]
+    fn verify_requires_a_line_head_token_to_stay_at_the_line_head() {
+        // F36: `No-Visual:` などの接頭辞(伏せ字)が行頭から文中へ動いた書き直しは、PR 本文の骨組みを壊す。
+        let input = "⟦P0⟧ 表の適性の説明を書いた段落です。";
+        assert!(verify(input, "⟦P0⟧ 表の適性を説明した段落だ。").is_ok());
+        let moved = verify(input, "変更は ⟦P0⟧ 表の適性を説明した段落だ。").unwrap_err();
+        assert!(moved.contains("行頭にあった伏せ字"), "{moved}");
+        // 文中の伏せ字は、動いてもよい(行頭の伏せ字ではない)。
+        let mid = "実行するのは ⟦P0⟧ という手順です。";
+        assert!(verify(mid, "⟦P0⟧ という手順を実行する。").is_ok());
+    }
+
+    #[test]
+    fn verify_rejects_a_new_simplified_char_and_new_entity_refs() {
+        // F40: 簡体字の混入。入力に元からあるなら、混入とみなさない。
+        let input = "機能を換える段落です。";
+        let e = verify(input, "机能を换える段落だ。").unwrap_err();
+        assert!(e.contains("簡体字"), "{e}");
+        let quoting = "中国語の「这」という字を説明する段落です。";
+        assert!(verify(quoting, "中国語の「这」という字を説明した段落だ。").is_ok());
+        // F68: 記号の実体参照が増えた書き直しは、元の文書に無い誤りを入れている。
+        let cmp = "a > b を確認する段落です。";
+        assert!(verify(cmp, "a > b を確認する段落だ。").is_ok());
+        let e = verify(cmp, "a &gt; b を確認する段落だ。").unwrap_err();
+        assert!(e.contains("実体参照"), "{e}");
+    }
+
+    #[test]
+    fn the_second_request_drops_the_context_fields() {
+        // F17・F21・F59: 応答に依頼の書式が混ざる型の失敗は、参考の欄の書式をなぞることで起きる。
+        // 2 回目は、前後の参考を外して送る。
+        let text = "前の段落です。\n\n真ん中は 3 件の段落です。\n\n後の段落です。\n";
+        let fake = Fake::new(vec![
+            ok("<para n=\"1\">前の段落だ。</para>\n<para n=\"2\">真ん中は 4 件の段落だ。</para>\n<para n=\"3\">後の段落だ。</para>"),
+            ok("<para n=\"1\">真ん中は 3 件の段落だ。</para>"),
+        ]);
+        let r = run(text, None, &fake);
+        let calls = fake.calls();
+        assert_eq!(calls.len(), 2);
+        assert!(calls[0].user.contains("<before>"), "1 回目は参考を付ける");
+        assert!(
+            !calls[1].user.contains("<before>") && !calls[1].user.contains("<after>"),
+            "2 回目は参考を付けない: {}",
+            calls[1].user
+        );
+        assert_eq!(
+            r.text,
+            "前の段落だ。\n\n真ん中は 3 件の段落だ。\n\n後の段落だ。\n"
+        );
     }
 
     #[test]

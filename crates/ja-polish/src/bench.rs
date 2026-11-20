@@ -381,8 +381,10 @@ mod tests {
             &Model { wide: true },
             &Counter,
         );
-        // 「（任意）」で全角が 2 つ増える。
-        assert_eq!(wide.fullwidth_parens_added, 2);
+        // 「（任意）」で全角が 2 つ増える応答は、照合(`polish::verify`)が括弧の幅の変化として拒否する(F7)。
+        // その段落は素通しになり、`skipped` に数えられる。照合を通った出力には、増えた全角の括弧が残らない。
+        assert_eq!((wide.paras, wide.polished, wide.skipped), (2, 1, 1));
+        assert_eq!(wide.fullwidth_parens_added, 0);
         assert_eq!(wide.label, "m@low");
     }
 
