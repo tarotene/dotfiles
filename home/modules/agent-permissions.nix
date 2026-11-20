@@ -97,6 +97,13 @@ in
         # conf.py reads it through intersphinx (docs/adr/640-stack-standard-api-docs.md,
         # Amendment 2026-10-18), so a local docs build needs it in every Python repository.
         "docs.python.org"
+        # crates.io: cargo reads the sparse index from index.crates.io and downloads the crate
+        # files from static.crates.io. Without them a crate that is not cached yet fails on the
+        # download (`failed to download from https://static.crates.io/crates/<crate>/<version>/download`
+        # inside the sandbox, measured 2026-11-20 on `cargo test --workspace`), and the call needs an
+        # `allowed_domains` re-run each time (F60). Public package hosts: no credential is involved.
+        "index.crates.io"
+        "static.crates.io"
       ];
       description = "Known network destinations; this grants connectivity, not permission to send.";
     };
