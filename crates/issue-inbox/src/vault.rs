@@ -428,7 +428,16 @@ pub fn is_note_path(selector: &str) -> bool {
         .is_some_and(|name| name.ends_with(".md") && !name.contains('/'))
 }
 
-/// 題名(か、ノートの相対パス。[`is_note_path`])と、あれば repo で 1 枚を選び、状態を変える。`url` は
+/// ノート名の末尾のハッシュ(`~<8 桁の 16 進>`)で、ノートを指す指定か。長い題名のノートは、名前の末尾に ` ~<hash>` が付く
+/// (`vault_note::note_name`)。`--list-open --json` の `note` を毎回 `jq` で写さずに済むよう、ハッシュだけで指せる(F67)。
+/// 返すのはハッシュの 8 桁。
+pub fn note_hash_selector(selector: &str) -> Option<&str> {
+    let h = selector.strip_prefix('~')?;
+    (h.len() == 8 && h.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))).then_some(h)
+}
+
+/// 題名(か、ノートの相対パス。[`is_note_path`]、か、名前の末尾のハッシュ。[`note_hash_selector`])と、あれば repo で
+/// 1 枚を選び、状態を変える。`url` は
 /// fixed なら `pr`、issued なら `issue` に書く。frontmatter だけを書き換え、本文はそのまま残す。
 /// 成功すればノートの相対パス。
 pub fn set_status(
@@ -485,6 +494,8 @@ pub fn set_status_with_reason(
         .filter(|(path, n)| {
             if is_note_path(title) {
                 path == title
+            } else if let Some(h) = note_hash_selector(title) {
+                path.ends_with(&format!(" ~{h}.md"))
             } else {
                 n.get("title") == Some(title)
             }
@@ -692,6 +703,51 @@ mod tests {
         assert_ne!(left[0].repo, "o/other");
         // 存在しないパスは、題名として探さずに失敗する。
         assert!(set_status(&g, "inbox/none.md", None, "dropped", "").is_err());
+    }
+
+    #[test]
+    fn set_status_selects_a_note_by_the_hash_at_the_end_of_its_name() {
+        // F67: 長い題名のノートは、名前の末尾に ` ~<hash>` が付く。ハッシュだけで指せる。
+        let (_d, v) = vault();
+        let g = v.lock().unwrap();
+        let long_title = format!("長い題名 {}", "あ".repeat(80));
+        add_item(&g, &item(&long_title, "a", "2026-10-01"), "x").unwrap();
+        add_item(&g, &item("短い題名", "b", "2026-10-01"), "x").unwrap();
+        let listed = list_open(&g, None).unwrap();
+        let long_note = listed.iter().find(|n| n.title == long_title).unwrap();
+        let hash = long_note
+            .note
+            .rsplit_once(" ~")
+            .and_then(|(_, rest)| rest.strip_suffix(".md"))
+            .unwrap_or_else(|| panic!("長い題名のノート名にハッシュが無い: {}", long_note.note))
+            .to_string();
+        let selector = format!("~{hash}");
+        assert_eq!(note_hash_selector(&selector), Some(hash.as_str()));
+        let done = set_status(&g, &selector, None, "dropped", "").unwrap();
+        assert_eq!(done, long_note.note);
+        assert_eq!(
+            list_open(&g, None).unwrap().len(),
+            1,
+            "短い題名のノートは残る"
+        );
+        // 一致するハッシュが無ければ、題名として探さずに失敗する。
+        assert!(set_status(&g, "~00000000", None, "dropped", "").is_err());
+    }
+
+    #[test]
+    fn only_a_lowercase_hex_eight_digit_tilde_string_is_a_hash_selector() {
+        assert_eq!(note_hash_selector("~ba5d72fd"), Some("ba5d72fd"));
+        for s in [
+            "ba5d72fd",
+            "~ba5d72f",
+            "~ba5d72fde",
+            "~BA5D72FD",
+            "~ba5d72fg",
+            "T ~ba5d72fd",
+            "",
+        ] {
+            assert_eq!(note_hash_selector(s), None, "{s}");
+        }
     }
 
     #[test]

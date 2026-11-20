@@ -31,7 +31,7 @@ Claude Code の hook は、検査 1 つごとに別々の登録だった(`claude
 
 | イベント | 検査 |
 |---|---|
-| PreToolUse | attribution-guard、ci-wait-guard、decision-colocation-guard、external-send-guard、feedback-target-guard、git-stash-guard、issue-create-guard、ja-polish-gate、ja-polish-snapshot、main-checkout-guard-pre、new-tool-guard、pkexec-guard、pkill-guard、plan-precedent-gate、plan-scope-gate、pr-followup-guard、pr-title-guard、record-layer-guard、repo-create-guard、repo-scope-guard、reply-coverage-gate、routines-write-guard、rulesets-write-guard、sandbox-compound-guard、stack-base-guard、test-output-guard、worktree-create-guard、worktree-lease |
+| PreToolUse | agent-prompt-guard、attribution-guard、ci-wait-guard、decision-colocation-guard、external-send-guard、feedback-target-guard、git-stash-guard、issue-create-guard、ja-polish-gate、ja-polish-snapshot、main-checkout-guard-pre、new-tool-guard、pkexec-guard、pkill-guard、plan-precedent-gate、plan-scope-gate、pr-followup-guard、pr-title-guard、record-layer-guard、repo-create-guard、repo-scope-guard、reply-coverage-gate、routines-write-guard、rulesets-write-guard、sandbox-compound-guard、stack-base-guard、test-output-guard、worktree-create-guard、worktree-lease |
 | PostToolUse | adr-number、cmd-hash-log、gh-edit-allow-record、new-tool-guard-record、reply-thread-snapshot |
 
 載せる検査が満たす条件(載せるかどうかは、検査ごとにこの 4 つで決める):
@@ -127,6 +127,17 @@ Amendment ではなく、別の ADR を立てる。
   plan-precedent-gate ほか)は 10 秒。`gh pr list` や git の走査を含む stack-base-guard・decision-colocation-guard、
   `gh api graphql` を呼ぶ plan-scope-gate は 20 秒、repo-create-guard は 15 秒。→ `Rule::budget` に同じ値。ルータ自身の `timeout` は、最大の 20 秒に起動と出力の
   余裕を足した 30 秒。
+
+## agent-prompt-guard(F55)
+
+サブエージェントへの指示(`Agent` ツールの `prompt`)に、未置換の雛形の穴(`{{RANGE}}` など)が残っていれば拒否する
+(`crates/hook-router/src/agent_prompt_guard.rs`。`Tools::Named(&["Agent", "Task"])`、Claude だけ)。2026-11-15、指示の雛形に
+`{{RANGE}}` を置いたまま送り、担当が範囲を知らずに 1 件も書かずに止まった。穴を埋め忘れる誤りは、送る前に文字列として検出できる。
+
+- 穴の形: `{{` と `}}` の間が、大文字の英字で始まる大文字・数字・`_` だけの名前(2〜40 字。`{{RANGE}}`・`{{ TARGET_FILE }}`)。
+  `{{ .Values.x }}`(Helm)や `{{name}}`(小文字)は、依頼の対象の本文として正当に書かれうるので、止めない。
+- 逃げ道は設けない。意図した文字列なら、波括弧の間に空白を入れて書き、穴の形にしない(拒否文が案内する)。
+- 旧登録は無い(新しい規則)。判定は prompt の文字列だけで、外部の呼び出しは無い。
 
 ## `if` を外した影響(より厳しくなる向き)
 

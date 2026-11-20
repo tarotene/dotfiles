@@ -9,6 +9,7 @@
 //! 検査を当てるかは、[`rules::RULES`] の表([`rules::Tools`] という閉じた型)が持つ。
 //! 設計と、載せなかったものの理由は [`rules`] と `docs/agents/hook-router.md`。
 
+pub mod agent_prompt_guard;
 pub mod codex;
 pub mod router;
 pub mod rules;

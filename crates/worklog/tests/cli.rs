@@ -185,6 +185,59 @@ fn rejects_what_the_closed_vocabulary_forbids() {
 }
 
 #[test]
+fn ref_zero_and_option_spellings_in_the_text_are_refused_and_write_nothing() {
+    // F47: `--ref 0` は、存在しない `<repo>#0` を作業ログに付けた。0 は受け付けない。
+    let e = env();
+    let zero = run(
+        &e,
+        &e.repo,
+        Some(&e.vault),
+        &["add", "found", "分かった", "--ref", "0"],
+        "",
+    );
+    assert_eq!(zero.code, 2, "{}", zero.stderr);
+    assert!(zero.stderr.contains("1 以上"), "{}", zero.stderr);
+    let hash_zero = run(
+        &e,
+        &e.repo,
+        Some(&e.vault),
+        &["add", "found", "分かった", "--ref", "#0"],
+        "",
+    );
+    assert_eq!(hash_zero.code, 2);
+    // F74: 本文の末尾に書いたオプションの綴りは、番号にならず本文の一部として記録されていた。止める。
+    for text in [
+        "分かった --ref 849",
+        "分かった --repo o/r",
+        "--ref 849 分かった",
+        "分かった --ref=849",
+    ] {
+        let r = run(&e, &e.repo, Some(&e.vault), &["add", "found", text], "");
+        assert_eq!(r.code, 2, "{text}: {}", r.stderr);
+        assert!(
+            r.stderr.contains("オプションの綴り"),
+            "{text}: {}",
+            r.stderr
+        );
+    }
+    assert!(
+        !e.vault.join(TODAY_NOTE).exists(),
+        "止めたものは、何も書かない"
+    );
+    // バッククォートで囲んだ言及と、本物のオプションは通る。
+    let ok = run(
+        &e,
+        &e.repo,
+        Some(&e.vault),
+        &["add", "found", "`--ref` の綴りを検査した", "--ref", "849"],
+        "",
+    );
+    assert_eq!(ok.code, 0, "{}", ok.stderr);
+    let note = std::fs::read_to_string(e.vault.join(TODAY_NOTE)).unwrap();
+    assert!(note.contains("(o/r#849)"), "{note}");
+}
+
+#[test]
 fn list_filters_by_repo_and_kind_and_reads_memos() {
     let e = env();
     let p = e.vault.join(TODAY_NOTE);
