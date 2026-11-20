@@ -124,7 +124,9 @@ unit の実値は private wrapper に置く（ADR-0034）。
 `excludedCommands` の既定は、sandbox の中では鍵束の D-Bus・gpg-agent・nix daemon のソケットに届かない
 コマンド(`gh`・`git commit`・`git push`・`git add`・`git fetch`・`git pull`・`nix build`・`nix eval`・`nix flake`・`nix fmt`)である。外で動くので、
 狭い allow と分類器を通る。内部で `gh` を呼ぶ自前の道具 `pr-checks-wait` も同じ理由で足した(sandbox の中で背景起動すると
-`PR の base ブランチを取得できません` で exit 2 になった。2026-10-28。効果の読み戻しは `hms` の後)。
+`PR の base ブランチを取得できません` で exit 2 になった。2026-10-28。効果の読み戻しは `hms` の後)。同じ型で `pr-hygiene-check *`(自分の PR を
+点検する道具。中から `gh` を呼ぶので、sandbox の中では持ち主の表もログイン名も引けず落ちた。2026-11-15、朝の机の段 5a。読み取りだけ)と、`lpstat *`
+(プリンタの状態を読むだけ。下の `lp` の節)も足した(2026-11-20)。
 
 **除外パターンの照合規則**(Anthropic, "Sandboxing"、取得 2026-10-27): 呼び出し 1 行全体のコマンドがすべて
 除外パターンに合わないと、全体が sandbox の中に残る。パターンは呼び出しの文字列に対して合わせる。`cd`・
@@ -146,6 +148,7 @@ git は worktree の cwd で `-C` なしに呼ぶ。`git -C *` のような広�
 | `git rebase --force-rebase HEAD~1`(使い捨てのブランチ、worktree の cwd。除外に無かった) | 失敗(`gpg: skipped "…": No secret key`、`failed to write commit object`) | `commit.gpgsign=true` で、書き換えたコミットの再署名が sandbox 内の gpg に届かない |
 | `git fetch origin`(除外に `git fetch *` を足す前。worktree の cwd、単体、2026-10-28 に別のセッションで測定) | 失敗(`fatal: could not read Username for 'https://github.com': No such device or address`) | `fetch` も認証情報を gh の keyring 経由で読むので、sandbox の中では届かない。`git fetch *` と `git pull *` を除外に足した(`git push` と同じ理由。`git fetch` を sandbox の外で再実行すると成功した。`git pull` は `fetch` を内部で呼ぶので同じ経路からの推定で、未測定) |
 | `git switch -c <branch> origin/<ref>`・`git branch -D <branch>`(除外に `git switch *`・`git branch *` を足す前。worktree の cwd、sandbox の中、2026-11-11 に別のセッションで測定) | 失敗(`error: could not lock config file …/.git/config: File exists`)。`git switch -c` は、ブランチの作成と index・作業ツリーの更新は済むが、HEAD は元のブランチのまま残る。`git branch -D` は、ブランチの節の削除で止まる | sandbox は `.git/config.lock` の代役を置いて書き込みを禁じる(sandbox の外からは存在しない)。`branch.autoSetupMerge` の上流の設定と、節の削除が `.git/config` への書き込みなので、`config.lock` の取得で落ちる。並行セッションとの取り合いという最初の推測は誤りだった。`.git/config` は、フックや別名を書けるので `allowWrite` には入れず、`git switch *` と `git branch *` を除外に足した(足した後の効果は未測定。`hms` で適用した後の新しいセッションで、`git switch -c <branch> origin/<ref>` が上流の設定まで終わるかを測る) |
+| `git branch -D <枝> <枝> …`(複数引数)と `git branch --track <枝> origin/main`(上流の設定つきの枝。除外に `git branch *` を足した後の設定。worktree の cwd、2026-11-20、vega、単体で呼んだ) | 成功。`could not lock config file` は出ず、枝が消え、`.git/config` の `branch.<枝>` の節も消えた(`git config --get-regexp 'branch\.<枝>'` が何も返さない)。上流の設定を持たない枝は、そもそも `.git/config` を書かないので、この測定では判定にならない | F73(2026-11-17 に `git branch -D` の 3 ブランチが `could not lock config file` で落ちた)は、除外に `git branch *` を足す(2026-11-12、`b4451d93`)より前の設定のセッションだった可能性が高い(その日の `hms` の適用状況は未確認)。複数引数が除外パターンに当たらない、という仮説は、この測定で反証された |
 | `nix build nixpkgs#hello --no-link`(除外に `nix build *` を足す前) | 失敗(`Read-only file system`、`cannot create Unix domain socket`) | `nix` は除外に無かった。socket の作成自体が sandbox に拒否される(#1050) |
 | `nix build nixpkgs#hello --no-link`(`nix build *` を足した後) | **成功** | 除外が効く |
 | `cargo --version`・`$TMPDIR` への書き込み | 成功 | sandbox 内で確認なしに通る |
@@ -186,8 +189,18 @@ docs のビルドは、intersphinx が `docs.python.org` を読む。同じ型�
 `hms` と `hms *` の両方を書く。宣言後の読み戻し(確認の画面が出ること、許可すると適用ロックが取れて通ること)は未実施で、
 `hms` の後の新しいセッションで確かめる。画面が出ないと分かったら、除外を外す(ask は除外と対にする)。
 
+**`npx`・`bunx` は、呼び出しごとの前置で `$TMPDIR` を使う(2026-11-20、F24)**: sandbox の中の `npx` は、`~/.npm/_npx/<id>` を作れず落ちる(再現:
+`ENOENT: … mkdir '~/.npm/_npx/…'`。`~/.npm/_cacache` だけが書き込み許可)。`bunx` は `bun is unable to write files to tempdir: ReadOnlyFileSystem` で落ちる。
+`npm_config_cache=$TMPDIR/npm npx --yes <pkg>` と `BUN_INSTALL_CACHE_DIR=$TMPDIR/bun bunx <pkg>` は、sandbox の中で動いた(2026-11-20、vega、`cowsay` で実測。
+bun は `BUN_INSTALL_CACHE_DIR` だけで足り、`BUN_TMPDIR` だけでは足りない)。**許可や恒久の `env` は足さない**: `npx`・`bunx` が取ってくる実行物は `<cache>/_npx` や bun の
+install cache に置かれ、書き込み可能な恒久の場所に置くと、sandbox の中で置かれた実行物を、sandbox の外(`dangerouslyDisableSandbox`)の `npx` が実行しうる
+(`runtimes.nix` が `~/.npm` 全体を許可しない理由と同じ)。`$TMPDIR` はセッションごとで、実行物が残らない。`npx`・`bunx` は除外コマンドではないので、前置は呼び出しを
+sandbox の外へ出さない。実測の途中で `~/.npm/_cacache` の下にできた `_npx`・`bun`・`_cacache` の実験の残骸は、片付けた。
+
 **`lp` を sandbox の外で動かす(2026-11-17)**: 朝の机の紙を家のプリンタへ刷る `lp` は、CUPS に Unix ソケットで届くので、sandbox の中では
-落ちると推定して(未実測: この機体は CUPS が動いておらず、`lpstat` が「Scheduler is not running」を返した)、`excludedCommands` に足した。外では全権限で動くので、
+落ちると推定して(2026-11-17 の時点では、書いた機体で CUPS が動いておらず `lpstat` が「Scheduler is not running」を返したので未実測だった。その後、2026-11-12 の vega の実測が
+見つかった: `lpstat -p -d` は sandbox の中で「Scheduler is not running」、外ではプリンタの状態を返した。読み取りだけの `lpstat *` も、同じ型で 2026-11-20 に足した。
+`lp` そのものを sandbox の中で動かした実測は無い)、`excludedCommands` に足した。外では全権限で動くので、
 `google-chrome --headless=new *`・`hms *` と同じ型で、同じパターン `Bash(lp *)` を `askRules` にも足し、刷るたびに確認を出す(除外と対)。
 紙の出力先 `~/.local/state/claude/desk/sheets` は、`home/modules/downloads.nix` の `systemd.user.tmpfiles.rules` に、14 日の年齢の掃除として足した(ディレクトリは 0700)。
 宣言後の読み戻し(`hms` の後の新しいセッションで、確認の画面が出ること、プリンタを設定した機体で `lp` が通ること)は未実施。
@@ -209,7 +222,9 @@ docs のビルドは、intersphinx が `docs.python.org` を読む。同じ型�
 **cargo のレジストリと headless Chrome(2026-11-05、#1334)**: sandbox の中の `cargo metadata --offline --locked` が、
 `~/.cargo/registry/src` を作れず `Read-only file system (os error 30)` で落ちた(`cargo run -p pipeline-map -- render` の最初の段)。
 uv のキャッシュと同じ型なので、`runtimes.nix` が `~/.cargo/registry` だけを `allowWrite` に足した(`~/.cargo/bin` は足さない)。
-未取得の crate を取る通信先(crates.io)は `domains` に無く、足していない(未実測)。一方、headless Chrome は sandbox の中で
+未取得の crate を取る通信先(crates.io)は、当時は `domains` に無かった(未実測)。2026-11-20 に、sandbox の中の `cargo test --workspace` が
+`failed to download from https://static.crates.io/crates/tungstenite/0.30.0/download` で落ちたので、`index.crates.io` と `static.crates.io` を `domains` に足した(F60。
+公開のパッケージの置き場で、資格情報は要らない)。一方、headless Chrome は sandbox の中で
 Unix ソケットを作れず落ちる。`allowAllUnixSockets` は D-Bus・鍵束に届くので採らず、`google-chrome --headless=new *` を
 `excludedCommands` に足し、同じパターンを `askRules` にも足した。外では全権限で動くので、歯止めは ask だけになる。
 ask の画面が実際に出るかは、`hms` で適用した後でないと確かめられない(未実測)。出ないと分かったら、除外を外す。

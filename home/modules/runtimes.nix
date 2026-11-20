@@ -27,14 +27,24 @@ in
   # read-only, so `cargo metadata --offline --locked` (what `cargo run -p pipeline-map -- render`
   # starts with) failed with exit 101 on a write under ~/.cargo (measured 2026-11-05). Declare
   # just the registry, not ~/.cargo: `~/.cargo/bin` holds executables the sandbox must not be
-  # able to replace. Fetching a crate that is not cached yet also needs crates.io hosts, which are
-  # not in `domains`; that case is not measured yet.
+  # able to replace. Fetching a crate that is not cached yet also needs the crates.io hosts
+  # (index.crates.io, static.crates.io), which are in `domains` (agent-permissions.nix, F60).
   #
   # npm's package cache. Inside the sandbox it was read-only, so `npm ci` failed with
   # `EROFS: read-only file system, open '~/.npm/_cacache/tmp/...'` (measured 2026-10-31); the run
   # passed once `--cache` pointed at the scratchpad, so the registry host was reachable and only
   # the write was missing. Declare just the cache, not ~/.npm: the tool owns this directory and it
   # holds no executable the sandbox could replace. (`~/.npm/_logs` is already writable.)
+  #
+  # `npx` and `bunx` are left out on purpose (F24). `npx` writes the packages it fetches under
+  # `<npm cache>/_npx` and `bunx` under bun's install cache; both hold code that runs, and an
+  # unsandboxed call (`dangerouslyDisableSandbox`) that ran the same `npx` would execute what a
+  # sandboxed one had planted there. Pointing the cache at the writable `~/.npm/_cacache` through a
+  # permanent `env` would put that code in a persistent, sandbox-writable place. Use a per-call
+  # prefix instead, which keeps it in the per-session `$TMPDIR` (measured inside the sandbox 2026-11-20):
+  # `npm_config_cache=$TMPDIR/npm npx --yes <pkg>` and `BUN_INSTALL_CACHE_DIR=$TMPDIR/bun bunx <pkg>`.
+  # Neither `npx` nor `bunx` is an excluded command, so a prefix does not take a call out of the
+  # sandbox (docs/agents/agent-permissions.md).
   dotfiles.claudePermissions.allowWrite = [
     "~/.cache/uv"
     "~/.cargo/registry"

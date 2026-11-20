@@ -50,6 +50,8 @@ let
     "Bash(gh pr diff *)"
     "Bash(gh pr checks *)"
     "Bash(pr-checks-wait *)"
+    "Bash(pr-hygiene-check *)"
+    "Bash(lpstat *)"
     "Bash(gh issue view *)"
     "Bash(gh issue list *)"
 
@@ -314,6 +316,12 @@ in
         # with `PR の base ブランチを取得できません` (the keyring is out of reach, 2026-10-28).
         # The pattern stays on the tool's own name: an excluded command runs with full access.
         "pr-checks-wait *"
+        # `pr-hygiene-check` (crates/pr-hygiene-check) runs `gh` inside itself (a search of the
+        # owner's own pull requests), so it too must run outside the sandbox: inside it the tool failed
+        # because the owners table and the login name could not be resolved (`gh` is not authenticated
+        # there), and every call had to be re-run outside it (F51, the morning desk's step 5a; measured
+        # 2026-11-15). The tool only reads. The pattern stays on the tool's own name, like the one above.
+        "pr-hygiene-check *"
         # nix needs socket(AF_UNIX) for its daemon, which the sandbox denies outright
         # (#1050; `cannot create Unix domain socket`), and ~/.cache/nix for its fetcher.
         "nix build *"
@@ -366,12 +374,17 @@ in
         # alone (a chained call stays sandboxed, see the matching note at the top of this list).
         "hms"
         "hms *"
-        # `lp` hands a job to CUPS over a Unix domain socket, which the sandbox is presumed to deny
-        # (not measured: CUPS was not running on the machine where this was written, 2026-11-17).
+        # `lp` hands a job to CUPS over a Unix domain socket, which the sandbox denies: `lpstat`, its
+        # read-only sibling, returned `Scheduler is not running` inside the sandbox and the printer's
+        # state outside it (measured on vega 2026-11-12, F26); `lp` itself was not run inside it.
         # It is excluded only in this form, `lp <args>`, and runs with full access, so `askRules`
         # above carries the same pattern and every print asks first. Call it alone (a chained call
         # or a redirect stays sandboxed, see the matching note at the top of this list).
         "lp *"
+        # `lpstat` reads the printer state from CUPS over the same Unix domain socket (see `lp`
+        # above). It only reads, so there is no `askRules` entry: a question per status check would
+        # be noise next to the print itself, which does ask.
+        "lpstat *"
       ]
       # ja-polish calls `llm`, which reads its key from ~/.config/io.datasette.llm (a secret
       # path the sandbox hides) and reaches generativelanguage.googleapis.com (not a declared
