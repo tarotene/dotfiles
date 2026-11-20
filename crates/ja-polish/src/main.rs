@@ -2,9 +2,12 @@
 //!
 //! 使い方:
 //!   ja-polish --stdin [--dry-run]               標準入力の本文を書き直して標準出力へ(報告は標準エラー)
-//!   ja-polish [--dry-run] [--no-baseline] [--trace DIR] FILE…
+//!   ja-polish [--dry-run] [--no-baseline] [--trace DIR] [--model NAME] FILE…
 //!                                               ファイルをその場で書き直す。`--trace` は、`llm` への依頼と応答を
-//!                                               DIR に 1 依頼 1 ファイルで書く(原因の調査用。既定では書かない)
+//!                                               DIR に 1 依頼 1 ファイルで書く(原因の調査用。既定では書かない)。
+//!                                               `--model` は、この 1 回だけモデルを替える(環境変数
+//!                                               `JA_POLISH_MODEL` より優先。環境変数の前置が sandbox-compound-guard に
+//!                                               拒否されるときの代わり)
 //!   ja-polish --check [--no-baseline] FILE…|-   未通過の日本語の段落を一覧する(あれば終了コード 1)
 //!   ja-polish --message …                       メール・メッセージの下書き用。文体規約に例文集を足した基準で書き直す
 //!                                               (--check も、メッセージの基準で通した段落だけを通過とみなす)
@@ -29,7 +32,7 @@ use std::process::ExitCode;
 
 const USAGE: &str = "使い方:
   ja-polish --stdin [--dry-run]
-  ja-polish [--dry-run] [--no-baseline] [--trace DIR] FILE…
+  ja-polish [--dry-run] [--no-baseline] [--trace DIR] [--model NAME] FILE…
   ja-polish --check [--no-baseline] FILE…|-
   ja-polish --message …   (メール・メッセージの下書き。例文集つきの基準。上のどの形にも付けられる)
   ja-polish stop-gate   (Stop hook。標準入力の JSON を読む)
@@ -43,6 +46,8 @@ struct Opts {
     no_baseline: bool,
     /// `--trace <dir>`: 依頼と応答を、この置き場に 1 依頼 1 ファイルで書く(`llm::TRACE_ENV` と同じ)。
     trace: Option<String>,
+    /// `--model <名前>`: この 1 回だけ使うモデル(環境変数 `JA_POLISH_MODEL` より優先)。
+    model: Option<String>,
     message: bool,
     inputs: Vec<String>,
 }
@@ -60,10 +65,19 @@ fn parse(args: &[String]) -> Result<Opts, String> {
                 Some(d) if !d.is_empty() && !d.starts_with("--") => o.trace = Some(d.clone()),
                 _ => return Err("--trace には、記録を書く置き場を渡してください".to_string()),
             },
+            "--model" => match it.next() {
+                Some(m) if !m.trim().is_empty() && !m.starts_with("--") => {
+                    o.model = Some(m.clone());
+                }
+                _ => return Err("--model には、モデルの名前を渡してください".to_string()),
+            },
             "--message" => o.message = true,
             "-h" | "--help" => return Err(String::new()),
             s if s.starts_with("--trace=") && s.len() > "--trace=".len() => {
                 o.trace = Some(s["--trace=".len()..].to_string());
+            }
+            s if s.starts_with("--model=") && !s["--model=".len()..].trim().is_empty() => {
+                o.model = Some(s["--model=".len()..].to_string());
             }
             s if s.starts_with("--") => return Err(format!("知らない引数です: {s}")),
             s => o.inputs.push(s.to_string()),
@@ -117,10 +131,12 @@ fn main() -> ExitCode {
     }
 
     let mut cfg = config::load().unwrap_or_default();
-    if let Some(m) = std::env::var("JA_POLISH_MODEL")
-        .ok()
-        .filter(|m| !m.trim().is_empty())
-    {
+    // モデルの優先順位: `--model` > 環境変数 `JA_POLISH_MODEL` > 設定。
+    if let Some(m) = opts.model.clone().or_else(|| {
+        std::env::var("JA_POLISH_MODEL")
+            .ok()
+            .filter(|m| !m.trim().is_empty())
+    }) {
         cfg.model = m;
     }
     let env = Env::from_environment(cfg);
@@ -408,6 +424,19 @@ mod tests {
         assert_eq!(o.inputs, vec!["a.md", "b.md"]);
         let o = parse(&v(&["--check", "-"])).unwrap();
         assert!(o.check && o.inputs == vec!["-"]);
+    }
+
+    #[test]
+    fn parse_reads_model_as_a_value_flag() {
+        let o = parse(&v(&["--model", "gemini-x", "a.md"])).unwrap();
+        assert_eq!(o.model.as_deref(), Some("gemini-x"));
+        assert_eq!(o.inputs, vec!["a.md".to_string()]);
+        let o = parse(&v(&["--model=gemini-y", "a.md"])).unwrap();
+        assert_eq!(o.model.as_deref(), Some("gemini-y"));
+        assert!(parse(&v(&["a.md", "--model"])).is_err());
+        assert!(parse(&v(&["--model", "--dry-run", "a.md"])).is_err());
+        assert!(parse(&v(&["--model", " ", "a.md"])).is_err());
+        assert!(parse(&v(&["--model=", "a.md"])).is_err());
     }
 
     #[test]
