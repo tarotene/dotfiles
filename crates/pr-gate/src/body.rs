@@ -64,6 +64,10 @@ static FENCE_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^[[:space:]]*(```|~~~)").expect("FENCE_RE"));
 static CODE_SPAN_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"`[^`]*`").expect("CODE_SPAN_RE"));
+/// `既存手段:` の直後の、パス 1 つだけを囲むバッククォート(`既存手段: `scripts/x.sh` — …`)。
+static KIZON_PATH_SPAN_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(既存手段:[[:space:]]*)`([^`[:space:]]+)`").expect("KIZON_PATH_SPAN_RE")
+});
 static HEADING_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^#+[[:space:]]").expect("HEADING_RE"));
 static BEFORE_AFTER_RE: LazyLock<Regex> = LazyLock::new(|| {
@@ -97,6 +101,27 @@ pub fn strip_code_spans(body: &str) -> String {
             continue;
         }
         out.push(CODE_SPAN_RE.replace_all(line, " ").into_owned());
+    }
+    out.join("\n")
+}
+
+/// [`strip_code_spans`] と同じ(フェンスとコードスパンを除く)だが、`既存手段:` の直後のパス 1 つを囲む
+/// バッククォートだけは外してから除く(F45)。パスをバッククォートで囲む書き方は普通で、`ja-polish` の書き直しが
+/// 素のパスを囲むこともある。囲まれたパスごと消すと、`G_prior` が「記載なし」と読み、差し戻しの文のとおりに直しても
+/// 同じ差し戻しが続いた。`` `既存手段: <path> — …` `` のように行全体をコードスパンにした例は、従来どおり数えない。
+pub fn strip_code_spans_keep_kizon_path(body: &str) -> String {
+    let mut fence = false;
+    let mut out = Vec::new();
+    for line in body.split('\n') {
+        if FENCE_RE.is_match(line) {
+            fence = !fence;
+            continue;
+        }
+        if fence {
+            continue;
+        }
+        let unwrapped = KIZON_PATH_SPAN_RE.replace_all(line, "$1$2");
+        out.push(CODE_SPAN_RE.replace_all(&unwrapped, " ").into_owned());
     }
     out.join("\n")
 }
@@ -218,6 +243,29 @@ pub fn body_has_kizon_for(stripped: &str, path: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // --- 既存手段の行のパスを囲むバッククォート(F45) ---
+
+    #[test]
+    fn kizon_path_wrapped_in_backticks_is_kept_but_whole_line_spans_are_not() {
+        let kept = strip_code_spans_keep_kizon_path("既存手段: `scripts/foo` — 採用: sh");
+        assert!(body_has_kizon_for(&kept, "scripts/foo"), "{kept}");
+        // 箇条書きの中でも、同じ。
+        let bullet = strip_code_spans_keep_kizon_path("- 既存手段:`scripts/foo` — 拡張: x");
+        assert!(body_has_kizon_for(&bullet, "scripts/foo"), "{bullet}");
+        // 行全体をコードスパンにした例(GitHub は解釈しない)は、従来どおり数えない。
+        let whole = strip_code_spans_keep_kizon_path("`既存手段: scripts/foo — 採用: sh`");
+        assert!(!body_has_kizon_for(&whole, "scripts/foo"), "{whole}");
+        // フェンスの中は数えない。
+        let fenced =
+            strip_code_spans_keep_kizon_path("```\n既存手段: `scripts/foo` — 採用: sh\n```");
+        assert!(!body_has_kizon_for(&fenced, "scripts/foo"), "{fenced}");
+        // 従来の strip_code_spans は、パスごと消す(この関数との違い)。
+        assert!(!body_has_kizon_for(
+            &strip_code_spans("既存手段: `scripts/foo` — 採用: sh"),
+            "scripts/foo"
+        ));
+    }
 
     // --- 1 keyword 1 Issue(#722) ---
 

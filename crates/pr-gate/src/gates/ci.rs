@@ -333,13 +333,20 @@ pub fn decide(expected: &[Value], reported: &str) -> Verdict {
 /// 出現待ちの上限を過ぎたとき(workflow が起動していない)だけ。全体の時間切れ(`timed_out`)も同じで、
 /// pending が残るなら `Missing`(判定不能)にせず、呼び出し側が `Pending`(待てば変わる)にする
 /// (2026-11-11、25 分かかるジョブの間に時間切れとなり UNKNOWN を返したが、実際はその後に全緑だった)。
+///
+/// 報告が 1 件も無い間(`reported == 0`)も同じで、出現待ちの上限では確定しない(F77)。PR を作った直後は、
+/// workflow が 1 つも登録されていないことがあり、「他のチェックも出ていない」のは出ない証拠にならない
+/// (2026-11-18、PR 作成の直後に実行して、required が報告される前に判定不能で終わった。直後に読むと全緑だった)。
+/// 確定は、全体の時間切れまで待つ。一方、報告が 1 件以上あり、pending が 0 のまま required だけが出ないときは、
+/// 起動していないと見てよい(stacked PR で、base が main でないと `plan` が走らない例。F23)。
 fn missing_is_final(
     missing: &[Value],
     pending: usize,
+    reported: usize,
     appear_expired: bool,
     timed_out: bool,
 ) -> bool {
-    !missing.is_empty() && pending == 0 && (appear_expired || timed_out)
+    !missing.is_empty() && pending == 0 && ((appear_expired && reported > 0) || timed_out)
 }
 
 /// 待ちの結果の注記つき期待集合。`Ok((E, 注記))`。E が空なら quiesce で判定する。
@@ -476,7 +483,7 @@ pub fn wait(
                     // チェックとして現れない。pending が 0 のまま現れないとき(workflow が
                     // 起動していない)だけ、出現待ちの上限で Missing にする。全体の時間切れも
                     // 同じ理由で、pending が残る間は Missing にせず Pending にする(下の `timed_out`)。
-                    if missing_is_final(&missing, pending, t >= appear_deadline, timed_out) {
+                    if missing_is_final(&missing, pending, n, t >= appear_deadline, timed_out) {
                         return done(
                             Outcome {
                                 status: Status::Missing,
@@ -580,15 +587,32 @@ mod tests {
     fn missing_is_final_only_when_nothing_is_pending() {
         let m = vec![json!("CI passed")];
         // 他のチェックが pending の間は、時間切れでも出現待ちの上限でも確定しない(集約ジョブは遅れて現れる)。
-        assert!(!missing_is_final(&m, 3, false, true));
-        assert!(!missing_is_final(&m, 3, true, false));
-        assert!(!missing_is_final(&m, 3, true, true));
-        // pending が 0 のまま、出現待ちの上限か時間切れを過ぎたら、起動していないと確定する。
-        assert!(missing_is_final(&m, 0, true, false));
-        assert!(missing_is_final(&m, 0, false, true));
+        assert!(!missing_is_final(&m, 3, 5, false, true));
+        assert!(!missing_is_final(&m, 3, 5, true, false));
+        assert!(!missing_is_final(&m, 3, 5, true, true));
+        // pending が 0 のまま、出現待ちの上限か時間切れを過ぎたら、起動していないと確定する(報告が 1 件以上)。
+        assert!(missing_is_final(&m, 0, 5, true, false));
+        assert!(missing_is_final(&m, 0, 5, false, true));
         // 上限の前は確定しない。未出現が無ければ確定の対象が無い。
-        assert!(!missing_is_final(&m, 0, false, false));
-        assert!(!missing_is_final(&[], 0, true, true));
+        assert!(!missing_is_final(&m, 0, 5, false, false));
+        assert!(!missing_is_final(&[], 0, 5, true, true));
+    }
+
+    #[test]
+    fn missing_waits_for_the_overall_timeout_while_nothing_at_all_is_reported() {
+        // F77: 報告が 0 件の間は、出現待ちの上限(60 秒)では確定しない。全体の時間切れまで待つ。
+        let m = vec![json!("CI passed")];
+        assert!(
+            !missing_is_final(&m, 0, 0, true, false),
+            "上限だけでは確定しない"
+        );
+        assert!(
+            missing_is_final(&m, 0, 0, true, true),
+            "全体の時間切れで確定する"
+        );
+        assert!(missing_is_final(&m, 0, 0, false, true));
+        // F23: 報告が 1 件でもあれば(他の workflow は走った)、上限で確定する。
+        assert!(missing_is_final(&m, 0, 1, true, false));
     }
 
     #[test]

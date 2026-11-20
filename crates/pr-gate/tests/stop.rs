@@ -1075,8 +1075,10 @@ fn g_stack_api_failure_is_advisory() {
 fn escalates_after_max_blocks_then_passes() {
     let fx = Fx::new();
     let mut last = None;
+    // 同じ文面の連続での escalate(`PR_GATE_SAME_BLOCK_LIMIT`)は切って、block の総回数の上限だけを見る。
+    let off = [("PR_GATE_SAME_BLOCK_LIMIT", "0")];
     for _ in 0..6 {
-        last = Some(fx.stop("esc-sid", &[]));
+        last = Some(fx.stop("esc-sid", &off));
     }
     let last = last.unwrap();
     // ok   6 回目で escalate 文言
@@ -1087,9 +1089,48 @@ fn escalates_after_max_blocks_then_passes() {
             .count(),
         1
     );
-    let r = fx.stop("esc-sid", &[]);
+    let r = fx.stop("esc-sid", &off);
     assert_eq!(r.code, 0); // ok   escalated 後は素通り(exit 0)
     assert_eq!(r.all(), ""); // ok   escalated 後は出力なし
+}
+
+#[test]
+fn escalates_early_when_the_same_block_repeats_then_passes() {
+    // F9: 同じ文面の block が連続したら、上限(6 回)を待たずに GO/NO-GO へ進める(既定は 2 回目)。
+    let fx = Fx::new();
+    let first = fx.stop("same-sid", &[]);
+    assert_eq!(first.code, 2, "1 回目は通常の block");
+    assert!(!has(&first.stderr, "AskUserQuestion"), "{}", first.stderr);
+    let second = fx.stop("same-sid", &[]);
+    assert_eq!(second.code, 2);
+    assert!(
+        has(&second.stderr, "同じ内容で 2 回続けてブロックしました"),
+        "{}",
+        second.stderr
+    );
+    assert!(has(&second.stderr, "AskUserQuestion"));
+    // escalated 後は素通り。
+    let third = fx.stop("same-sid", &[]);
+    assert_eq!(third.code, 0);
+    assert_eq!(third.all(), "");
+}
+
+#[test]
+fn the_same_block_limit_counts_only_consecutive_identical_blocks() {
+    // 上限 3: 同じ文面が 2 回続いても escalate しない。3 回続いたときだけ escalate する。
+    let fx = Fx::new();
+    let three = [("PR_GATE_SAME_BLOCK_LIMIT", "3")];
+    for _ in 0..2 {
+        let r = fx.stop("same3-sid", &three);
+        assert_eq!(r.code, 2);
+        assert!(!has(&r.stderr, "AskUserQuestion"), "{}", r.stderr);
+    }
+    let r = fx.stop("same3-sid", &three);
+    assert!(
+        has(&r.stderr, "同じ内容で 3 回続けてブロックしました"),
+        "{}",
+        r.stderr
+    );
 }
 
 // --- G_prior(ADR-543)— 移植時に追加(旧 selftest は new-tool-guard バイナリの
