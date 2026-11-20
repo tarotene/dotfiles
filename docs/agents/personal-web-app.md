@@ -1,7 +1,7 @@
 # personal-web-app — 入力と保存を持つ private な個人用 Web アプリを、Worker + D1 + Access で作る標準
 
 実装: `.github/actions/deploy-worker/action.yml`(`d1-database` 入力と、Website 欄の読み戻し)
-決定: `docs/adr/0000-personal-web-app-standard.md`
+決定: `docs/adr/1660-personal-web-app-standard.md`
 隣の標準: [`deploy-worker.md`](deploy-worker.md)(閲覧だけの静的サイト)
 先行例: 団体向けの先行例のリポジトリ(団員が Discord でログインする Worker + D1。`docs/adr/28`〜`30`・`86`、`wrangler.jsonc`、`app/`)
 

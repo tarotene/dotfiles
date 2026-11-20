@@ -1,4 +1,4 @@
-# ADR-0000 — 入力と保存を持つ private な個人用 Web アプリは、Worker + D1 + Access を標準にし、マイグレーションと About の URL を共通 action に載せる
+# ADR-1660 — 入力と保存を持つ private な個人用 Web アプリは、Worker + D1 + Access を標準にし、マイグレーションと About の URL を共通 action に載せる
 
 - Status: Accepted
 - Date: 2026-11-20
