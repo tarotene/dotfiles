@@ -203,6 +203,11 @@ sandbox の中と外の線引き(#1103。2026-10-28 に vega で実測した範�
     (`git-repository`・`cmd-hash-log`・`update-own-tools`。`core.hooksPath=` を足した #428 と同じ型)。
   - **`env_clear` で `TMPDIR` も消える**(直した型): 一時ディレクトリが `/tmp`(読み取り専用)になる。fixture の
     下に向けた(`codex-launcher`)。
+  - **`agent-settings-reconcile` の 13 件**(2026-11-15 に報告、F29。`cannot determine whether local settings are tracked`): **2026-11-20 に
+    再現しなかった**。sandbox の中で `cargo test -p agent-settings-reconcile` が全件通り(各試験バイナリで 0 失敗)、`cargo test --workspace
+    --no-fail-fast --offline` でも、この crate は 1 件も落ちなかった(落ちたのは、codex-plan と、ソケット・`/tmp` の型の
+    `integration`・`experiment`・`lifecycle` の試験だけ)。この crate は 11-14 以降、変更されていない。原因は未特定で、報告の時点の
+    環境(一時ディレクトリ・git の設定・cwd)の違いと推測する(未確認)。再発したら、落ちた試験名と `TMPDIR`・`git config --list --show-origin` を取る。
   上の 2 つの型(ソケット・gpg)は直らないので、この 5 crate 以外の赤は、変更の不具合を先に疑う。ソケットの
   型は、CI の結果で確かめる。
 
