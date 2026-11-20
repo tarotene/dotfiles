@@ -231,6 +231,61 @@ fn clone_in_use_moves_to_a_new_generation() {
     assert_eq!(mode, 0o700, "世代も本人だけが読める");
 }
 
+/// F62: Playwright MCP は、ブラウザを最初の操作まで起動しない。ラッパーが同期を終えてから Firefox が `lock` を張るまでの間も、
+/// 複製は別のラッパーのもの。持ち主(`<clone>.owner` の pid)が生きていれば、`lock` が無くても使用中として、新しい世代へ移る
+/// (同じ複製だと、あとから起動した Firefox が `already running` で失敗した)。
+#[test]
+fn clone_claimed_by_a_live_wrapper_moves_to_a_new_generation_even_without_a_firefox_lock() {
+    let t = T::new();
+    fs::create_dir_all(t.clone_dir()).unwrap();
+    // 別のラッパー(ここでは、このテスト自身の pid)が持ち主。Firefox の `lock` はまだ無い。
+    let mut owner = t.clone_dir().into_os_string();
+    owner.push(".owner");
+    fs::write(&owner, format!("{}\n", std::process::id())).unwrap();
+    assert!(!t.clone_dir().join("lock").exists());
+    let o = t.run(&[], &[]);
+    assert_eq!(o.status.code(), Some(0), "{}", text(&o.stderr));
+    let clone = t.clone_dir().canonicalize().unwrap();
+    let out = text(&o.stdout);
+    let prefix = format!("{}-", clone.display());
+    assert!(
+        out.split('|').any(|a| a.starts_with(&prefix)),
+        "持ち主が生きている複製は、新しい世代で起動する: {out}"
+    );
+    assert!(
+        !t.rsync_log().contains(&format!("{}/\n", clone.display())),
+        "持ち主が生きている複製へ rsync しない: {}",
+        t.rsync_log()
+    );
+}
+
+/// 持ち主の記録が、死んだ pid や、読めない内容なら、使用中でない。複製は持ち主の記録を、起動するラッパー自身の pid で書き直す。
+#[test]
+fn a_stale_owner_is_ignored_and_the_launcher_records_itself_as_the_owner() {
+    let t = T::new();
+    fs::create_dir_all(t.clone_dir()).unwrap();
+    let mut owner = t.clone_dir().into_os_string();
+    owner.push(".owner");
+    for stale in [
+        format!("{}\n", i32::MAX),
+        "garbage\n".to_string(),
+        String::new(),
+    ] {
+        fs::write(&owner, stale).unwrap();
+        let o = t.run(&[], &[]);
+        assert_eq!(o.status.code(), Some(0), "{}", text(&o.stderr));
+        let clone = t.clone_dir().canonicalize().unwrap();
+        let out = text(&o.stdout);
+        assert!(
+            out.contains(&format!("|--user-data-dir|{}", clone.display())),
+            "古い持ち主は無視して、複製をそのまま使う: {out}"
+        );
+        let recorded = fs::read_to_string(&owner).unwrap();
+        let pid: u32 = recorded.trim().parse().expect("持ち主は pid の数字");
+        assert_ne!(pid, std::process::id(), "起動したラッパーの pid が入る");
+    }
+}
+
 /// `--sync-only` は世代を作らず、使用中の複製の同期を飛ばす。
 #[test]
 fn sync_only_skips_when_clone_in_use() {
