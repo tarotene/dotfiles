@@ -15,10 +15,31 @@
 # Gated only on binary existence (ADR-0005) — `command claude` needs no
 # credentials to exist.
 
+# Session modes (docs/agents/agent-mode.md): `CLAUDE_MODE=<name> claude` starts a session
+# whose reading limits, appended instructions and skipped checks come from one declaration
+# (config/agents/modes/<name>.toml), expanded by `agent-mode exec`. A mode that cannot be
+# applied never falls back to a plain session: with CLAUDE_MODE set and `agent-mode` missing,
+# or a declaration that does not validate, nothing starts. `update`/`upgrade` are not
+# sessions, so they ignore the mode.
+
 if command -v claude &>/dev/null; then
     claude() {
+        local rc
+        case "${1-}" in
+        update | upgrade) ;;
+        *)
+            if [[ -n ${CLAUDE_MODE-} ]]; then
+                if ! command -v agent-mode &>/dev/null; then
+                    print -u2 "claude: CLAUDE_MODE=${CLAUDE_MODE} が指定されましたが、agent-mode がありません(hms を当ててください)"
+                    return 127
+                fi
+                agent-mode exec "$CLAUDE_MODE" -- "${commands[claude]}" "$@"
+                return $?
+            fi
+            ;;
+        esac
         command claude "$@"
-        local rc=$?
+        rc=$?
         case "${1-}" in
         update | upgrade)
             command -v claude-plan-model &>/dev/null && claude-plan-model sync
