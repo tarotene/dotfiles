@@ -609,6 +609,12 @@ PR 作成時に追加ファイルの diff を見る `G_prior` が拾う。Write 
 誤って一致してしまう——ダッシュ境界を要求することで、この接頭辞衝突を
 防いでいる。
 
+`<path>` を 1 つだけ囲むバッククォート(`既存手段: `scripts/foo.sh` — ...`)は、照合の前に外す
+(`strip_code_spans_keep_kizon_path()`。F45)。パスをバッククォートで囲む書き方は普通で、`ja-polish` の書き直しが
+素のパスを囲むこともある。従来の `strip_code_spans()` はパスごと消すので、差し戻しの文のとおりに直しても
+「記載なし」と読まれ、同じ差し戻しが続いた(2026-11-15)。行全体をコードスパンにした例
+(`` `既存手段: <path> — ...` ``)とフェンスの中は、GitHub が解釈しないので、従来どおり数えない。
+
 ### block の位置と直し方
 
 `G_link`/`G_visual`/`G_stack` と同じ「あとは終わるだけ」の一点で、同じ
@@ -637,6 +643,14 @@ Claude が push した直後の 2 回目の呼び出しが `stop_hook_active=tru
 `escalated` のチェックは上限判定より**前**に置く（`docs/agents/copilot-plan-review.md` の closer /
 escalated と同じ置き方）。block cap（Claude Code 側の「連続 8 回で打ち切り」）の消費は
 wrapup 側と合わせて最大 5 回に収まる。
+
+**同じ文面の block が続いたときは、上限を待たずに escalate する**(F9、`PR_GATE_SAME_BLOCK_LIMIT`、既定 2、0 で無効)。
+直前の block と同じ文面が連続した回数を `state/<sid>.last`(直前の文面のハッシュと連続回数)に持ち、これが上限に達したら、
+`count` の上限(6)に届く前に escalate 文言を返し、`escalated` を立てる。同じ文面が続くのは、直す手が尽きた合図で、
+残りの block は往復を増やすだけだった(2026-11-11、runner から Ubuntu のミラーを名前解決できない外部の障害による赤で 6 回
+block し、`AskUserQuestion` の GO/NO-GO まで抜けられなかった)。文面が変われば(別の失敗に進めば)数え直す。
+再実行を起動済みの古い失敗は、block に数えない(2026-11-12、`e890057a`)ので、この規則は、最新の run の赤が同じ原因で
+残り続ける場合の手当てである。
 
 ## required check が無いと、ゲートは空振りする
 
@@ -760,6 +774,11 @@ OK の下に注記を出す(`stale_failure_note`。run の ID と `gh run rerun 
 「Required status check CI passed is failing」で拒否した 1 件の実測だけ)。
 
 required の未出現は、他のチェックが pending の間は出現待ちの上限(`PR_GATE_CHECK_APPEAR_TIMEOUT`)で打ち切らない。
+報告が 1 件も無い間も同じで、出現待ちの上限では確定せず、全体の時間切れまで待つ(F77、2026-11-18。PR を作った直後に
+`pr-checks-wait` を実行して、workflow が 1 つも登録される前に判定不能(exit 2)で終わった。直後に読むと全緑だった)。
+報告が 1 件以上あり、pending が 0 のまま required だけが出ないときは、起動していないと見て、上限で `Missing` にする
+(base が既定ブランチでない stacked PR で、required の workflow が `branches` を既定ブランチだけに絞っていると起動しない。
+F23。判定不能の文に、この原因の見分け方を添える)。
 集約ジョブ(`CI passed`)は `needs` の完了までチェックとして現れないので、上限で打ち切ると、他のジョブが走っている
 最中に「揃っていない」と誤って返す。pending が 0 のまま現れないとき(workflow が起動していない)だけ、上限で MISSING にする。
 
@@ -810,6 +829,7 @@ pr-checks-wait [<PR>] [-R OWNER/REPO] [--timeout SECS]   # 既定 1500 秒
 |---|---|---|
 | `PR_GATE_DIR` | `~/.claude/pr-gate` | state の置き場所 |
 | `PR_GATE_ALLOWLIST` | `~/.claude/pr-gate-repos` | 判定対象 nwo の一覧 |
+| `PR_GATE_SAME_BLOCK_LIMIT` | `2` | 直前の block と同じ文面が連続した回数がこれに達したら、`PR_GATE_MAX_BLOCKS` を待たず escalate(0 で無効。F9) |
 | `PR_GATE_MAX_BLOCKS` | `6` | escalate までの block 回数（G_link 追加時に 3→4、G_pr 追加時に 4→5、G_stack 追加時に 5→6 に引き上げ。G_visual は G_link と同じ block に合流するので据え置き。下記参照） |
 | `PR_GATE_CI_TIMEOUT` | `300` | Stop で CI の判定を待つ上限(秒)。`pr-checks-wait` は `--timeout`(既定 1500) |
 | `PR_GATE_POLL_INTERVAL` | `10` | 判定のためにチェックを取り直す間隔(秒、小数可) |
@@ -824,6 +844,7 @@ pr-checks-wait [<PR>] [-R OWNER/REPO] [--timeout SECS]   # 既定 1500 秒
 ```
 ~/.claude/pr-gate/
 ├── state/<session_id>.count       # 消費した block 回数
+├── state/<session_id>.last        # 直前の block の文面のハッシュと、同じ文面の連続回数
 └── state/<session_id>.escalated   # 人間エスカレーションを 1 回に限定するフラグ
 ```
 

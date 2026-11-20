@@ -197,15 +197,36 @@ fn is_item_start(line: &str) -> bool {
     digits > 0 && b.get(digits) == Some(&b'.') && b.get(digits + 1).is_some_and(|&c| is_space(c))
 }
 
+/// `#` の直前が `<owner>/<repo>`(GitHub の他リポジトリの参照 `owner/repo#N`)か。`<owner>`・`<repo>` は
+/// 英数字・`_`・`.`・`-` の連なり。`#` は `b[hash]`。
+fn is_cross_repo_ref(b: &[u8], hash: usize) -> bool {
+    // `end`(含まない)で終わる、名前に使える文字の連なりの長さ。
+    let seg = |end: usize| {
+        b[..end]
+            .iter()
+            .rev()
+            .take_while(|c| c.is_ascii_alphanumeric() || matches!(c, b'_' | b'.' | b'-'))
+            .count()
+    };
+    let repo = seg(hash);
+    if repo == 0 || hash - repo == 0 || b[hash - repo - 1] != b'/' {
+        return false;
+    }
+    seg(hash - repo - 1) > 0
+}
+
 /// `ISSUE_REF_RE='(^|[^[:alnum:]/])#[0-9]+|github\.com/[^/[:space:]]+/[^/[:space:]]+/issues/[0-9]+'`
-/// を 1 行に対して調べる(grep は行単位)。
+/// を 1 行に対して調べる(grep は行単位)。bash 版に無い `owner/repo#N` も数える(F44。GitHub が他リポジトリの
+/// Issue として解釈する書き方で、URL の形に書き直させる往復が要った)。
 fn line_has_issue_ref(line: &str) -> bool {
     let b = line.as_bytes();
-    // `#<番号>`: 直前が行頭か、英数字でも `/` でもない 1 バイト
+    // `#<番号>`: 直前が行頭か、英数字でも `/` でもない 1 バイト。または、直前が `owner/repo`。
     for (i, &c) in b.iter().enumerate() {
         if c == b'#'
             && b.get(i + 1).is_some_and(|d| d.is_ascii_digit())
-            && (i == 0 || !(b[i - 1].is_ascii_alphanumeric() || b[i - 1] == b'/'))
+            && (i == 0
+                || !(b[i - 1].is_ascii_alphanumeric() || b[i - 1] == b'/')
+                || is_cross_repo_ref(b, i))
         {
             return true;
         }
@@ -249,7 +270,7 @@ pub fn judge_confirm_section(body: &str) -> Option<String> {
         .filter(|(_, it)| !item_has_issue_ref(it))
         .map(|(i, _)| {
             format!(
-                "項目{}: Issue 参照(#N または .../issues/N の URL)がありません",
+                "項目{}: Issue 参照(#N・owner/repo#N・.../issues/N の URL)がありません",
                 i + 1
             )
         })
@@ -393,12 +414,18 @@ mod tests {
             "(#1)",
             "see https://github.com/o/r/issues/9",
             "xgithub.com/o/r/issues/9",
+            // F44: 他リポジトリの Issue(`owner/repo#N`)も、参照として数える。
+            "o/r#42",
+            "- foo-bar/baz.rs#7 — 他リポジトリの Issue",
+            "(my_org/my-repo#1234)",
         ] {
             assert!(line_has_issue_ref(s), "{s}");
         }
         for s in [
             "a#42",
-            "o/r#42",
+            "path/#42",
+            "/r#42",
+            "o/#42",
             "#x",
             "github.com/o/r/pull/9",
             "github.com//r/issues/9",

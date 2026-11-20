@@ -181,7 +181,11 @@ pub fn execute(args: &[String], cwd: &Path, cfg: &Config) -> (i32, String) {
             )
         }
         Status::Missing => unknown(format!(
-            "PR #{pr} — 期待する required チェックが報告されていません: {}{}",
+            "PR #{pr} — 期待する required チェックが報告されていません: {}{} \
+             (補足: base が既定ブランチでない stacked PR では、required の workflow が `on.pull_request.branches` を \
+             既定ブランチだけに絞っていると起動しません。workflow の `branches` の絞りを確かめてください。直す先は、\
+             その workflow のあるリポジトリです。他のチェックが 1 件も出ていない間は、出現待ちの上限でなく全体の時間切れまで\
+             待つので、時間切れまで 1 件も出なかったときも、この文になります)",
             o.detail,
             conflict_hint(&pr, &nwo)
         )),

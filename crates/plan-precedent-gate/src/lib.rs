@@ -179,7 +179,9 @@ fn check_dn_block(id: &str, block: &str, out: &mut Vec<String>) {
         // 先行例なし: の枝
     } else if grep(&CITE_LABEL_RE, block) {
         if !grep(&CITATION_RE, block) {
-            missing.push("出典(URL・#N・owner/repo#N・リポジトリ内パスのいずれか)");
+            missing.push(
+                "出典(URL・#N・owner/repo#N・リポジトリ内パスのいずれか。パスは scripts/x.py のようにスラッシュを含む形で、README.md や AGENTS.md のようなスラッシュの無い名前だけでは出典と認められません)",
+            );
         }
         if !grep(&DATE_RE, block) {
             missing.push("取得日(「(取得 YYYY-MM-DD)」の形)");
@@ -428,6 +430,25 @@ mod tests {
         assert!(judge_precedent(&p)
             .iter()
             .any(|m| m.contains("「戻せない:」の値は")));
+    }
+
+    #[test]
+    fn a_slashless_file_name_is_not_a_citation_and_the_message_says_so() {
+        // F43: `README.md` のようなスラッシュの無い名前だけの出典は、認められない。拒否文に、通る形(スラッシュを含むパス)を書く。
+        let p = "## 先行例との対比\n- D1: x\n  先行例: このリポジトリの README.md (取得 2026-11-20)\n  差分: 一致\n  軸: 還元 — 1句\n";
+        let m = judge_precedent(p);
+        assert!(
+            m.iter()
+                .any(|x| x.contains("scripts/x.py") && x.contains("スラッシュ")),
+            "{m:?}"
+        );
+        // スラッシュを含む形は通る。
+        let ok = p.replace("README.md", "docs/README.md");
+        assert!(
+            judge_precedent(&ok).is_empty(),
+            "{:?}",
+            judge_precedent(&ok)
+        );
     }
 
     #[test]

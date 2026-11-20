@@ -30,6 +30,11 @@ pub struct Config {
     /// G_unpushed の block メッセージは push と `gh pr create` を 1 往復に
     /// まとめて案内するため、この最悪連鎖は実際には起きにくい。
     pub max_blocks: u64,
+    /// `PR_GATE_SAME_BLOCK_LIMIT`(既定 2、0 で無効): 直前の block と**同じ文面**が連続した回数がこれに達したら、
+    /// `max_blocks` を待たずに escalate する。同じ文面が続くのは、直す手が尽きた(外部の障害でコードでは直せない赤、など)
+    /// 合図で、残りの block は往復を増やすだけだった(F9: runner から Ubuntu のミラーを名前解決できない赤で 6 回
+    /// block し、GO/NO-GO まで抜けられなかった)。文面が変わる(別の失敗に進んだ)と数え直す。
+    pub same_block_limit: u64,
     /// `SKIP_PR_GATE=1`。
     pub skip_env: bool,
 }
@@ -64,6 +69,7 @@ impl Config {
             cancel_grace: env_num("PR_GATE_CANCEL_GRACE", 120),
             fetch_ttl: env_num("PR_GATE_FETCH_TTL", 600),
             max_blocks: env_num("PR_GATE_MAX_BLOCKS", 6),
+            same_block_limit: env_num("PR_GATE_SAME_BLOCK_LIMIT", 2),
             skip_env: agent_session::escape::PR_GATE.active(None, None).is_some(),
         }
     }

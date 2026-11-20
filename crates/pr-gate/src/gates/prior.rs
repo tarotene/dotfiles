@@ -21,7 +21,7 @@ pub fn is_new_tool_unit_at(project: &Path, path: &str) -> bool {
 
 /// `既存手段:` 記載が欠けている追加ファイル(1 件 1 要素)。
 pub fn judge(project: &Path, body_text: &str, added: &[String]) -> Vec<String> {
-    let stripped = body::strip_code_spans(body_text);
+    let stripped = body::strip_code_spans_keep_kizon_path(body_text);
     added
         .iter()
         .filter(|f| !f.is_empty())
@@ -102,6 +102,8 @@ mod tests {
         assert!(is_new_tool_unit_at(d.path(), "scripts/foo"));
         assert_eq!(judge(d.path(), "本文", &added), added);
         assert!(judge(d.path(), "既存手段: scripts/foo — 採用: sh", &added).is_empty());
+        // F45: パスだけをバッククォートで囲んだ記載は、数える(`ja-polish` が囲むことがある)。
+        assert!(judge(d.path(), "既存手段: `scripts/foo` — 採用: sh", &added).is_empty());
         // コードスパン内の記載は数えない(GitHub と同じ読み方)。
         assert_eq!(
             judge(d.path(), "`既存手段: scripts/foo — 採用: sh`", &added),
