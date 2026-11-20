@@ -326,7 +326,8 @@ type ChunkOutput = Vec<Result<Verified, Skip>>;
 ///
 /// 1. 主のモデルに送る。混雑(`Busy`)なら、間を置いて `cfg.retries` 回まで再依頼する。
 /// 2. 時間切れ(`Timeout`)は同じモデルへ再依頼しない。待ち直しても応答が返らないモデル
-///    (無料枠の混雑)に、`timeout` を何度も使い切らないため。
+///    (無料枠の混雑)に、`timeout` を何度も使い切らないため。無料枠の 1 日の上限(`DailyLimit`)も同じ
+///    で、そのモデルは次の再開まで使えず、間を置いても通らないので、再依頼せず予備のモデルへ移る(F6)。
 /// 3. 主のモデルで通らず、予備のモデル(`cfg.fallback_model`)があれば、1 回だけ送る。
 ///    予備には思考量の指定を渡さない。
 /// 4. 恒久的な失敗(`Permanent`: キーが無い、など)は、再依頼も予備もなしでそこで止める。
@@ -352,9 +353,9 @@ fn call(
             Ok(resp) => return Ok((resp, cfg.model.clone())),
             Err(e) if e.kind == FailureKind::Permanent => return Err(Skip::from(e)),
             Err(e) => {
-                let timed_out = e.kind == FailureKind::Timeout;
+                let no_retry = matches!(e.kind, FailureKind::Timeout | FailureKind::DailyLimit);
                 last = e;
-                if timed_out {
+                if no_retry {
                     break;
                 }
             }
@@ -895,6 +896,48 @@ mod tests {
         );
         assert_eq!(calls[3].thinking, None, "予備には思考量を渡さない");
         assert_eq!(r.entries[0].model, "fb", "記録には答えたモデルを書く");
+    }
+
+    #[test]
+    fn the_daily_limit_goes_straight_to_the_fallback_without_retrying() {
+        // F6: 無料枠の 1 日の上限は、同じモデルへ再依頼しても通らない。主を 1 回だけ送って、予備へ移る。
+        let text = "一つ目の段落です。\n";
+        let fake = Fake::new(vec![
+            Err(LlmError::new(
+                FailureKind::DailyLimit,
+                "requests per day limit exceeded on Free Tier",
+            )),
+            ok("<para n=\"1\">一つ目の段落だ。</para>"),
+        ]);
+        let c = Config {
+            fallback_model: Some("fb".to_string()),
+            ..cfg()
+        };
+        let r = run_with(text, None, &c, &fake);
+        assert_eq!(r.text, "一つ目の段落だ。\n");
+        let calls = fake.calls();
+        assert_eq!(
+            calls.iter().map(|c| c.model.as_str()).collect::<Vec<_>>(),
+            vec!["m", "fb"],
+            "主を 1 回だけ。再依頼しない"
+        );
+        assert_eq!(r.entries[0].model, "fb");
+    }
+
+    #[test]
+    fn the_daily_limit_without_a_fallback_is_skipped_as_transient() {
+        let text = "一つ目の段落です。\n";
+        let fake = Fake::new(vec![Err(LlmError::new(
+            FailureKind::DailyLimit,
+            "requests per day limit exceeded on Free Tier",
+        ))]);
+        let r = run(text, None, &fake);
+        assert_eq!(fake.calls().len(), 1, "予備が無ければ 1 回で止める");
+        assert_eq!(r.text, text);
+        assert!(
+            r.entries[0].transient,
+            "課金の検討を知らせる判定の入力になる"
+        );
     }
 
     #[test]

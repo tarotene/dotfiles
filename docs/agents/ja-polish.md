@@ -238,17 +238,18 @@ ja-polish bench crates/ja-polish/bench/samples.txt [--variants model[@level],…
 `llm が見つかりません`、`llm が失敗しました: Error: No key found …`、`45 秒以内に応答がありません`、
 `スタイルガイドのハブを解決できません`、伏せ字・数値・記法・分量の照合に再依頼でも外れた。
 
-素通しにする前に、依頼の失敗を 3 種に分けて手を打つ(判定は `crates/ja-polish/src/llm.rs` の
+素通しにする前に、依頼の失敗を 4 種に分けて手を打つ(判定は `crates/ja-polish/src/llm.rs` の
 `classify_stderr` の 1 か所。標準エラーの先頭 2000 字の語で決める):
 
 | 種類 | 例 | 手 |
 |---|---|---|
 | 混雑(`Busy`) | `high demand`・429・503・`RESOURCE_EXHAUSTED`・通信の不調 | 同じモデルに最大 `retries`(既定 2)回まで再依頼(待ち 2 秒→6 秒、±25%)。通らなければ予備のモデルに 1 回 |
+| 無料枠の 1 日の上限(`DailyLimit`) | `requests per day limit exceeded on Free Tier`・クォータ ID の `PerDay`(実測 2026-11-15: `Please retry in 2h38m48s`)。毎分の上限(`PerMinute`)は混雑のまま | 同じモデルは再依頼せず(間を置いても、次の再開まで通らない)、すぐ予備のモデルに 1 回(F6)。予備が無ければ 1 回で素通し(`transient`) |
 | 時間切れ(`Timeout`) | `45 秒以内に応答がありません` | 同じモデルは待ち直さず、すぐ予備のモデルに 1 回 |
 | 恒久(`Permanent`) | `No key found`・`llm が見つかりません`・不明なモデル名 | 再依頼も予備もなし。素通し |
 
 予備のモデル(既定 `gemini-flash-lite-latest`)には、思考量の指定を渡さない。記録の `model` は、実際に答えた
-モデル。混雑・時間切れで通せなかった素通しの記録には `"transient":true` が付く(キーの未設定や照合の外れには
+モデル。混雑・1 日の上限・時間切れで通せなかった素通しの記録には `"transient":true` が付く(キーの未設定や照合の外れには
 付かない。課金の検討を知らせる判定の入力)。1 つの束が失敗しても、ほかの束は書き直す。
 
 **素通しの段落は、`ja-polish` の次の実行で、もう一度書き直しの対象になる**(ADR-1387 の D12)。書き直しは

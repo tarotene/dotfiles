@@ -83,6 +83,10 @@ pub enum FailureKind {
     Timeout,
     /// 混雑・利用上限(429・503・`high demand` など)。少し待てば通ることがあるので、間を置いて再依頼する。
     Busy,
+    /// 無料枠の **1 日の** 上限(`requests per day limit exceeded`、クォータ ID の `PerDay`)。そのモデルは、次の再開
+    /// (実測で `Please retry in 2h38m48s`)まで使えず、間を置いて再依頼しても通らないので、再依頼せず予備のモデルへ移る。
+    /// 時間がたてば直る失敗なので、記録の `transient` には数える。
+    DailyLimit,
     /// キーが無い・`llm` が無い・モデル名が違う、など。待っても直らないので、再依頼しない。
     Permanent,
 }
@@ -239,11 +243,23 @@ fn busy_re() -> &'static Regex {
     })
 }
 
+/// 無料枠の **1 日の** 上限を表す語。実測(2026-11-15、`docs/agents/ja-polish.md`「モデルの選択」)の標準エラーは
+/// `Quota exceeded for metric: …generate_content_free_tier_requests, limit: 20, model: …, description: Generate content
+/// requests per day limit exceeded on Free Tier. … Please retry in 2h38m48s`。Google のクォータ ID(`quotaId`)の
+/// `GenerateRequestsPerDayPerProjectPerModel-FreeTier` も `PerDay` を含む。毎分の上限(`PerMinute`)は含まない。
+fn daily_limit_re() -> &'static Regex {
+    static CELL: OnceLock<Regex> = OnceLock::new();
+    CELL.get_or_init(|| Regex::new(r"(?i)per[ _-]?day").expect("valid regex"))
+}
+
 /// 標準エラー出力から、失敗の種類と理由を決める。種類の判定は標準エラーの先頭 2000 字だけを見る
 /// (Python のトレースバックの深い所にたまたま入った語で、恒久的な失敗を一時的と読まないため)。
+/// 1 日の上限は、混雑と同じ語(`quota`・`429`)も含むので、先に見分ける。
 pub fn classify_stderr(stderr: &str, code: Option<i32>) -> LlmError {
     let head: String = stderr.chars().take(2000).collect();
-    let kind = if busy_re().is_match(&head) {
+    let kind = if daily_limit_re().is_match(&head) && busy_re().is_match(&head) {
+        FailureKind::DailyLimit
+    } else if busy_re().is_match(&head) {
         FailureKind::Busy
     } else {
         FailureKind::Permanent
@@ -498,6 +514,29 @@ mod tests {
             assert_eq!(e.kind, FailureKind::Permanent, "{s}");
             assert!(!e.is_transient());
         }
+    }
+
+    #[test]
+    fn classify_separates_the_daily_limit_from_other_quota_errors() {
+        // 実測(2026-11-15)の標準エラー。毎分の上限や、ただの混雑は、これまでどおり Busy。
+        let daily = [
+            "Error: You exceeded your current quota. Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 20, model: gemini-3.6-flash, description: Generate content requests per day limit exceeded on Free Tier. Please retry in 2h38m48s",
+            "Error: 429 RESOURCE_EXHAUSTED quotaId: GenerateRequestsPerDayPerProjectPerModel-FreeTier",
+        ];
+        for s in daily {
+            let e = classify_stderr(s, Some(1));
+            assert_eq!(e.kind, FailureKind::DailyLimit, "{s}");
+            assert!(
+                e.is_transient(),
+                "1 日の上限も、時間がたてば直る失敗に数える"
+            );
+        }
+        let per_minute =
+            "Error: 429 RESOURCE_EXHAUSTED quotaId: GenerateRequestsPerMinutePerProjectPerModel-FreeTier";
+        assert_eq!(classify_stderr(per_minute, Some(1)).kind, FailureKind::Busy);
+        // 上限の語が無い失敗(キーの未設定など)に、`per day` が文脈で出ても、Permanent のまま。
+        let key = "Error: No key found - set it. (rate: 3 per day of use is typical)";
+        assert_eq!(classify_stderr(key, Some(1)).kind, FailureKind::Permanent);
     }
 
     #[test]
