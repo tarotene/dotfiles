@@ -110,6 +110,15 @@ fn parse_repo(s: &str) -> Result<String, String> {
     }
 }
 
+/// 本文の語に、オプションの綴り(`--ref`・`--repo`・`--ref=…`・`--repo=…`)があれば、その語。
+/// 本文の末尾に `--ref 849` と書くと、番号が付かず、本文の一部としてそのまま記録される(追記のみの決まりで、
+/// 直すには訂正の行が要る。F74)。本文に書く言及は、`` `--ref` `` のようにバッククォートで囲む(語が `--ref` と一致しなくなる)。
+fn option_spelling(text: &str) -> Option<&str> {
+    text.split_whitespace().find(|w| {
+        matches!(*w, "--ref" | "--repo") || w.starts_with("--ref=") || w.starts_with("--repo=")
+    })
+}
+
 fn add_cmd(args: &[String]) -> Result<(), String> {
     let kind_s = args.first().ok_or_else(usage)?;
     let kind = Kind::parse(kind_s).ok_or_else(|| {
@@ -127,14 +136,24 @@ fn add_cmd(args: &[String]) -> Result<(), String> {
         match a.as_str() {
             "--ref" => {
                 let v = value(&mut it, "--ref")?;
+                // `NonZeroU64` で、0 を型で受け付けない。`--ref 0` は、存在しない `<repo>#0` を作業ログに付けた(F47)。
                 number = Some(
                     v.trim_start_matches('#')
-                        .parse::<u64>()
-                        .map_err(|_| format!("--ref は Issue・PR の番号: '{v}'"))?,
+                        .parse::<std::num::NonZeroU64>()
+                        .map_err(|_| format!("--ref は 1 以上の Issue・PR の番号: '{v}'"))?
+                        .get(),
                 );
             }
             "--repo" => repo = Some(parse_repo(value(&mut it, "--repo")?)?),
-            other => text.push(other),
+            other => {
+                if let Some(w) = option_spelling(other) {
+                    return Err(format!(
+                        "本文に、オプションの綴り '{w}' が入っている。番号・リポジトリは、本文の外のオプション(`--ref N`・`--repo owner/repo`)で渡す。\
+本文でオプションに言及するときは、`{w}` のようにバッククォートで囲む"
+                    ));
+                }
+                text.push(other)
+            }
         }
     }
     // mail の出典は本文の印で、リポジトリには結びつかない(作業ディレクトリから参照を付けない)。

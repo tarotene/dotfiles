@@ -82,6 +82,14 @@ const S20: Duration = Duration::from_secs(20);
 /// 規則の表。並びは、まとめた結果の理由の並びになる。
 pub static RULES: &[Rule] = &[
     // ---- PreToolUse(deny が基本。例外は docs/agents/hook-router.md の条件 1)
+    // サブエージェントへの指示に、未置換の雛形の穴(`{{RANGE}}` など)が残っていれば拒否する(F55)。
+    Rule {
+        node: "agent-prompt-guard",
+        event: Event::Pre,
+        tools: Tools::Named(&["Agent", "Task"]),
+        budget: S10,
+        run: |agent, raw| crate::agent_prompt_guard::hook(agent, raw),
+    },
     Rule {
         node: "git-stash-guard",
         event: Event::Pre,

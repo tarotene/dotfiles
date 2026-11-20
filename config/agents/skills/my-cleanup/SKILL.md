@@ -380,7 +380,7 @@ ADR-0027 に従い単一チェーンに積む。手順・`Stack:` 行・段ご�
 
 その項目を含む**段**の PR 作成(`gh pr create` 成功)の直後に、対処した気づきの状態を
 `~/.claude/hooks/issue-inbox --set-status "<title>" <状態> [url] --repo <owner/repo> [--reason <理由>]` で変える
-(第 1 引数は、ノートの `title` の完全一致か、`--list-open --json` の `note`。長い題名は `note` で指す。ノートの直接編集は不変で禁止)。
+(第 1 引数は、ノートの `title` の完全一致か、`--list-open --json` の `note`。長い題名は `note` で指す。長い題名のノートは、名前の末尾のハッシュ `~<8 桁>` だけでも指せる。ノートの直接編集は不変で禁止)。
 
 | 裁定 | 状態 | url |
 |---|---|---|
