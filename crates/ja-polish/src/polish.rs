@@ -39,6 +39,13 @@ fn pending_indexes(
     baseline: Option<&str>,
     records: &HashSet<String>,
 ) -> Vec<usize> {
+    // 文書の先頭の front matter が `ja-polish: skip` を宣言していれば、この文書は書き直しも関所も飛ばす。
+    // 書き直してはいけない文書(第三者の問題文の逐語の写し、本人のメモ、生成物、追記専用の記録)の逃げ道を、
+    // セッション全体の環境変数でなく、文書ごとの宣言に置く(F19・F38・F58)。ここは書き直し(`polish`)・
+    // Stop の関所・`--check`・投稿の関所が共通で通る入口なので、宣言はすべての経路に効く。
+    if skip_declared(blocks) {
+        return Vec::new();
+    }
     // 基点は、文書と同じ単位(箇条書き・番号付きは項目ごと)で分ける。
     let base: Option<HashSet<String>> = baseline.map(|b| {
         blocks::split_with_items(b)
@@ -60,6 +67,30 @@ fn pending_indexes(
         })
         .map(|(i, _)| i)
         .collect()
+}
+
+/// 文書の先頭の front matter に、`ja-polish: skip` の宣言があるか。値の大文字・小文字と、引用符は問わない。
+/// front matter の外(本文)に同じ行があっても、宣言とは読まない。
+fn skip_declared(blocks: &[Block]) -> bool {
+    let Some(first) = blocks.first() else {
+        return false;
+    };
+    if !first.verbatim || first.text.trim_start().lines().next().map(str::trim_end) != Some("---") {
+        return false;
+    }
+    first
+        .text
+        .trim_start()
+        .lines()
+        .skip(1)
+        .take_while(|l| l.trim_end() != "---")
+        .any(|l| {
+            l.trim().strip_prefix("ja-polish:").is_some_and(|v| {
+                v.trim()
+                    .trim_matches(['"', '\''])
+                    .eq_ignore_ascii_case("skip")
+            })
+        })
 }
 
 /// 伏せ字を除いて、日本語の字が [`MIN_JP_CHARS`] 以上ある段落か。
@@ -896,6 +927,42 @@ mod tests {
         );
         assert_eq!(calls[3].thinking, None, "予備には思考量を渡さない");
         assert_eq!(r.entries[0].model, "fb", "記録には答えたモデルを書く");
+    }
+
+    #[test]
+    fn a_front_matter_skip_declaration_exempts_the_document_everywhere() {
+        // F19・F38・F58: 書き直してはいけない文書は、front matter の宣言で、書き直しも関所も飛ばす。
+        let body = "第三者の問題文を逐語で写した段落です。\n";
+        let declared = format!("---\ntitle: 問題\nja-polish: skip\n---\n\n{body}");
+        assert!(pending(&declared, None, &HashSet::new()).is_empty());
+        // 書き直しの本体も、モデルを呼ばず、文書を変えない。
+        let fake = Fake::new(vec![]);
+        let r = run(&declared, None, &fake);
+        assert!(fake.calls().is_empty(), "宣言した文書は、モデルに送らない");
+        assert_eq!(r.text, declared);
+        assert!(r.paras.is_empty() && r.entries.is_empty());
+        // 値の大文字・小文字と、引用符は問わない。
+        for v in ["Skip", "\"skip\"", "'SKIP'"] {
+            let t = format!("---\nja-polish: {v}\n---\n\n{body}");
+            assert!(pending(&t, None, &HashSet::new()).is_empty(), "{v}");
+        }
+    }
+
+    #[test]
+    fn a_skip_line_is_not_a_declaration_outside_the_front_matter_or_with_another_value() {
+        let body = "通常の文書の段落です。\n";
+        // 宣言の無い front matter は、対象のまま。
+        let plain = format!("---\ntitle: 通常\n---\n\n{body}");
+        assert_eq!(pending(&plain, None, &HashSet::new()).len(), 1);
+        // 別の値は、宣言でない。
+        let other = format!("---\nja-polish: enable\n---\n\n{body}");
+        assert_eq!(pending(&other, None, &HashSet::new()).len(), 1);
+        // front matter の外(本文)の同じ行は、宣言と読まない。
+        let in_body = format!("{body}\nja-polish: skip\n");
+        assert_eq!(pending(&in_body, None, &HashSet::new()).len(), 1);
+        // 閉じる `---` の後ろ(本文側)の行も、宣言と読まない。
+        let after = format!("---\ntitle: 通常\n---\nja-polish: skip\n\n{body}");
+        assert_eq!(pending(&after, None, &HashSet::new()).len(), 1);
     }
 
     #[test]
