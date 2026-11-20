@@ -899,6 +899,25 @@ mod tests {
     }
 
     #[test]
+    fn quoted_words_never_reach_the_model_and_survive_verbatim() {
+        // F8・F18: 「…」の中の逐語の引用は、伏せ字にして送る。モデルは見ず、最終の本文に逐語で残る。
+        let text =
+            "報告では「することができる」という原文の言い回しを引いたことを説明する段落です。\n";
+        let fake = Fake::new(vec![ok(
+            "<para n=\"1\">報告では ⟦P0⟧ という原文の言い回しを引いたことを説明する段落だ。</para>",
+        )]);
+        let r = run(text, None, &fake);
+        let calls = fake.calls();
+        assert!(
+            !calls[0].user.contains("することができる"),
+            "{}",
+            calls[0].user
+        );
+        assert!(r.text.contains("「することができる」"), "{}", r.text);
+        assert_eq!(r.paras[0].status, Status::Polished);
+    }
+
+    #[test]
     fn the_daily_limit_goes_straight_to_the_fallback_without_retrying() {
         // F6: 無料枠の 1 日の上限は、同じモデルへ再依頼しても通らない。主を 1 回だけ送って、予備へ移る。
         let text = "一つ目の段落です。\n";
