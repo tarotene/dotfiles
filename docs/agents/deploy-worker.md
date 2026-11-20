@@ -4,8 +4,8 @@
 決定: `docs/adr/1553-deploy-worker-action.md`
 走る場所: サイトのリポジトリの GitHub Actions(`uses: tarotene/dotfiles/.github/actions/deploy-worker@main`)
 
-入力と保存を持つ app(Worker + D1)は、[`personal-web-app.md`](personal-web-app.md)(決定は `docs/adr/1660-personal-web-app-standard.md`)。
-その app が使う入力 `d1-database`(配信の前にマイグレーションを適用する)は、この action が持つ。配信のあとに、リポジトリの
+入力と保存の機能を持つ app(Worker + D1)は [`personal-web-app.md`](personal-web-app.md)(決定は `docs/adr/1660-personal-web-app-standard.md`)。
+その app が使う入力 `d1-database`(配信前にマイグレーションを適用する)は、この action が持つ。配信後に、リポジトリの
 About の Website 欄を読み戻し、空なら警告する(静的サイトも同じ)。
 
 ## どちらに置くか
