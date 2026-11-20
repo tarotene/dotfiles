@@ -132,6 +132,33 @@ pub fn lock_owner(clone: &Path) -> Option<u32> {
     process_alive(pid).then_some(pid)
 }
 
+/// 複製の持ち主の記録の置き場(複製の隣の `<clone>.owner`)。起動するラッパーが、複製を使うと決めたとき、自分の pid を書く。
+/// Playwright MCP は、ブラウザを最初の操作まで起動しないので、ラッパーが同期を終えてから Firefox が `lock` を張るまでの間
+/// (分単位になりうる)は、`lock` だけでは使用中と分からない。その間に別のラッパーが同じ複製を選ぶと、あとから起動した
+/// Firefox が `already running` で失敗した(F62)。持ち主の pid が生きている間は使用中とする。
+pub fn owner_path(clone: &Path) -> PathBuf {
+    let mut s = clone.as_os_str().to_owned();
+    s.push(".owner");
+    PathBuf::from(s)
+}
+
+/// 複製の持ち主の記録が、自分以外の生きた process(ラッパー)を指していれば、その pid。記録が無い・読めない・
+/// 死んだ pid・自分の pid のときは `None`(使用中ではない)。pid は、npx を `exec` で引き継ぐラッパー自身なので、
+/// その MCP が動く間は生きている。
+pub fn live_owner(clone: &Path, me: u32) -> Option<u32> {
+    let pid: u32 = fs::read_to_string(owner_path(clone))
+        .ok()?
+        .trim()
+        .parse()
+        .ok()?;
+    (pid != me && process_alive(pid)).then_some(pid)
+}
+
+/// 複製の持ち主として、`pid` を記録する。書けなくても止めない(持ち主の記録は、重なりを避ける補助)。
+pub fn write_owner(clone: &Path, pid: u32) {
+    let _ = fs::write(owner_path(clone), format!("{pid}\n"));
+}
+
 /// 同時に使える「世代」(複製が使用中のときに作る、`<clone>-<pid>` の追加の複製)の
 /// 上限。使用中の世代がこれだけあると、これ以上は作らず診断して終わる
 /// (使用中でない世代は起動のたびに消すので、世代はこれ以上増え続けない)。
@@ -279,6 +306,28 @@ mod tests {
         assert!(process_alive(std::process::id()));
         assert!(!process_alive(i32::MAX as u32));
         assert!(!process_alive(u32::MAX));
+    }
+
+    #[test]
+    fn live_owner_is_another_alive_wrapper_only() {
+        let d = tempfile::tempdir().unwrap();
+        let clone = d.path().join("firefox");
+        let me = std::process::id();
+        // 記録が無い: 使用中ではない。
+        assert_eq!(live_owner(&clone, me), None);
+        // 生きた別の process(ここでは親)を指す: その pid。
+        let other = std::os::unix::process::parent_id();
+        write_owner(&clone, other);
+        assert_eq!(live_owner(&clone, me), Some(other));
+        // 自分の pid: 使用中ではない(自分が持ち主)。
+        write_owner(&clone, me);
+        assert_eq!(live_owner(&clone, me), None);
+        // 死んだ pid・読めない内容: 使用中ではない。
+        write_owner(&clone, i32::MAX as u32);
+        assert_eq!(live_owner(&clone, me), None);
+        fs::write(owner_path(&clone), "garbage").unwrap();
+        assert_eq!(live_owner(&clone, me), None);
+        assert!(owner_path(&clone).ends_with("firefox.owner"));
     }
 
     #[test]

@@ -88,6 +88,15 @@ reconcile が次の switch で `~/.claude.json` 側の該当エントリ(認証�
      起動のたびに消し、使用中の世代が 8 つ(`MAX_GENERATIONS`)に達していたら、世代を
      作らず診断して exit 1 する。`lock` が無い・死んだ pid を指すときは、従来どおり
      複製へ同期する。`--sync-only` は世代を作らず、使用中の複製の同期を飛ばす。
+     **持ち主の記録**(F62): Playwright MCP は、ブラウザを最初の操作まで起動しない。ラッパーが同期を終えてから
+     Firefox が `lock` を張るまでの間(分単位になりうる)は、`lock` だけでは使用中と分からず、その間に別のセッションの
+     ラッパーが同じ複製を選ぶと、あとから起動した Firefox が `already running` で失敗する。そこで、複製を使うと決めた
+     ラッパーは、複製の隣の `<複製>.owner` に自分の pid を書く。`.owner` の pid が自分以外の生きた process なら、`lock` が無くても
+     使用中として、世代へ移る(`live_owner`)。持ち主のラッパーは、npx を `exec` で引き継ぐので、その MCP が動く間は生きている
+     (そのセッションが閉じて死ぬまで、複製はそのセッションのもの。同時に使えるのは、複製 1 つと世代 8 つ)。
+     2026-11-16 の失敗(`~/.cache/playwright-mcp-profile/firefox` を別セッションの Firefox が占有して起動できない)は、この仮説から
+     導き、`.owner` が生きているのに `lock` が無い複製を、同じ複製で起動する試験で再現した(2026-11-20。原因が
+     これだけかは、実際の失敗の記録が無く未確認)。
   3. `npx @playwright/mcp@<pin> --browser moz-firefox --user-data-dir <複製>` を exec する。
      Linux は PATH の `firefox` を `--executable-path` に渡す(Playwright の既定は
      `/snap/bin/firefox` で、apt の Firefox では合わない)。

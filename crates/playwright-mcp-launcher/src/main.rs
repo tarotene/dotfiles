@@ -26,9 +26,9 @@
 //! 設計と根拠: docs/claude/claude-mcp-servers.md
 
 use playwright_mcp_launcher::{
-    default_profile_from_installs, find_in_path, generation_path, lock_owner, npx_args, overlaps,
-    parse_args, parse_generation_pid, plan_generations, process_alive, rsync_args, Args,
-    Generation, InstallsError, MAX_GENERATIONS,
+    default_profile_from_installs, find_in_path, generation_path, live_owner, lock_owner, npx_args,
+    overlaps, parse_args, parse_generation_pid, plan_generations, process_alive, rsync_args,
+    write_owner, Args, Generation, InstallsError, MAX_GENERATIONS,
 };
 use process_control::command_exists;
 use std::fs::{self, DirBuilder, OpenOptions};
@@ -182,7 +182,10 @@ fn sync(args: &Args, source: &Path) -> Result<PathBuf, Failure> {
 
     let generations = prune_generations(&clone);
 
-    let target = match lock_owner(&clone) {
+    // 使用中の判定は 2 つ: Firefox の `lock`(起動中)と、持ち主の記録(ラッパーが複製を使うと決めてから、Firefox が
+    // 起動するまでの間も含む。F62)。
+    let me = std::process::id();
+    let target = match lock_owner(&clone).or_else(|| live_owner(&clone, me)) {
         Some(pid) if args.sync_only => {
             eprintln!(
                 "playwright-mcp-launcher: 複製の Firefox が使用中(pid {pid})のため、同期を飛ばす"
@@ -207,7 +210,11 @@ fn sync(args: &Args, source: &Path) -> Result<PathBuf, Failure> {
             check_overlap(&source, &generation)?;
             generation
         }
-        None => clone,
+        None => {
+            // この複製を使うと決めた。Firefox が `lock` を張る前に、別のラッパーが同じ複製を選ばないよう、記録する。
+            write_owner(&clone, me);
+            clone
+        }
     };
 
     let status = Command::new(&args.rsync)
