@@ -50,8 +50,19 @@ const POLL_BASE: &str = "CI を `until` / `while` / `sleep` / `watch` のポー�
 現在の状態を 1 回読むだけなら `gh pr checks <PR番号> --required`(ループに入れない)。\
 PR に紐づかない workflow run(release など)を待つのが、やむを得ない典型です。";
 
+/// 逃げ道の前置(`CI_WAIT_GUARD_ALLOW=1`)は、Claude Code が除外パターンの照合の前に剥がす変数の外で、`gh` は
+/// sandbox の外で動かす道具(sandbox.excludedCommands)なので、前置を足した呼び出しは除外に合わず、sandbox の
+/// 中に残る(`gh` は HTTP 401。`sandbox-compound-guard` もこの形を止める)。外で動かすには、承認を得て
+/// `dangerouslyDisableSandbox: true` で呼ぶ(F15。外の呼び出しは `sandbox-compound-guard` が止めない)。
+const OUTSIDE_SANDBOX_NOTE: &str = "この前置を足した `gh` の呼び出しは、`gh` の除外パターン(sandbox の外で動かす)に合わず、\
+sandbox の中に残って HTTP 401 で失敗し、`sandbox-compound-guard` にも止められます。使うときは、承認を得て \
+`dangerouslyDisableSandbox: true` で呼んでください(外の呼び出しは `sandbox-compound-guard` が止めません)。";
+
 fn with_how_to(base: &str) -> String {
-    format!("{base}{}", CI_WAIT_GUARD.how_to().unwrap_or_default())
+    format!(
+        "{base}{}{OUTSIDE_SANDBOX_NOTE}",
+        CI_WAIT_GUARD.how_to().unwrap_or_default()
+    )
 }
 
 fn watch_hint() -> String {
@@ -198,6 +209,16 @@ mod tests {
         ] {
             let r = decide(c, false);
             assert_eq!(r.as_deref(), Some(watch_hint().as_str()), "{c}");
+        }
+    }
+
+    #[test]
+    fn the_hint_says_the_escape_prefix_must_run_outside_the_sandbox() {
+        // F15: `CI_WAIT_GUARD_ALLOW=1` の前置は、`gh` の除外パターンに合わず sandbox の中に残る。外で動かす手順を添える。
+        for hint in [watch_hint(), poll_hint()] {
+            assert!(hint.contains("CI_WAIT_GUARD_ALLOW=1"), "{hint}");
+            assert!(hint.contains("dangerouslyDisableSandbox: true"), "{hint}");
+            assert!(hint.contains("sandbox-compound-guard"), "{hint}");
         }
     }
 
