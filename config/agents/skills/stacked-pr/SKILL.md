@@ -121,6 +121,11 @@ description: セッション内で複数の PR を作るとき、依存関係を
    本文を `pr-description` スキルに沿って書く前の PR ができてしまう。
    最下段から順に、作成済みの全段を漏れなく並べる(`pr-gate` の `G_stack` が
    未リンクを検出するが、検出は一次の手段ではない。#836)。
+   **`gh stack link` は、PR のあるリポジトリの worktree を cwd にして実行する。** 別のリポジトリ(セッションの
+   プロジェクトの外)の stack をまとめるときは、cwd のリポジトリで PR を探して `failed to look up PR #N: Could not
+   resolve to a PullRequest` で落ちる。`-R` も PR の URL も効かない(2026-11-12、2 回失敗。そのリポジトリの worktree を
+   cwd にして、`SANDBOX_COMPOUND_GUARD_ALLOW=1` 付き・承認つきの `dangerouslyDisableSandbox` で実行して通った)。`gh stack`
+   拡張の仕様で、こちらから直せない。
 
 ## 4. 下位段への修正が入ったときの追従
 

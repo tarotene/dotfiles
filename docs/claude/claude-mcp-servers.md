@@ -158,6 +158,16 @@ reconcile が次の switch で `~/.claude.json` 側の該当エントリ(認証�
   で `~/.cache/playwright-mcp` に向ける。ただし screenshot に `filename` を明示すると cwd
   側に落ちる(0.0.83 の README)ので、`.playwright-mcp/` は `home/modules/git.nix` の
   グローバル ignore にも入れてある。
+- **`filename` を渡すときは、`~/.cache/playwright-mcp/` 配下の絶対パスにする。scratchpad は渡さない**(F14)。`filename` が
+  書ける許可ルートは `~/.cache/playwright-mcp` と作業ツリーだけであり、scratchpad は許可の対象外となるため、
+  `File access denied … outside allowed roots` になるか、相対パスで作業ツリーの直下に書かれる(2026-11-15、`li-list.yml`・
+  `li-sent.json` が作業ツリーに落ちたため、scratchpad へ移動した)。`browser_snapshot` の `filename` を許可ルート配下の絶対パスで
+  使う手順は、`config/agents/reference/browser-operations.md`「返信を下書きする前に、会話の全文を保存する」を参照。
+- **`browser_evaluate` の `filename` は使わず、戻り値(結果の文字列)を `Write` で書く**(F61・F76)。許可ルート配下の無害な名前であっても、
+  bleep の `repo-ref` の検査が `filename` の値を非公開名との一致として拒否した(2026-11-16 と 11-17、別々の名前で同じ
+  `term_hash`。該当する語は各自の端末でしか確認できない)。ツール自身の許可ルート配下であるため、パスの共通部分への偽陽性が疑われるが
+  未確認であり、修正対象は bleep 側(本リポジトリの外)となる。`browser_snapshot` の `filename` が同じ検査に当たるかは、
+  この実測では分かっていない(未確認)。
 - **「unsupported command-line flag」の帯は許容する(Chromium で動かしていた間の裁定)。
   Firefox に替えた後は出ない。** ブラウザの起動のたびに出る帯の
   原因は、サーバー自身が Chromium 系に付ける `--disable-blink-features=AutomationControlled`

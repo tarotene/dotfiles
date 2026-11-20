@@ -326,6 +326,11 @@ Preserve the compatibility contracts and removal conditions in the migration doc
   tests run in CI's `rust` job through `nix develop`. So the repo-structure and dependency-graph tests are
   reproduced only by `cargo test --workspace`. Inside the sandbox it shows known reds (sockets, gpg-agent;
   see `config/claude/CLAUDE.md`), so read which crates failed, not the exit code.
+- **Before pushing a change to any Nix file (`home/**/*.nix`, `flake.nix`, …), run `nix fmt -- --fail-on-change`.**
+  CI's `Nix flake check` job runs exactly that and fails on an unformatted file, and the clippy/doc/test conditions
+  above do not cover it (a `codex.nix` formatting violation was noticed only after the PR was out, 2026-11-15).
+  Run it as a single command inside the repository root; it rewrites the files in place when it finds a difference,
+  so commit the result before pushing.
 - `nix build .#homeConfigurations.<host>.activationPackage --no-link` — build a host.
 - `hms` — canonical apply (pushed main); `hms .` applies the current
   checkout/worktree for pre-push verification (wraps switch + daemon-reload +
