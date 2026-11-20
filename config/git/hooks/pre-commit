@@ -6,7 +6,10 @@ set -euo pipefail
 # provisions a fresh worktree per task, so a commit landing on main/master
 # usually means the wrong pane/cwd was used — the commit is real and easy to
 # miss until it is already ahead of origin. Detached HEAD (symbolic-ref
-# fails) is not a branch commit, so it is let through untouched.
+# fails) is not a branch commit, so it is let through untouched. The root
+# commit of a new repository (HEAD does not exist yet) is let through too: a
+# repository has to start with a commit on its first branch (create-repo.sh
+# makes it), and there is no earlier history for a "direct commit" to hide in.
 #
 # --no-verify is deliberately NOT the escape hatch here: it would also skip
 # the chained repo-local pre-commit below (ruff/mypy/etc. in other repos).
@@ -15,7 +18,7 @@ set -euo pipefail
 branch=$(git symbolic-ref --short HEAD 2>/dev/null || true)
 case "$branch" in
     main | master)
-        if [[ "${GIT_ALLOW_MAIN_COMMIT:-0}" != 1 ]]; then
+        if [[ "${GIT_ALLOW_MAIN_COMMIT:-0}" != 1 ]] && git rev-parse --verify --quiet HEAD >/dev/null 2>&1; then
             echo "error: Direct commit blocked on branch '${branch}'" >&2
             echo "" >&2
             echo "  main/master is meant to move by merge (PR), not by direct commit." >&2
