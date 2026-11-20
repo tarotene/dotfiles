@@ -1,8 +1,9 @@
 //! モデルに壊させたくない記法を、送る前に伏せ字(`⟦P0⟧`)に置き換え、戻ってきた文で
 //! 同じ伏せ字が残っているかを照合する。
 //!
-//! 伏せるもの: 見出しの行、`Closes #N` などの参照の行、末尾の生成元の行、`No-Issue:` などの
-//! タグの接頭辞、インラインコード、HTML タグ・自動リンク、リンクの宛先、URL、Issue/PR の参照。
+//! 伏せるもの: 見出しの行、`>` の引用行、`Closes #N` などの参照の行、末尾の生成元の行、`No-Issue:` などの
+//! タグの接頭辞、`「…」`・`『…』` の引用(本人の言葉・原文の逐語。書き換えられると、保存した原文との照合が
+//! 落ちる。F8・F18)、インラインコード、HTML タグ・自動リンク、リンクの宛先、URL、Issue/PR の参照。
 //! フェンスと front matter は、段落の分割の時点で対象から外している([`crate::blocks`])。
 //!
 //! 見出しの行を丸ごと伏せるのは、PR 本文の `## 課題` や `## 要確認` のように、別の検査が
@@ -35,8 +36,10 @@ macro_rules! lazy_re {
 // 行ごとに丸ごと伏せるもの。
 lazy_re!(
     whole_line_re,
-    r"(?m)^[ \t]*(?:#{1,6}[ \t].*|🤖 Generated with .*|Co-Authored-By:.*|Signed-off-by:.*|(?:Closes|Fixes|Resolves)[ \t]+\S.*)$"
+    r"(?m)^[ \t]*(?:#{1,6}[ \t].*|>.*|🤖 Generated with .*|Co-Authored-By:.*|Signed-off-by:.*|(?:Closes|Fixes|Resolves)[ \t]+\S.*)$"
 );
+// 逐語の引用。入れ子は伏せず(内側の対だけが対象)、600 字までの範囲に限る(対にならない括弧が、遠くの括弧まで飲まないため)。
+lazy_re!(quote_re, r"「[^「」]{0,600}」|『[^『』]{0,600}』");
 // 接頭辞だけ伏せて、後ろの理由は書き直しの対象に残すもの。
 lazy_re!(
     tag_prefix_re,
@@ -75,6 +78,11 @@ pub fn mask(text: &str) -> Masked {
         .replace_all(&t, |c: &Captures| m.put(&c[0]))
         .into_owned();
     t = tag_prefix_re()
+        .replace_all(&t, |c: &Captures| m.put(&c[0]))
+        .into_owned();
+    // 引用は、コード片・URL より先に伏せる。引用の中のコード片が先に伏せ字になると、引用の伏せ字の元の文字列に
+    // 伏せ字が入り、`unmask` の 1 回の置換では戻らない。
+    t = quote_re()
         .replace_all(&t, |c: &Captures| m.put(&c[0]))
         .into_owned();
     t = mask_code_spans(&t, &mut m);
@@ -264,6 +272,37 @@ mod tests {
         let m = round_trip("[設計メモ](docs/design.md) を読む。");
         assert!(m.text.starts_with("[設計メモ]"));
         assert!(!m.text.contains("docs/design.md"));
+    }
+
+    #[test]
+    fn masks_quoted_spans_verbatim_and_restores() {
+        // F8・F18: 「…」の中は、書き直しに渡さない。「することができる」が「できる」に書き換わる事故を、構造で消す。
+        let m = round_trip(
+            "彼は「することができる」と述べ、『再使用をすることができるもの』も挙げた。",
+        );
+        assert!(!m.text.contains("することができる"), "{}", m.text);
+        assert!(!m.text.contains("再使用"));
+        assert!(m.text.contains("と述べ"));
+        assert_eq!(m.slots.len(), 2);
+        // 引用の中のコード片は、引用の伏せ字の中にそのまま入る(先にコード片を伏せない)。
+        let m = round_trip("手順は「`cargo test` を実行する」と書いた。");
+        assert_eq!(m.slots, vec!["「`cargo test` を実行する」".to_string()]);
+        // 対にならない括弧は、そのまま。入れ子は内側の対だけを伏せる。
+        let m = round_trip("閉じていない「括弧の文です。");
+        assert!(m.slots.is_empty());
+        let m = round_trip("外側「内側「深い」の外」です。");
+        assert_eq!(m.slots, vec!["「深い」".to_string()]);
+    }
+
+    #[test]
+    fn masks_blockquote_lines_whole() {
+        let m =
+            round_trip("前の文です。\n> 引用された原文です。\n> 二行目の原文です。\n後の文です。");
+        assert!(!m.text.contains("原文"), "{}", m.text);
+        assert!(m.text.contains("前の文です。") && m.text.contains("後の文です。"));
+        assert_eq!(m.slots.len(), 2);
+        // 引用の行は伏せ字になって行頭に残る。書き直しで動くと、照合が外す(`line_head_ids`)。
+        assert_eq!(line_head_ids(&m.text).len(), 2);
     }
 
     #[test]
