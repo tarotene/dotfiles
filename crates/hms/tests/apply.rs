@@ -93,6 +93,18 @@ f="$STUB_DIR/meta/$(printf %s "$ref" | tr '/:+' '___')"
 [[ -f $f ]] && { cat "$f"; exit 0; }
 exit 1"#,
         );
+        // git: `ls-remote` だけに答える(F65 の、リモートの main の先頭との照合)。REMOTE_MAIN_HEAD が無ければ
+        // 失敗する(オフラインと同じ。照合を飛ばして続ける)。calls.log には書かない(適用の呼び出し列の検査を乱さない)。
+        exe(
+            &s.join("git"),
+            r#"printf 'git %s\n' "$*" >> "$STUB_DIR/git.log"
+if [[ $1 == ls-remote ]]; then
+  [[ -n ${REMOTE_MAIN_HEAD:-} ]] || exit 1
+  printf '%s\trefs/heads/main\n' "$REMOTE_MAIN_HEAD"
+  exit 0
+fi
+exit 1"#,
+        );
         exe(
             &s.join("home-manager"),
             // 成功した switch は profile と current-home を世代へ向ける(実物は `nix-env --set` と
@@ -284,6 +296,72 @@ fn default_apply_runs_the_whole_runbook() {
     assert!(pos("home-manager") < pos("daemon-reload"));
     assert!(pos("daemon-reload") < pos("restart"));
     assert!(pos("restart") < pos("is-active"));
+}
+
+/// F65: 引数なしの `hms` で、nix が解決した main の revision が、リモートの main の先頭と違えば(匿名の GitHub API の
+/// 上限でキャッシュに戻った疑い)、switch せずに止まる。
+#[test]
+fn default_apply_stops_when_the_resolved_main_is_not_the_remote_head() {
+    let t = T::new();
+    t.meta(MAIN, r#"{"revision":"deadbeef"}"#);
+    let o = t.run(&[], &[("REMOTE_MAIN_HEAD", "abcdef0123")]);
+    assert_eq!(o.status.code(), Some(1), "{}", t.diag(&o));
+    let e = err(&o);
+    assert!(e.contains("deadbeef") && e.contains("abcdef0123"), "{e}");
+    assert!(e.contains("適用を止めました"), "{e}");
+    assert!(
+        t.hm_call().is_none(),
+        "switch していない: {:?}",
+        t.hm_call()
+    );
+    assert!(t.record().is_none(), "適用の記録も書かない");
+}
+
+#[test]
+fn default_apply_continues_when_the_remote_head_matches_or_cannot_be_read() {
+    // 一致すれば、そのまま適用する。
+    let t = T::new();
+    t.meta(MAIN, r#"{"revision":"deadbeef"}"#);
+    let o = t.run(&[], &[("REMOTE_MAIN_HEAD", "deadbeef")]);
+    assert!(o.status.success(), "{}", t.diag(&o));
+    assert!(out(&o).ends_with("Done.\n"));
+    // リモートの先頭を読めなければ(オフライン。REMOTE_MAIN_HEAD 無し)、照合を飛ばして続ける。
+    let t = T::new();
+    t.meta(MAIN, r#"{"revision":"deadbeef"}"#);
+    let o = t.run(&[], &[]);
+    assert!(o.status.success(), "{}", t.diag(&o));
+}
+
+/// F65 の対象は、main を追う引数なしの `hms` だけ。引数で ref を渡した適用は、main と違う版を意図した
+/// 正当な適用なので、照合しない(リモートの先頭と違っても、適用する)。
+#[test]
+fn an_explicit_remote_ref_is_not_checked_against_the_remote_main_head() {
+    let t = T::new();
+    t.meta(
+        &format!("{MAIN}/some-branch"),
+        r#"{"revision":"branchrev1"}"#,
+    );
+    let o = t.run(
+        &[format!("{MAIN}/some-branch").as_str()],
+        &[("REMOTE_MAIN_HEAD", "abcdef0123")],
+    );
+    assert!(o.status.success(), "{}", t.diag(&o));
+    assert_eq!(t.record().expect("record")["mode"], "explicit");
+    // git を呼ばない(ls-remote を呼ぶ必要が無い)。
+    let git_log = std::fs::read_to_string(t.stubs().join("git.log")).unwrap_or_default();
+    assert!(!git_log.contains("ls-remote"), "{git_log}");
+}
+
+#[test]
+fn wrapper_apply_stops_when_the_resolved_main_is_not_the_remote_head() {
+    let t = T::new();
+    t.marker("private-hub", WRAPPER);
+    t.meta(WRAPPER, WRAPPER_META);
+    t.meta(MAIN, r#"{"revision":"newrev"}"#);
+    let o = t.run(&[], &[("REMOTE_MAIN_HEAD", "abcdef0123")]);
+    assert_eq!(o.status.code(), Some(1), "{}", t.diag(&o));
+    assert!(err(&o).contains("abcdef0123"), "{}", err(&o));
+    assert!(t.hm_call().is_none());
 }
 
 /// `hms <path>`、wrapper 無し: refresh せず warn-dirty を切って path 単体を適用。

@@ -33,6 +33,19 @@ apply an hour-old main right after a merge, and still print `Done.` as if
 nothing were wrong. `hms .` skips this — a local path always reads the
 current tree, so there is nothing to refresh.
 
+`--refresh` itself can fall back silently: when the anonymous GitHub API rate
+limit (HTTP 403) is hit, nix prints `using cached version` and keeps the cached
+revision, so a bare `hms` right after a merge applied the previous main and
+still printed `Done.` (2026-11-17, F65). A bare `hms` therefore compares the
+revision nix resolved with the head of `refs/heads/main` read through `git
+ls-remote` (which does not use the anonymous API), and **stops without
+switching** when they differ, naming both revisions. Wait a moment and run
+`hms` again, or pass the revision explicitly (the dotfiles flake reference followed by `/<rev>`, as the error message prints it).
+When `git ls-remote` cannot be read (offline), the check is skipped and `hms`
+continues as before. Only a bare `hms` (the `default` mode below) is checked: an
+explicit ref (`hms .`, `hms <path>`, `hms github:…/<branch or rev>`) is a
+deliberate request for a version other than main, so it is applied as asked.
+
 For a local ref, `hms` instead passes `--option warn-dirty false` to the
 underlying `home-manager switch` — a local checkout's git tree is routinely
 dirty mid-session (that's the point of `hms .`), and without this nix repeats
@@ -104,6 +117,16 @@ leaves the previous record alone, and an unwritable record only prints a
 warning. `hms --follow` (next section) reads the record to tell a generation
 `hms` made from main apart from one it did not, without guessing from the
 commit.
+
+A verification generation (`explicit`) does not stay: a bare `hms` run by
+another session replaces it with main's (the `hms-follow` timer does not touch
+it: it only logs that it stops following a verification generation). In one
+session this happened three times while a fix was being verified, and the
+deployed `ja-polish` went back to the pre-fix version (F33, 2026-11-15).
+**Right before relying on a verification
+generation** (before the step that runs the code you just applied), read
+`~/.local/state/hms/last-apply.json` and check that `mode` is still `explicit`
+and `rev` is the one you applied; if not, apply it again with `hms .`.
 
 For a default apply, the record's `rev` is the public dotfiles revision
 resolved for this apply, rather than the wrapper flake's own revision or an

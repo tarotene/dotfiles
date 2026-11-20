@@ -920,6 +920,42 @@ fn print_help(r#ref: &str, wrapper_ref: &str) {
     );
 }
 
+/// `git ls-remote` で読む、リモートの main の先頭(`hms` の既定の適用が、`nix flake metadata --refresh` の
+/// 結果と照合する)。`git ls-remote` は匿名の GitHub API を使わないので、API の上限(403)に影響されない。読めなければ
+/// `None`(オフラインなど。照合を飛ばして続ける)。
+fn remote_main_head() -> Option<String> {
+    let url = format!(
+        "https://github.com/{}.git",
+        DEFAULT_REF.strip_prefix("github:")?
+    );
+    let out = capture(Command::new("git").args(["ls-remote", &url, "refs/heads/main"]))?;
+    let head = out.split_whitespace().next()?;
+    (head.len() >= 7 && head.bytes().all(|b| b.is_ascii_hexdigit()))
+        .then(|| head.to_ascii_lowercase())
+}
+
+/// 解決した main の revision が、リモートの main の先頭と違うか(F65)。`nix flake metadata --refresh` は、匿名の
+/// GitHub API の上限(403)に当たると、`using cached version` と 1 行出して、キャッシュの古い版に黙って戻る。
+/// どちらかが空なら、照合できないので違うとは言わない。
+pub fn resolved_main_is_stale(resolved: &str, remote_head: &str) -> bool {
+    !resolved.is_empty() && !remote_head.is_empty() && !resolved.eq_ignore_ascii_case(remote_head)
+}
+
+/// 引数なしの `hms`(main を追う適用)で、解決した main の revision をリモートの先頭と照合する。違えば、止める理由の文。
+/// 引数で ref を渡した適用(`hms .`・`hms <path>`・`hms github:…/<branch または rev>`)は、main と違う版を意図した正当な
+/// 適用なので、呼び出し側が呼ばない(`ApplyMode::Explicit`)。
+fn stale_main_reason(resolved: &str) -> Option<String> {
+    let head = remote_main_head()?;
+    resolved_main_is_stale(resolved, &head).then(|| {
+        format!(
+            "Error: nix が解決した main の revision ({resolved}) が、リモートの main の先頭 ({head}) と違います。\n\
+  匿名の GitHub API の上限(403)で `nix flake metadata --refresh` がキャッシュに戻り、1 つ前の版を当てる恐れがあります\n\
+  (2026-11-17 に、マージ直後の `hms` が 1 つ前の版を適用して `Done.` と出ました)。適用を止めました。\n\
+  少し待ってから `hms` をもう一度実行するか、版を指定して `hms {DEFAULT_REF}/{head}` を実行してください。"
+        )
+    })
+}
+
 /// `nix flake metadata --refresh --json <flake>` の revision(解決できなければ None)。
 fn refreshed_revision(flake: &str) -> Option<(String, String)> {
     let json =
@@ -1120,12 +1156,20 @@ fn apply(
     let ref_is_local = Path::new(&r#ref).exists();
     let ref_meta_json: String;
     let mut public_rev = None;
+    // main を追う適用(引数なしの `hms`)だけ、解決した main の revision をリモートの先頭と照合する。
+    let follows_main = apply_mode(ref_given, public_only) == ApplyMode::Default;
     if !ref_is_local {
         println!("==> nix flake metadata --refresh {}", r#ref);
         match refreshed_revision(&r#ref) {
             Some((json, rev)) => {
                 println!("==> applying revision {rev}");
                 if r#ref == DEFAULT_REF {
+                    if follows_main {
+                        if let Some(reason) = stale_main_reason(&rev) {
+                            eprintln!("{reason}");
+                            return ApplyOutcome::Done(1);
+                        }
+                    }
                     public_rev = Some(rev);
                 }
                 ref_meta_json = json;
@@ -1192,6 +1236,12 @@ fn apply(
             public_rev = Some(locked.clone());
             match refreshed_revision(DEFAULT_REF) {
                 Some((_, main_rev)) => {
+                    if follows_main {
+                        if let Some(reason) = stale_main_reason(&main_rev) {
+                            eprintln!("{reason}");
+                            return ApplyOutcome::Done(1);
+                        }
+                    }
                     if main_rev == locked {
                         println!(
                             "==> dotfiles revision {main_rev} (wrapper's lock already at this revision)"
@@ -1692,6 +1742,16 @@ pub fn main() -> ExitCode {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_resolved_main_differing_from_the_remote_head_is_stale_but_missing_data_is_not() {
+        // F65: 同じ版なら(大文字・小文字を問わず)古くない。違えば古い。どちらかが空なら、照合できないので古いと言わない。
+        assert!(!super::resolved_main_is_stale("abc1234", "abc1234"));
+        assert!(!super::resolved_main_is_stale("ABC1234", "abc1234"));
+        assert!(super::resolved_main_is_stale("abc1234", "def5678"));
+        assert!(!super::resolved_main_is_stale("", "def5678"));
+        assert!(!super::resolved_main_is_stale("abc1234", ""));
+    }
+
     use super::*;
 
     const WRAPPER: &str = "git+https://example.invalid/wrapper";
