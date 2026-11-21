@@ -120,6 +120,16 @@ D11 の「測って決める」を、コマンドにする。`ja-polish bench <�
 - 見本は 5 本(`docs/agents` の設計メモ。commit を固定する)。見本を入れ替えたとき、モデルが変わったときに、測り直す。
 - 測定の結果と、それで決めた既定の値は、この ADR の更新と、PR 本文に書く。
 
+### D16: 日本語の割合が低い段落は対象にせず、無料枠の 1 日の上限は件数を待たずに「動けない」とみなす
+
+2026-11-20 に、無料枠の 1 日の上限を超えたあとの Stop で、英語の ADR の段落(日本語は「先行例」「差分」のラベルの語だけ)まで整形を求められ、何も変わらない往復になった。原因は 2 つある。(1) 対象の判定は、日本語の字が 4 字以上あれば足りるので、英語の段落もラベルの語で対象になる。(2) D12 の「動けない」は、直近 5 件がすべて素通しの並びを要する。上限に当たった最初の往復では、書き直しの記録が並びに混ざっていて 5 件に届かない。
+
+- 対象の判定に、伏せ字と空白を除いた字のうち、日本語の字が 2 割以上、の条件を足す(`MIN_JP_SHARE` = 0.2、`jp_share`)。テストの例では、識別子を伏せ字にした日本語の文と箇条書きの項目は 2 割を超え、実際に当たった英語の段落は 2 割を大きく下回る。
+- 1 日の上限(`FailureKind::DailyLimit`)の素通しに、記録の印 `"daily_limit":true` を付ける。最後の 1 件がその印のある素通しで、1 時間以内なら、件数に関わらず「動けない」とみなす。混雑・時間切れの素通しには、この印を付けない(上限は次の再開まで通らず、混雑は待てば通りうるため)。印の無い古い記録は、これまでどおり読む。
+
+先行例なし: この ADR の D9・D12・D14 と、`docs/agents/ja-polish.md`、`crates/ja-polish/src/{blocks,polish,records}.rs` を読んだ。割合の閾値を持つ対象判定は、リポジトリの中に見つからなかった(`ratio` を探して、当たったのは `bench.rs` の集計だけ)。外部には、同じ形の先行例を探していない。
+軸: 検出のみ — 関所の誤爆を減らすだけで、整形されていない文書を表現不可能にはしない。
+
 ### 執行点
 
 - `crates/ja-polish/src/llm.rs` — 失敗の 3 種(`FailureKind`)と、標準エラーからの判定(`classify_stderr`)、`-o thinking_level` の受け渡し
@@ -132,6 +142,9 @@ D11 の「測って決める」を、コマンドにする。`ja-polish bench <�
 - `crates/ja-polish/src/style.rs` — prh の辞書の場所(`prh_path`、D13)
 - `crates/ja-polish/src/records.rs` — 期間内の、一時的な原因の素通しの割合(`transient_rate`、D14)
 - `crates/gate-failopen-advisory/src/main.rs` — 課金の検討の知らせ(`billing_line`、D14)
+- `crates/ja-polish/src/blocks.rs` — 日本語の割合(`MIN_JP_SHARE`・`jp_share`、D16)
+- `crates/ja-polish/src/polish.rs` — 対象の判定に割合を足す(`is_japanese`)、1 日の上限の素通しに印を渡す(`Skip`、D16)
+- `crates/ja-polish/src/records.rs` — 1 日の上限の印(`daily_limit`)と、それを見る「動けない」の判定(`unavailable`、D16)
 - `crates/ja-polish/src/bench.rs` — 見本の測定(`measure`・`render_table`、D15)
 - `crates/ja-polish/bench/samples.txt` — 固定の見本の一覧(D15)
 
