@@ -1,3 +1,3 @@
 # Updated together by Renovate; the commit is the release tag's target.
-release = "rust-v0.165.0"
-commit = "360319d8dee62d87e2d59fc0c21805d79519cfed"
+release = "rust-v0.170.0"
+commit = "29eb79e9866b3262a777fdf8195c1b9e63684c91"
