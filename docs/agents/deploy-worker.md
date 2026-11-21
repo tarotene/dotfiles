@@ -5,8 +5,11 @@
 走る場所: サイトのリポジトリの GitHub Actions(`uses: tarotene/dotfiles/.github/actions/deploy-worker@main`)
 
 入力と保存の機能を持つ app(Worker + D1)は [`personal-web-app.md`](personal-web-app.md)(決定は `docs/adr/1660-personal-web-app-standard.md`)。
-その app が使う入力 `d1-database`(配信前にマイグレーションを適用する)は、この action が持つ。配信後に、リポジトリの
-About の Website 欄を読み戻し、空なら警告する(静的サイトも同じ)。
+その app が使う入力 `d1-database`(配信前にマイグレーションを適用する)・`vars`(`wrangler deploy --var` で値を渡す)・
+`access-login-check`(配信のあとに、ログインなしで 302 のログイン転送になることを確かめる)は、この action が持つ。
+配信後に、リポジトリの About の Website 欄を読み戻し、空なら警告する(静的サイトも同じ。設定は人が
+`gh repo edit OWNER/REPO --homepage URL` で行う)。新しい Worker の最初の配信が `10007` で落ちたときは、action が
+`wrangler triggers deploy` を間隔を空けて再試行する(下の「失敗したとき」)。
 
 ## どちらに置くか
 
@@ -25,7 +28,9 @@ secret は、アカウントの `Cloudflare` を宣言するインフラのリ�
 ## 新しい private サイトの手順
 
 1. インフラのリポジトリで、サイトの一覧(`bootstrap/sites.tf` の `site_repos`)に「Worker 名 = リポジトリ名」を 1 行足し、
-   人が `bootstrap/` を適用する。サイトのリポジトリに、deploy 用の token と、アカウント ID の secret が入る。
+   人が `bootstrap/` を適用する。サイトのリポジトリに、deploy 用の token と、アカウント ID の secret が入る。D1 を持つ
+   app は `d1 = true`(D1 と、その書き込み権限の宣言)、JWT をサイトで検証する app は `app = true`(Access の値が
+   Actions 変数として入る)の印を付ける([`personal-web-app.md`](personal-web-app.md))。静的サイトは、どちらも `false`。
 2. サイトのリポジトリに、下の `wrangler.jsonc` と workflow を置く。`name` は 1 で書いた Worker 名と同じにする
    (門の宣言が、この名前で Worker を引く)。
 3. `main` へ入れる。最初の配信で、Worker が作られる。それまで Worker は存在しないので、最初の PR の
@@ -142,3 +147,6 @@ jobs:
 | 配信できたが、ログインなしで本文が見える | 門の宣言が外れている。インフラのリポジトリで、全 Worker を守る宣言と、その Worker の公開(門を外す)宣言の有無を見る |
 | プレビューの URL が PR に載らない | `preview` の job に `pull-requests: write` があるか。`dependabot` の PR は secret が無く、飛ばされる |
 | 新しいサイトの最初の PR で `Preview` が「You cannot upload a new version of a Worker that does not yet exist」で落ちる | 想定どおり。Worker がまだ無いので、`wrangler` は version を上げられない。`main` への最初の配信で Worker ができれば、以後の PR では動く(実測: 2026-11-12、認証は通っていた) |
+| 新しいサイトの最初の配信が、アップロードのあとに `10007`(This Worker does not exist on your account)で落ちる | action が `wrangler triggers deploy` を最大 6 回(約 10 分)再試行する。続くなら、Worker が作られているか(ダッシュボードの Workers の一覧)を見て、`wrangler triggers deploy` を手で 1 回実行する。原因は cloudflare/workers-sdk#17069 の報告(Worker を作った直後の数分、エンドポイントが 404 を返す)で、確かめた事実ではない(実測: 2026-11-20、本人の `wrangler triggers deploy` が数分後に通った) |
+| `access-login-check` で、配信の job が「302 で転送されません」と落ちる | 門が開いている。インフラのリポジトリの、全 Worker を守る宣言と、その Worker の公開(門を外す)宣言の有無を見る。公開の Worker には、この入力を渡さない |
+| `vars` の「値が空です」で、アップロードの前に落ちる | そのサイトのリポジトリに、Actions 変数が届いていない。インフラのリポジトリの `bootstrap/` を適用し、サイト一覧の `app` の印を確かめる |

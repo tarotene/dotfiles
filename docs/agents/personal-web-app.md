@@ -1,6 +1,6 @@
 # personal-web-app — 入力と保存を持つ private な個人用 Web アプリを、Worker + D1 + Access で作る標準
 
-実装: `.github/actions/deploy-worker/action.yml`(`d1-database` 入力と Website 欄の読み戻し)
+実装: `.github/actions/deploy-worker/action.yml`(`d1-database`・`vars`・`access-login-check` の入力、初回配信の `10007` の再試行、Website 欄の読み戻し)
 決定: `docs/adr/1660-personal-web-app-standard.md`
 隣の標準: [`deploy-worker.md`](deploy-worker.md)(閲覧専用の静的サイト)
 先行例: 団体向けのリポジトリ(団員が Discord でログインする Worker + D1。`docs/adr/28`〜`30`・`86`、`wrangler.jsonc`、`app/`)
@@ -35,16 +35,18 @@ claude.ai の Artifact(db つき)は、この標準の対象でない。置き�
     "run_worker_first": true        // 静的アセットへの要求も、先に Worker を通す
   },
   "d1_databases": [
-    { "binding": "DB", "database_name": "<名前>", "database_id": "<UUID>", "migrations_dir": "app/migrations" }
+    // database_id は書かない。D1 はインフラのリポジトリが `<Worker 名>-db` の名前で宣言して作り、wrangler が名前で引く
+    { "binding": "DB", "database_name": "<Worker 名>-db", "migrations_dir": "app/migrations" }
   ],
-  "vars": { "TEAM_DOMAIN": "https://<チーム名>.cloudflareaccess.com", "POLICY_AUD": "<AUD タグ>", "OWNER_EMAIL": "<本人のメール>" },
+  // vars は書かない(TEAM_DOMAIN・POLICY_AUD・OWNER_EMAIL は、配信の action が Actions 変数から --var で渡す。下の「配信」)
   "observability": { "enabled": false } // 呼び出しのログに URL が入るので、既定で切る(団体向けの先行例の判断)
 }
 ```
 
 - `run_worker_first: true` にする理由: Access の例外(bypass)を誤って足しても、Worker が検証するので、アセットも API も開かない。Cloudflare の文書: 「`run_worker_first = true` will unconditionally invoke your Worker script」(Static Assets, Binding、取得 2026-11-20)。
 - Free の注意: 「When using `run_worker_first`, requests matching the specified patterns will always invoke your Worker script.」「If you exceed your free tier request limits, these requests will receive a 429 (Too Many Requests) response」(Static Assets, Billing and limitations、取得 2026-11-20)。1 日 100,000 回は「Accounts on the Workers Free plan have a daily request limit of 100,000 requests」(Platform Limits、取得 2026-11-20)。個人用の量には収まる。
-- `vars` の値は秘密でない(`POLICY_AUD` は Access のアプリごとの識別子、`OWNER_EMAIL` は private のリポジトリにだけ書く)。このリポジトリ(dotfiles)には、本人のメールを書かない。
+- `TEAM_DOMAIN`・`POLICY_AUD`・`OWNER_EMAIL` は秘密でないが、サイトのリポジトリには複写しない。インフラのリポジトリが、チーム名・AUD・本人のメールを宣言し(`account/` の出力を `bootstrap/` が読む)、`app` の印のあるサイトのリポジトリの Actions 変数として書く(インフラのリポジトリの ADR-16 Amendment 2026-11-21)。サイトの `wrangler.jsonc` に値を書くと、AUD が変わったときにずれる(最初の app では、AUD をダッシュボードで読んで手で複写した)。このリポジトリ(dotfiles)には、本人のメールを書かない。
+- `database_id` を書かない理由: `wrangler` は、設定に `database_id` が無くても、`database_name` で D1 を名前から引く(`d1 migrations apply --remote` も同じ。workers-sdk `packages/wrangler/src/d1/utils.ts`、`wrangler@4.102.0` の変更履歴 #14275、タグ `wrangler@4.166.0`、取得 2026-11-21)。D1 が無いと、マイグレーションの段で `Couldn't find a D1 DB named …` で落ちるので、D1 は最初の配信より前に、インフラのリポジトリが宣言して作る。
 
 ## 認証: Access が門、Worker も検証する
 
@@ -77,8 +79,8 @@ export async function isOwner(request: Request, env: Env): Promise<boolean> {
 
 - 鍵は、決め打ちで持たず、証明書の URL から取る。文書: 「Validate tokens using the external endpoint rather than saving the public key as a hard-coded value.」(同上)。署名鍵は定期的に回る(「By default, Access rotates the signing key every 6 weeks.」)。
 - 本人の特定は `email` の claim。文書: 「The email address of the authenticated user, verified by the identity provider.」(Application token、取得 2026-11-20)。サービストークンの JWT には `email` が無いので、ここでは通らない(定時実行など、機械から呼ぶ口が要るときは別に設計する)。
-- **未実測**: アセット付きの Worker が、アカウント全体の Access の下で、このヘッダを実際に受け取るか。Cloudflare の文書の Workers の例はヘッダを読むが、アセット付きの場合の記述は、取得した資料に無い。最初の app の初回配信で、検証の経路を 1 回通して確かめる(下の「完了条件」)。
-- **未確認**: アカウント全体の Access の AUD タグが Worker ごとに違うか。違えば、`POLICY_AUD` を app ごとに持つ(上の雛形のとおり)。
+- **実測(2026-11-20)**: 最初の app の初回配信で、アセット付きの Worker が、アカウント全体の Access の下でこのヘッダを受け取り、検証が通った。`POLICY_AUD` を壊した状態では 401 になった(インフラのリポジトリの Issue #32 の記述。画面と端末での確認は本人が行った。2 回目以降の app では、壊した AUD の確認を、配信でなく app の単体試験(JWT の異常系)で代える。本人の裁定、2026-11-21)。
+- **AUD はアプリごと**: Cloudflare の文書は「Cloudflare Access assigns a unique AUD tag to each application.」と書く(Validate JWTs、取得 2026-11-21)。アカウント全体のアプリ(全 Worker を本人だけに閉じる)の AUD は 1 つで、最初の app はそれで通った。共有の Worker(共同開発者に開く)は、自前のアプリを持つので、AUD が別になる。どちらの AUD を `POLICY_AUD` に渡すかは、インフラのリポジトリがサイトごとに選んで宣言する(上のとおり、サイトは値を複写しない)。
 
 ## 経路と書き込み
 
@@ -110,7 +112,7 @@ export const routes = [/* ... */] as const satisfies readonly Route[];
 
 ## 配信
 
-build(secret なし)と deploy(secret あり)を分ける。deploy は共通の action を呼び、`d1-database` を渡す。マイグレーションが先に走り、失敗したら配信しない(順序は action が持つので、呼び出し側が間違えられない)。
+build(secret なし)と deploy(secret あり)を分ける。deploy は共通の action を呼び、`d1-database` と `vars` を渡す。マイグレーションが先に走り、失敗したら配信しない(順序は action が持つので、呼び出し側が間違えられない)。`vars` の値は、インフラのリポジトリが宣言したこのリポジトリの Actions 変数で、値が空なら、action がアップロードの前に落とす。
 
 ```yaml
   deploy:
@@ -144,29 +146,36 @@ build(secret なし)と deploy(secret あり)を分ける。deploy は共通の 
           account-id: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           wrangler: npx --no-install wrangler
           d1-database: <wrangler.jsonc の database_name>
+          access-login-check: 'true'   # 配信のあと、ログインなしで 302 のログイン転送になることを確かめる
+          vars: |
+            TEAM_DOMAIN=${{ vars.TEAM_DOMAIN }}
+            POLICY_AUD=${{ vars.POLICY_AUD }}
+            OWNER_EMAIL=${{ vars.OWNER_EMAIL }}
 ```
 
-- プレビューの job は置かない(`mode: preview` と `d1-database` の併用は action が拒否する)。プレビューの version が本番の D1 を指すかは未確認で、指す見込みで扱う。
-- token: サイトの deploy token(インフラのリポジトリの `bootstrap/sites.tf`)は `Workers Scripts Write` だけで、マイグレーションと D1 の作成には足りない。D1 を持つ app は、同じ一覧に「D1 の書き込み権限が要る」印を足す宣言が要る(インフラのリポジトリの Issue #20 に追記した。宣言の変更は `bootstrap/` なので、人が適用する)。
-- D1 の作成は `wrangler d1 create <名前>`(出た UUID を `wrangler.jsonc` に書く。秘密の値ではない)。
+- プレビューの job は置かない(`mode: preview` と `d1-database`・`vars`・`access-login-check` の併用は action が拒否する)。プレビューの version が本番の D1 を指すかは未確認で、指す見込みで扱う。
+- token と D1 と変数: サイトの deploy token・D1・Actions 変数は、インフラのリポジトリの `bootstrap/sites.tf` が、サイト一覧の印(`d1`・`app`)から宣言する。`d1` のサイトの token には `D1 Write` が付く。`bootstrap/` は人が適用する(インフラのリポジトリの ADR-16 Amendment 2026-11-20 と 2026-11-21)。`wrangler d1 create` を手で実行して、`wrangler.jsonc` に UUID を書く手順は、もう要らない。
+- 初回配信の `10007`: 新しい Worker の最初の配信が、アップロードとマイグレーションの成功のあとに `10007`(Worker does not exist)で落ちることがある(cloudflare/workers-sdk#17069)。action は、`10007` のときだけ `wrangler triggers deploy` を間隔を空けて最大 6 回(合計約 10 分)再試行する。それでも続くなら、action は落ちる。人が `wrangler triggers deploy` を実行する前に、Worker が作られているか(ダッシュボードの Workers の一覧)を見る。
 
 ## 配信の最後: About の Website 欄
 
 配信できたら、リポジトリの About の Website 欄に URL を載せる。private は workers.dev の URL、public は Pages の URL。
 
 ```bash
-gh repo edit -R OWNER/REPO --homepage https://<Worker 名>.<アカウントのサブドメイン>.workers.dev/
+gh repo edit OWNER/REPO --homepage https://<Worker 名>.<アカウントのサブドメイン>.workers.dev/
 ```
 
-実態: Cloudflare に置いた学習サイトは workers.dev の URL、Pages に置いた 2 つのサイトは `github.io` の URL(2026-11-20、`gh repo list` で読んだ)。この手順を決めた文面は、dotfiles の `docs/adr`・Issue・個人用の記録のリポジトリには見つからなかった。deploy の action は、配信のあとで欄を読み戻し、空なら警告する(設定そのものは管理者権限が要るので、action は行わない)。
+`gh repo edit` は、リポジトリを引数で取る。`-R` は取らない(最初の app で、この文書が `-R` を書いていて誤りだった)。管理者権限が要る。
+
+実態: Cloudflare に置いた学習サイトは workers.dev の URL、Pages に置いた 2 つのサイトは `github.io` の URL(2026-11-20、`gh repo list` で読んだ)。この手順を決めた文面は、dotfiles の `docs/adr`・Issue・個人用の記録のリポジトリには見つからなかった。deploy の action は、配信のあとで欄を読み戻し、空なら警告する。設定そのものは、action が行わない。`GITHUB_TOKEN` は `administration` の権限を持てない(workflow の `permissions:` のキーに無い)うえ、GitHub App にその権限を足すと、ブランチ保護・ruleset・リポジトリの削除・移管にも届く(GitHub Docs, Permissions required for GitHub Apps、取得 2026-11-21)。`homepage` だけを書き換えるより狭い権限は、文書に記述が無い。だから、人かエージェントが、配信のあとに上の 1 行を打つ。
 
 ## 完了条件(最初の app の初回配信で確かめる)
 
-1. ログインなしで URL を開くと、Access のログインへ転送される(門が閉じている)。
-2. 本人でログインして、画面が出る。
-3. **Worker が JWT を受け取って検証に通っている**(未実測の確認)。検証を壊した状態(`POLICY_AUD` を間違える)で 401 になることも、1 回確かめる。
-4. 未知の鍵への書き込みが 400 になる。
-5. About の Website 欄に URL が載っている。
+1. ログインなしで URL を開くと、Access のログインへ転送される(門が閉じている)。**action が配信のたびに確かめる**(`access-login-check: 'true'`。302 で `cloudflareaccess.com` のログインへ転送されなければ、配信の job が落ちる)。
+2. 本人でログインして、画面が出る(本人のブラウザで 1 回)。
+3. **Worker が JWT を受け取って検証に通っている**(2026-11-20 に最初の app で確かめた。上の「認証」)。検証を壊した状態(`POLICY_AUD` を間違える)で 401 になることは、本番の Worker を壊すので、配信では確かめず、app の単体試験(JWT の異常系)で確かめる。
+4. 未知の鍵への書き込みが 400 になる(app の単体試験と、本人のブラウザの 1 回)。
+5. About の Website 欄に URL が載っている(action の警告が出ていない)。
 
 ## バックアップ
 
@@ -189,10 +198,18 @@ app の README に、段を宣言する。
 - 導出: 山行までの残り日数、日の入りと目標時刻、取得日の古さの警告は、今日の日付から導く(宣言の欄を作らない)。
 - 山の中は圏外が多いので、入力は自宅と登山口までで使う前提にする。
 
-## 未実測・未確認(2026-11-20)
+## 開発中の確認(sandbox の中で `wrangler dev` を使うとき)
 
-- アセット付きの Worker が、Access の JWT のヘッダを受け取るか(未実測。完了条件 3)。
-- アカウント全体の Access の AUD タグが Worker ごとに違うか(未確認)。
+2026-11-20 の最初の app の実装で分かったこと(インフラのリポジトリの Issue #32 の記述):
+
+- `wrangler dev --local` は、sandbox の中では `~/.config/.wrangler` に書けず `EROFS` で落ちる。`WRANGLER_REGISTRY_PATH` と `WRANGLER_LOG_PATH` を、書ける場所(scratchpad など)に変える。
+- sandbox は、Bash の呼び出しごとにネットワークを分ける。別の呼び出しで起動したサーバーには、次の呼び出しから届かない。サーバーの起動と要求を、1 本のシェルにまとめる。
+
+## 未実測・未確認(2026-11-21)
+
+- 実測済み(2026-11-20): アセット付きの Worker が、アカウント全体の Access の下で JWT のヘッダを受け取り、検証が通る。`POLICY_AUD` を壊した状態で 401 になる(上の「認証」)。
+- 共有の Worker(自前のアプリを持つ)で、`POLICY_AUD` に自前のアプリの AUD を渡して検証が通るか(未実測。最初の共有の app で確かめる)。
 - `jose` の保守表示と最終 commit(未確認。採用する app の実装前に読む)。
 - プレビューの version が本番の D1 を指すか(未確認)。
-- action の実際の実行(`d1-database` と Website 欄の読み戻し)。偽の `wrangler` と `gh` で、呼び出しの順序・失敗時の停止・警告の出力を確かめただけで、Cloudflare に対する実行は、最初の app の CI で確かめる。
+- action の Cloudflare に対する実行のうち、`10007` の再試行で通る間隔(未実測。2026-11-20 に人が手で `wrangler triggers deploy` を実行して通ったのは数分後)と、`access-login-check` と `vars` の実際の配信(未実測。次に新しい Worker を足す、または最初の app の次の配信で確かめる)。偽の `wrangler`・`curl` で、呼び出しの順序・失敗時の停止・再試行の上限・警告の出力は確かめた(ADR-1660 Amendment 2026-11-21)。
+- `database_id` を書かない `wrangler.jsonc` で、`wrangler deploy` が D1 の binding を名前で解決するか(`wrangler` のソースは読んだが、実行は未実測。deploy token の権限で、存在の確認が 403 になると、自動のプロビジョニングを飛ばす。`provision-bindings.ts`)。最初の app が `database_id` を消した最初の配信で確かめる。
