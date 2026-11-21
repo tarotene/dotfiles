@@ -65,7 +65,8 @@ inputs:
   vars:
     description: >-
       配信時に `wrangler deploy --var` で渡す変数。1 行に 1 つ、`NAME=値` の形で書く
-      (インフラのリポジトリが宣言する Actions 変数を、`${{ vars.NAME }}` で受けて渡す)。
+      (インフラのリポジトリが宣言する Actions 変数を、呼び出し側の workflow の `vars` コンテキストから受けて渡す。
+      式の書き方は docs/agents/personal-web-app.md)。
       名前は英数字と `_` で、値が空の行は、アップロードの前に落とす(空の値を渡した
       Worker が、検証に必要な値を持たない状態で本番に出ないため)。同じ名前が
       `wrangler.jsonc` の `vars` にあれば、こちらが優先される(wrangler@4.166.0 の
