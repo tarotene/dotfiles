@@ -203,6 +203,36 @@ pub fn jp_count(s: &str) -> usize {
     s.chars().filter(|c| is_jp(*c)).count()
 }
 
+/// 日本語の字が、(伏せ字を除いた)空白でない字のうち、この割合に届いた段落を、日本語の段落とみなす
+/// (字数の [`MIN_JP_CHARS`] に加えて満たす条件)。英語の段落に、「先行例」「差分」のような日本語のラベルの語が
+/// 数文字入っているだけで、書き直しを求めないため(2026-11-20、英語の ADR の段落が日本語の段落として数えられ、
+/// 無料枠の上限を超えたあとの往復で何も変わらなかった)。テストの例では、識別子を伏せ字にした日本語の文と
+/// 箇条書きの項目は 2 割を超え、英語の段落にラベルの語が入った例は 2 割を大きく下回る。
+pub const MIN_JP_SHARE: f64 = 0.2;
+
+/// 伏せ字(`⟦…⟧`)と空白を除いた字のうち、かな・漢字の割合。字が無ければ 0。
+pub fn jp_share(s: &str) -> f64 {
+    let (mut total, mut jp, mut in_mask) = (0usize, 0usize, false);
+    for c in s.chars() {
+        match c {
+            '⟦' => in_mask = true,
+            '⟧' => in_mask = false,
+            _ if in_mask || c.is_whitespace() => {}
+            _ => {
+                total += 1;
+                if is_jp(c) {
+                    jp += 1;
+                }
+            }
+        }
+    }
+    if total == 0 {
+        0.0
+    } else {
+        jp as f64 / total as f64
+    }
+}
+
 fn is_jp(c: char) -> bool {
     matches!(c,
         '\u{3041}'..='\u{3096}'   // ひらがな
@@ -345,6 +375,35 @@ mod tests {
         assert_eq!(jp_count("日本語です。"), 5);
         assert_eq!(jp_count("カタカナ・ｶﾀｶﾅ"), 8);
         assert!(jp_count("検証") < MIN_JP_CHARS);
+    }
+
+    #[test]
+    fn share_ignores_masks_and_whitespace() {
+        assert_eq!(jp_share(""), 0.0);
+        assert_eq!(jp_share("   "), 0.0);
+        assert_eq!(jp_share("日本語"), 1.0);
+        // 伏せ字の中の字と、空白は、分母に入れない。
+        assert_eq!(jp_share("⟦P0⟧ ⟦P1⟧ を ⟦P2⟧ に"), 1.0);
+        assert!((jp_share("日本 ab") - 0.5).abs() < 1e-9);
+    }
+
+    #[test]
+    fn share_separates_english_with_japanese_labels_from_japanese_prose() {
+        // 実際に、日本語の段落として数えられて、関所が整形を求めた英語の段落(ラベルの語だけが日本語)。
+        let english = "既存手段: main.tf — 拡張: the site list and its `d1` mark already exist; the declaration hangs off them.";
+        assert!(jp_count(english) >= MIN_JP_CHARS);
+        assert!(jp_share(english) < MIN_JP_SHARE, "{}", jp_share(english));
+        let adr = "先行例: owner/project `main.tf` before this change (one list, one token per entry)\n差分: 異なる — the entry changes from a repository name to `{ repo, d1 }`.";
+        assert!(jp_share(adr) < MIN_JP_SHARE, "{}", jp_share(adr));
+        // 日本語の文は、識別子が多くても(伏せ字にした後で)割合を満たす。
+        let prose = "⟦P0⟧ は、サイトの一覧の ⟦P1⟧ から ⟦P2⟧ を宣言し、最初の配信より前に作る。";
+        assert!(jp_share(prose) >= MIN_JP_SHARE, "{}", jp_share(prose));
+        let list_item = "R1: #32 I1: D1 を tofu(または配信の action)が作る — 段1で実装";
+        assert!(
+            jp_share(list_item) >= MIN_JP_SHARE,
+            "{}",
+            jp_share(list_item)
+        );
     }
 
     #[test]

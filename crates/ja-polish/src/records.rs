@@ -30,6 +30,11 @@ pub struct Entry {
     /// 文書の基準で通した段落(古い記録も)は `false`。メール・Slack の下書きの関所は、この印のある段落だけを通す。
     #[serde(default, skip_serializing_if = "is_false")]
     pub message: bool,
+    /// 素通しの原因が、無料枠の **1 日の** 上限([`crate::llm::FailureKind::DailyLimit`])か。そのモデルは次の再開まで使えず、
+    /// 何段落を求めても通らないので、関所は、この印のある素通しが直近の最後の 1 件なら、記録の件数が足りなくても
+    /// 「動けない」とみなす([`unavailable`])。古い記録には無いので `false`。
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub daily_limit: bool,
 }
 
 fn is_false(b: &bool) -> bool {
@@ -46,6 +51,7 @@ impl Entry {
             reason: None,
             transient: false,
             message: false,
+            daily_limit: false,
         }
     }
 
@@ -58,12 +64,19 @@ impl Entry {
             reason: Some(reason.to_string()),
             transient: false,
             message: false,
+            daily_limit: false,
         }
     }
 
     /// 素通しの原因が一時的なもの([`Entry::transient`])だと印を付ける。
     pub fn with_transient(mut self, transient: bool) -> Self {
         self.transient = transient;
+        self
+    }
+
+    /// 素通しの原因が 1 日の上限([`Entry::daily_limit`])だと印を付ける。
+    pub fn with_daily_limit(mut self, daily_limit: bool) -> Self {
+        self.daily_limit = daily_limit;
         self
     }
 
@@ -193,6 +206,10 @@ pub const UNAVAILABLE_WINDOW: u64 = 60 * 60;
 /// 関所は、この間、通していない段落を拒否しない。本文を書いて `ja-polish` を通して出し直す往復を求めても、結果は
 /// 全部素通しで、書き直しは 1 件も起きない。猶予が過ぎると関所は元に戻り、次の 1 回の往復が、直ったかの確かめになる
 /// (直っていれば書き直しの記録が入り、素通しの並びが切れる)。
+///
+/// 無料枠の 1 日の上限([`Entry::daily_limit`])は、件数を待たない。最後の 1 件がその印のある素通しで、猶予の中なら、
+/// 動けないとみなす。上限に当たった直後の最初の往復は、書き直しの記録がまだ並びに混ざっていて 5 件に届かず、関所が
+/// 何も変わらない往復を求めてしまうため(2026-11-20)。
 pub fn unavailable(path: &Path, now_unix: u64) -> bool {
     let Ok(text) = std::fs::read_to_string(path) else {
         return false;
@@ -201,12 +218,17 @@ pub fn unavailable(path: &Path, now_unix: u64) -> bool {
         .lines()
         .filter_map(|l| serde_json::from_str::<Entry>(l).ok())
         .collect();
+    let fresh = |e: &Entry| now_unix.saturating_sub(e.ts_unix) <= UNAVAILABLE_WINDOW;
+    if entries
+        .last()
+        .is_some_and(|e| e.state == "skipped" && e.daily_limit && fresh(e))
+    {
+        return true;
+    }
     let recent: Vec<&Entry> = entries.iter().rev().take(UNAVAILABLE_RUN).collect();
     recent.len() == UNAVAILABLE_RUN
         && recent.iter().all(|e| e.state == "skipped")
-        && recent
-            .first()
-            .is_some_and(|e| now_unix.saturating_sub(e.ts_unix) <= UNAVAILABLE_WINDOW)
+        && recent.first().is_some_and(|e| fresh(e))
 }
 
 /// 今、`ja-polish` が動けない状態か([`unavailable`])。記録の場所が決まらなければ `false`。
@@ -262,6 +284,7 @@ mod tests {
             reason: None,
             transient: false,
             message: false,
+            daily_limit: false,
         }
     }
 
@@ -388,6 +411,72 @@ mod tests {
             .collect();
         append(&path, &more).unwrap();
         assert!(unavailable(&path, now + 5));
+    }
+
+    #[test]
+    fn a_fresh_daily_limit_skip_alone_makes_it_unavailable() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("r.jsonl");
+        let now = 100_000u64;
+        let at = |ts: u64, e: Entry| Entry { ts_unix: ts, ..e };
+        // 書き直しが数件通ったあと、1 日の上限に当たって 1 件だけ素通しになった: 5 件の並びには届かないが、動けない。
+        append(
+            &path,
+            &[
+                entry_at(now - 300, "polished"),
+                entry_at(now - 200, "polished"),
+                at(
+                    now - 10,
+                    Entry::skipped("q".into(), "m", "quota")
+                        .with_transient(true)
+                        .with_daily_limit(true),
+                ),
+            ],
+        )
+        .unwrap();
+        assert!(unavailable(&path, now));
+        // 猶予が過ぎれば、元に戻る(次の往復が、上限が明けたかの確かめになる)。
+        assert!(!unavailable(&path, now + UNAVAILABLE_WINDOW + 1));
+        // 混雑の素通し(上限の印なし)は、件数が足りなければ動けないとはみなさない。
+        let busy = dir.path().join("busy.jsonl");
+        append(
+            &busy,
+            &[
+                entry_at(now - 200, "polished"),
+                at(
+                    now - 10,
+                    Entry::skipped("b".into(), "m", "busy").with_transient(true),
+                ),
+            ],
+        )
+        .unwrap();
+        assert!(!unavailable(&busy, now));
+        // 上限の素通しのあとに、書き直しの記録が入れば(上限が明けた)、動ける。
+        append(&path, &[entry_at(now - 5, "polished")]).unwrap();
+        assert!(!unavailable(&path, now));
+    }
+
+    #[test]
+    fn daily_limit_flag_is_written_only_when_set_and_old_lines_read_as_false() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("r.jsonl");
+        append(
+            &path,
+            &[
+                Entry::skipped("a".into(), "m", "上限").with_daily_limit(true),
+                Entry::skipped("b".into(), "m", "混雑"),
+            ],
+        )
+        .unwrap();
+        let text = std::fs::read_to_string(&path).unwrap();
+        let lines: Vec<&str> = text.lines().collect();
+        assert!(lines[0].contains("\"daily_limit\":true"), "{}", lines[0]);
+        assert!(!lines[1].contains("daily_limit"), "{}", lines[1]);
+        let old: Entry = serde_json::from_str(
+            "{\"ts_unix\":1,\"sha\":\"x\",\"state\":\"skipped\",\"model\":\"m\"}",
+        )
+        .unwrap();
+        assert!(!old.daily_limit);
     }
 
     #[test]

@@ -4,7 +4,7 @@
 //! これだけを呼ぶ。書き直し([`polish`])は同じ判定で対象を決め、モデルに依頼し、戻ってきた
 //! 段落を照合してから差し替える。
 
-use crate::blocks::{self, Block, MIN_JP_CHARS};
+use crate::blocks::{self, Block, MIN_JP_CHARS, MIN_JP_SHARE};
 use crate::config::Config;
 use crate::llm::{self, Backend, FailureKind, Item, LlmError, Request};
 use crate::mask::{self, Masked};
@@ -31,7 +31,7 @@ pub struct Pending {
 
 /// 書き直しの対象になる段落の番号。次のすべてを満たす:
 /// - フェンスや front matter でない
-/// - 伏せ字を除いて、日本語の字が [`MIN_JP_CHARS`] 以上ある
+/// - 伏せ字を除いて、日本語の字が [`MIN_JP_CHARS`] 以上あり、割合が [`MIN_JP_SHARE`] 以上ある(`is_japanese`)
 /// - 記録に無い(通していない)
 /// - `baseline` があれば、基点の文書に同じ段落が無い(追加・変更された段落である)
 fn pending_indexes(
@@ -93,9 +93,11 @@ fn skip_declared(blocks: &[Block]) -> bool {
         })
 }
 
-/// 伏せ字を除いて、日本語の字が [`MIN_JP_CHARS`] 以上ある段落か。
+/// 伏せ字を除いて、日本語の字が [`MIN_JP_CHARS`] 以上あり、かつ空白でない字の [`MIN_JP_SHARE`] 以上を占める段落か。
+/// 割合の条件は、英語の段落に日本語のラベルの語が数文字入っただけのものを、書き直しの対象と関所の対象から外す。
 fn is_japanese(text: &str) -> bool {
-    blocks::jp_count(&mask::mask(text).text) >= MIN_JP_CHARS
+    let masked = mask::mask(text).text;
+    blocks::jp_count(&masked) >= MIN_JP_CHARS && blocks::jp_share(&masked) >= MIN_JP_SHARE
 }
 
 /// 記録にある段落か。箇条書き・番号付きの段落(基点なしで、項目に分けていないもの)は、段落全体の記録のほか、
@@ -315,11 +317,13 @@ struct Verified {
 }
 
 /// 通せなかった段落の理由。`transient` は、混雑・時間切れのような一時的な原因か
-/// (記録の [`Entry::transient`] になり、課金の検討を知らせる判定の入力になる)。
+/// (記録の [`Entry::transient`] になり、課金の検討を知らせる判定の入力になる)。`daily_limit` は、無料枠の
+/// 1 日の上限に当たった(記録の [`Entry::daily_limit`] になり、関所が「動けない」と見る入力になる)。
 #[derive(Debug, Clone)]
 struct Skip {
     reason: String,
     transient: bool,
+    daily_limit: bool,
 }
 
 impl Skip {
@@ -328,6 +332,7 @@ impl Skip {
         Skip {
             reason: reason.into(),
             transient: false,
+            daily_limit: false,
         }
     }
 }
@@ -336,6 +341,7 @@ impl From<LlmError> for Skip {
     fn from(e: LlmError) -> Self {
         Skip {
             transient: e.is_transient(),
+            daily_limit: e.kind == FailureKind::DailyLimit,
             reason: e.reason,
         }
     }
@@ -615,7 +621,8 @@ pub fn polish(
                 }
                 entries.push(
                     Entry::skipped(blocks::hash(&fixed), &cfg.model, &skip.reason)
-                        .with_transient(skip.transient),
+                        .with_transient(skip.transient)
+                        .with_daily_limit(skip.daily_limit),
                 );
                 paras.push(Para {
                     before: original,
@@ -773,6 +780,43 @@ mod tests {
         let mut rec = HashSet::new();
         rec.insert(blocks::hash("日本語の段落です。"));
         assert!(pending("日本語の段落です。\n", None, &rec).is_empty());
+    }
+
+    #[test]
+    fn english_with_a_few_japanese_labels_is_not_pending() {
+        // 実際に関所が整形を求めた型: 英語の ADR の段落で、日本語は「先行例」「差分」「軸」のラベルの語だけ。
+        let text = "先行例: owner/project `main.tf` before this change (one list, one token per entry) (取得 2026-11-20)\n差分: 異なる — the entry changes from a repository name to `{ repo, d1 }`.\n軸: 表現不可能 — single source over copy and sync.\n\n日本語の段落です。識別子の `a` や `b` が混ざっても、日本語の文は対象のままです。\n";
+        let p = pending(text, None, &HashSet::new());
+        assert_eq!(
+            p.iter().map(|x| x.text.as_str()).collect::<Vec<_>>(),
+            vec![
+                "日本語の段落です。識別子の `a` や `b` が混ざっても、日本語の文は対象のままです。"
+            ]
+        );
+    }
+
+    #[test]
+    fn the_daily_limit_skip_carries_the_daily_limit_mark_and_a_busy_skip_does_not() {
+        let text = "一つ目の段落です。\n";
+        let fake = Fake::new(vec![Err(LlmError::new(
+            FailureKind::DailyLimit,
+            "requests per day limit exceeded on Free Tier",
+        ))]);
+        let r = run(text, None, &fake);
+        assert!(
+            r.entries[0].daily_limit,
+            "関所が「動けない」と見る入力になる"
+        );
+
+        let fake = Fake::new(vec![
+            busy("high demand"),
+            busy("high demand"),
+            busy("high demand"),
+            busy("high demand"),
+        ]);
+        let r = run(text, None, &fake);
+        assert!(r.entries[0].transient);
+        assert!(!r.entries[0].daily_limit, "混雑は上限の印を付けない");
     }
 
     #[test]
