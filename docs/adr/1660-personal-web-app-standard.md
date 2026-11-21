@@ -104,3 +104,53 @@ D3 の対抗馬と外した候補、D6 の対抗馬と外した候補を参照�
 - `yq` で `run:` のブロックを取り出し、偽の `wrangler` と偽の `gh` で動かした(2026-11-20)。(1) `d1-database` あり: `d1 migrations apply <名前> --remote` のあとに `deploy`。(2) マイグレーションが失敗: 配信の step は走らない。(3) `d1-database` なし: `deploy` だけ(従来どおり)。(4) token が空: 何もせず警告。(5) `mode: preview` と `d1-database` の併用、`-` で始まる名前: エラー。(6) Website 欄が空: 警告、入っている: notice、読めない: 警告。`if:` の条件は、この試験では手で再現した(Actions の評価器では動かしていない)。
 - 実在のリポジトリで、読み戻しの式 `gh api repos/<repo> --jq '.homepage // ""'` を確かめた: Cloudflare に置いた学習サイトは workers.dev の URL、欄が空の個人用リポジトリは空。
 - 未実施: Cloudflare に対する実行(`d1-database` の実行と、アセット付きの Worker への JWT のヘッダの到達)。最初の app の初回配信で確かめる。`actionlint` は、この機体に入っておらず、当てていない。
+
+## Amendment (2026-11-21): 最初の app の初回配信で分かったことを、action と標準に反映する
+
+最初の app の初回配信(2026-11-20)は、人手と往復が多かった。D1 の ID と Access の値を設定ファイルに手で複写し、
+初回配信は `10007` で落ち、Website 欄の例は `gh repo edit` の形が誤っていた。インフラのリポジトリの Issue #32 が、
+その実測と仕込みの案を束ねている。この Amendment は、そのうち配信の action と標準の側で執行できる分を決める。
+
+### D10: 初回配信の `10007` は action が再試行で吸収し、共通の値は宣言から `vars` で渡し、門は配信のたびに確かめる
+
+- **`10007`。** 新しい Worker の最初の配信は、アップロードとマイグレーションが成功したあとの
+  `GET …/workers/workers/<名前>` が `10007`(Worker does not exist)で落ちることがある。配信の失敗ログで、この順序を読んだ。
+  cloudflare/workers-sdk#17069 は、Worker を作った直後の数分、そのエンドポイントが 404 を返し、`wrangler` が再試行するのは
+  5xx と 429 だけだと報告している(2026-11-21 に open、メンテナのコメントなし。原因は報告であって、確かめた事実ではない)。
+  action は、`10007` のときだけ、`wrangler triggers deploy` を間隔を空けて(30・60・90・120・150・150 秒)最大 6 回再試行する。
+  ほかの失敗は再試行しない。
+- **`vars`。** `NAME=値` の行を `wrangler deploy --var NAME:値` で渡す。`--var` は最初の `:` だけで名前と値に分けるので、
+  `https://…` の値も欠けない。同じ名前が `wrangler.jsonc` の `vars` にあれば、CLI の値が優先される
+  (どちらも `wrangler@4.166.0` のソースで読んだ)。値が空の行は、アップロードの前に落とす。検証に必要な値を持たない
+  Worker が本番に出ないため。`mode: preview` との併用は拒否する。インフラのリポジトリは、Access のチーム名・AUD・本人のメールを
+  サイトのリポジトリの Actions 変数として宣言する(インフラのリポジトリの ADR-16 Amendment 2026-11-21)。サイトの
+  `wrangler.jsonc` は、その値を持たない。
+- **`access-login-check`。** `'true'` を渡すと、配信のあとでログインなしの要求を送り、302 で `cloudflareaccess.com` の
+  ログインへ転送されることを確かめて、転送されなければ落とす(完了条件 1 の機械化)。完了条件 3 の「検証を壊した状態で 401」は、
+  本番の Worker を壊すので、使い捨ての別名の Worker にせず、app の単体試験(JWT の異常系)で代える(本人の裁定、2026-11-21)。
+- **D1 の作成。** 配信の action は D1 を作らない。インフラのリポジトリが、サイト一覧の印から宣言して作る
+  (同 Amendment。マイグレーションは配信より先に走り、D1 が無いとそこで失敗するため、D1 は最初の配信より前に要る)。
+  `wrangler` は `database_name` から D1 を名前で引くので、サイトの `wrangler.jsonc` は `database_id` を持たない。
+
+D9 の訂正: 設定の形は `gh repo edit OWNER/REPO --homepage URL` である(`gh repo edit` はリポジトリを引数に取り、`-R` を取らない)。
+`GITHUB_TOKEN` は Website 欄を書けない: workflow の `permissions:` のキーに `administration` が無く、その権限は、ブランチ保護・
+ruleset・リポジトリの削除・移管にも届く(GitHub Docs, Update a repository と Permissions required for GitHub Apps、
+取得 2026-11-21)。よって action は、読み戻して空なら警告するだけにとどめる。`homepage` だけを書き換えるより狭い権限は、
+文書に記述がない。
+
+先行例: cloudflare/workers-sdk Issue #17069 と `packages/deploy-helpers/src/triggers/deploy.ts`(`getWorkerSubdomain`)、`packages/wrangler/src/utils/collectKeyValues.ts`(タグ `wrangler@4.166.0`、取得 2026-11-21)。ADR-1553 D1(配信の手順を 1 つの action に集める)。
+差分: 異なる — upstream の修正がまだ無いので、action が `10007` のときだけ再試行する。値の複写は、`vars` の入力にして、宣言から流す。
+軸: 検出のみ — `10007` は `wrangler` の中の呼び出しで、action からは失敗を見て再試行することしかできない。値の複写と門の開閉は、宣言が単一の正本になり、確認は配信のたびに行うが、事故を表現不可能にはしない。
+
+### 執行点
+
+- `.github/actions/deploy-worker/action.yml` — D10(`10007` の再試行、`vars`、`access-login-check`、Website 欄の警告文の訂正)。
+
+Verified on 2026-11-21: `zizmor` 1.32.0(`--offline`、`uvx` で PyPI から取得)を `action.yml` に当てて、指摘は 0 件。取り出した
+`run:` の 3 つのブロック(入力の検査、配信、門の確認)に `shellcheck` を当て、指摘は既存の SC2153(info)だけ。`yq` で `run:` を
+取り出し、偽の `wrangler` と偽の `curl` で 25 項目を動かした: 値が空・形が誤り・名前が誤りの `vars` は落ちる、`vars` なしは
+従来の `wrangler deploy` だけ、`--var TEAM_DOMAIN:https://…` が欠けずに渡る、`10007` のあと `triggers deploy` で成功する、
+`10007` が続けば 6 回で落ちる、それ以外の失敗は再試行しない、302 で `cloudflareaccess.com` なら通り、200 と別のホストへの 302 は落ち、
+出力に URL が無ければ警告だけ。`if:` の条件は、手で再現した(Actions の評価器では動かしていない)。`actionlint` は、`action.yml`
+(workflow でない)には当てていない。未実施: Cloudflare に対する実行。再試行で通る間隔は、次に新しい Worker を足すときに確かめる
+(2026-11-20 に本人が手で `wrangler triggers deploy` を実行して通ったのは、数分後だった)。

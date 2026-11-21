@@ -19,7 +19,16 @@ description: >-
   前に D1 のマイグレーションを適用し、失敗したら配信しない(スキーマが先、
   コードが後の順序を、呼び出し側の step の並びに任せない)。配信のあとは、
   リポジトリの About の Website 欄を読み戻し、空なら警告する(設定そのものは
-  管理者権限が要るので、人かエージェントが `gh repo edit --homepage` で行う)。
+  管理者権限が要るので、人かエージェントが `gh repo edit OWNER/REPO --homepage URL` で行う)。
+
+  初回配信のために、さらに 3 つを足した。(1) 新しい Worker の最初の配信は、アップロードと
+  マイグレーションが成功したあとの `GET …/workers/workers/<名前>` が `10007`(Worker does
+  not exist)で落ちることがある(cloudflare/workers-sdk#17069)ので、`10007` のときだけ、
+  `wrangler triggers deploy` を間隔を空けて最大 6 回(合計約 10 分)再試行する。ほかの失敗は
+  再試行しない。(2) `vars` を渡すと、`wrangler deploy` に `--var` として渡す(サイトの
+  `wrangler.jsonc` に値を複写しない。値が空なら、アップロードの前に落とす)。(3)
+  `access-login-check: 'true'` を渡すと、配信のあとで、ログインなしの要求が Cloudflare Access の
+  ログインへ 302 で転送されることを確かめ、転送されなければ落とす。
 
 inputs:
   mode:
@@ -53,6 +62,25 @@ inputs:
       指す見込みで、未確認。personal-web-app.md)。
     required: false
     default: ''
+  vars:
+    description: >-
+      配信時に `wrangler deploy --var` で渡す変数。1 行に 1 つ、`NAME=値` の形で書く
+      (インフラのリポジトリが宣言する Actions 変数を、呼び出し側の workflow の `vars` コンテキストから受けて渡す。
+      式の書き方は docs/agents/personal-web-app.md)。
+      名前は英数字と `_` で、値が空の行は、アップロードの前に落とす(空の値を渡した
+      Worker が、検証に必要な値を持たない状態で本番に出ないため)。同じ名前が
+      `wrangler.jsonc` の `vars` にあれば、こちらが優先される(wrangler@4.166.0 の
+      `deploy-helpers/src/deploy/deploy.ts`)。`mode: preview` では使えない。
+    required: false
+    default: ''
+  access-login-check:
+    description: >-
+      `'true'` なら、`mode: deploy` の配信のあとで、配信した URL(`wrangler` の出力の
+      workers.dev の URL)へログインなしで要求し、302 で `cloudflareaccess.com` のログインへ
+      転送されることを確かめる。転送されなければ(門が開いている)落とす。公開の Worker には
+      使わない。
+    required: false
+    default: 'false'
 
 runs:
   using: composite
@@ -65,6 +93,8 @@ runs:
         API_TOKEN: ${{ inputs.api-token }}
         PR_NUMBER: ${{ github.event.pull_request.number }}
         D1_DATABASE: ${{ inputs.d1-database }}
+        VARS: ${{ inputs.vars }}
+        ACCESS_LOGIN_CHECK: ${{ inputs.access-login-check }}
       run: |
         set -euo pipefail
         case "$MODE" in
@@ -78,6 +108,14 @@ runs:
               echo "::error::d1-database は mode: deploy でだけ使えます(プレビューの version が本番の D1 を指さないことを、確かめていません)" >&2
               exit 1
             fi
+            if [ -n "$VARS" ]; then
+              echo "::error::vars は mode: deploy でだけ使えます" >&2
+              exit 1
+            fi
+            if [ "$ACCESS_LOGIN_CHECK" = "true" ]; then
+              echo "::error::access-login-check は mode: deploy でだけ使えます" >&2
+              exit 1
+            fi
             ;;
           *)
             echo "::error::mode は deploy か preview です(受け取った値: ${MODE})" >&2
@@ -88,6 +126,27 @@ runs:
         if [ -n "$D1_DATABASE" ] && ! [[ "$D1_DATABASE" =~ ^[A-Za-z0-9][A-Za-z0-9_-]*$ ]]; then
           echo "::error::d1-database は英数字・_・- だけで、先頭は英数字にしてください(受け取った値: ${D1_DATABASE})" >&2
           exit 1
+        fi
+        # `vars` は 1 行に 1 つの `NAME=値`。名前は英数字と `_`、値は空にしない。値が空だと、検証に必要な値を持たない
+        # Worker が本番に出るので、token を渡す前(アップロードの前)に落とす。値そのものは、ここで出力しない。
+        if [ -n "$VARS" ]; then
+          line_no=0
+          while IFS= read -r line; do
+            line_no=$((line_no + 1))
+            if [ -z "$line" ]; then
+              continue
+            fi
+            name="${line%%=*}"
+            value="${line#*=}"
+            if [[ "$line" != *=* ]] || ! [[ "$name" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
+              echo "::error::vars の ${line_no} 行目が NAME=値 の形ではありません" >&2
+              exit 1
+            fi
+            if [ -z "$value" ]; then
+              echo "::error::vars の ${name} の値が空です(インフラのリポジトリが宣言する Actions 変数が、このリポジトリに届いているかを見てください)" >&2
+              exit 1
+            fi
+          done <<< "$VARS"
         fi
         if [ -z "$API_TOKEN" ]; then
           echo "::warning::api-token is not set; skipped the ${MODE}."
@@ -120,14 +179,63 @@ runs:
         CLOUDFLARE_API_TOKEN: ${{ inputs.api-token }}
         CLOUDFLARE_ACCOUNT_ID: ${{ inputs.account-id }}
         WRANGLER: ${{ inputs.wrangler }}
+        VARS: ${{ inputs.vars }}
       run: |
         set -euo pipefail
         read -ra wrangler <<< "$WRANGLER"
-        "${wrangler[@]}" deploy
+        # `--var NAME:値` は、最初の `:` だけで名前と値に分かれる(wrangler@4.166.0 の `utils/collectKeyValues.ts`)ので、
+        # `https://…` を含む値も欠けない。検証は、上の step で済んでいる。
+        var_args=()
+        while IFS= read -r line; do
+          if [ -n "$line" ]; then
+            var_args+=(--var "${line%%=*}:${line#*=}")
+          fi
+        done <<< "$VARS"
+
+        # 新しい Worker の最初の配信は、アップロードのあとの `GET …/workers/workers/<名前>` が `10007` で落ちることが
+        # ある(Worker を作った直後の数分、そのエンドポイントが 404 を返す。cloudflare/workers-sdk#17069)。`wrangler` は
+        # 5xx と 429 しか再試行しない。`10007` のときだけ、トリガー(workers.dev など)の配信を、間隔を空けて再試行する。
+        # ほかの失敗は、その場で落とす。
+        all_log="${RUNNER_TEMP}/deploy-worker-output.log"
+        last_log="${RUNNER_TEMP}/deploy-worker-last.log"
+        : > "$all_log"
+        retry_unit="${DEPLOY_WORKER_RETRY_UNIT:-30}"
+        max_attempts=6
+
+        run_logged() {
+          local rc=0
+          "$@" 2>&1 | tee "$last_log" || rc=$?
+          cat "$last_log" >> "$all_log"
+          return "$rc"
+        }
+
+        if ! run_logged "${wrangler[@]}" deploy ${var_args[@]+"${var_args[@]}"}; then
+          if ! grep -q 'code: 10007' "$last_log"; then
+            exit 1
+          fi
+          attempt=1
+          while :; do
+            if [ "$attempt" -gt "$max_attempts" ]; then
+              echo "::error::Worker の反映を ${max_attempts} 回待っても、10007 が続きました" >&2
+              exit 1
+            fi
+            delay=$((retry_unit * (attempt < 5 ? attempt : 5)))
+            echo "::notice::10007(Worker がまだ反映されていない)。${delay} 秒後に wrangler triggers deploy を再試行します(${attempt}/${max_attempts})。"
+            sleep "$delay"
+            if run_logged "${wrangler[@]}" triggers deploy; then
+              break
+            fi
+            if ! grep -q 'code: 10007' "$last_log"; then
+              exit 1
+            fi
+            attempt=$((attempt + 1))
+          done
+        fi
 
     # 配信の最後の段: リポジトリの About の Website 欄に、配信した URL を載せる(private → workers.dev の URL、
-    # public → Pages の URL)。設定は管理者権限が要り、`GITHUB_TOKEN` では行えない見込みなので、ここは読み戻して
-    # 空なら警告するだけにする(失敗にはしない)。設定は `gh repo edit -R <リポジトリ> --homepage <URL>`。
+    # public → Pages の URL)。設定は管理者権限が要り、`GITHUB_TOKEN` は `administration` の権限を持てないので
+    # (workflow の `permissions:` のキーに無い)、ここは読み戻して空なら警告するだけにする(失敗にはしない)。
+    # 設定は、人かエージェントが `gh repo edit OWNER/REPO --homepage <URL>` で行う(リポジトリは引数で、`-R` は取らない)。
     - name: Check the repository's Website field
       if: ${{ steps.ready.outputs.registered == 'true' && inputs.mode == 'deploy' }}
       shell: bash
@@ -139,10 +247,41 @@ runs:
         if ! homepage=$(gh api "repos/${REPO}" --jq '.homepage // ""' 2>/dev/null); then
           echo "::warning::${REPO} の Website 欄を読めませんでした(確かめられていません)。"
         elif [ -z "$homepage" ]; then
-          echo "::warning::${REPO} の About の Website 欄が空です。配信した URL を載せてください: gh repo edit -R ${REPO} --homepage <URL>"
+          echo "::warning::${REPO} の About の Website 欄が空です。配信した URL を載せてください: gh repo edit ${REPO} --homepage <URL>"
         else
           echo "::notice::Website 欄: ${homepage}"
         fi
+
+    # 門が閉じていることの確認: ログインなしの要求が、Access のログインへ 302 で転送される。新しい Worker は、
+    # アカウント全体の門(全 Worker を本人だけに閉じる宣言)が働いて、配信した瞬間から閉じているはずで、開いていれば
+    # 宣言が外れている。公開の Worker は、この確認を使わない(`access-login-check` の既定は false)。
+    - name: Check that the Worker is behind the Access login
+      if: ${{ steps.ready.outputs.registered == 'true' && inputs.mode == 'deploy' && inputs.access-login-check == 'true' }}
+      shell: bash
+      run: |
+        set -uo pipefail
+        all_log="${RUNNER_TEMP}/deploy-worker-output.log"
+        url=$(grep -Eo 'https://[A-Za-z0-9.-]+\.workers\.dev' "$all_log" 2>/dev/null | head -n 1 || true)
+        if [ -z "$url" ]; then
+          echo "::warning::wrangler の出力に workers.dev の URL が無く、門が閉じていることを確かめられませんでした(確かめられていません)。"
+          exit 0
+        fi
+        attempts=3
+        for attempt in $(seq 1 "$attempts"); do
+          code=""
+          location=""
+          read -r code location < <(curl -sS -o /dev/null --max-time 20 -w '%{http_code} %{redirect_url}\n' "$url" 2>/dev/null || true)
+          if [ "$code" = "302" ] && [[ "$location" == https://*.cloudflareaccess.com/* ]]; then
+            echo "::notice::${url} は Access のログイン(${location%%\?*})へ 302 で転送されます。"
+            exit 0
+          fi
+          echo "::notice::${url} の応答: ${code:-なし}(${attempt}/${attempts})。"
+          if [ "$attempt" -lt "$attempts" ]; then
+            sleep "${DEPLOY_WORKER_ACCESS_CHECK_DELAY:-10}"
+          fi
+        done
+        echo "::error::${url} が、ログインなしで Access のログインへ 302 で転送されません(最後の応答: ${code:-なし})。門が開いている可能性があります。インフラのリポジトリの、全 Worker を守る宣言と、この Worker の公開の宣言の有無を見てください。" >&2
+        exit 1
 
     # PR のプレビュー: Worker の version を上げ、その URL を PR の 1 件のコメント
     # (マーカー付き)に上書きで載せる。呼び出し側の job には `pull-requests: write` が要る。
