@@ -101,7 +101,7 @@ jobs:
       # `cache: false`: this repository has no go.mod, and a single
       # `go install` has nothing worth caching — setup-go's default cache
       # only logs "Dependencies file is not found" as a warning.
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7
         with:
           go-version: "1.24"
           cache: false
@@ -628,7 +628,7 @@ jobs:
         with:
           fetch-depth: 0
       # Determinate Systems installer (ADR-0001).
-      - uses: DeterminateSystems/nix-installer-action@9383ce2bf08796b65508822f5982f49151badc4e # main
+      - uses: DeterminateSystems/nix-installer-action@2559b44fed7d4fc978e8dd0e379661afb8b73590 # main
       # NOTE: magic-nix-cache (named in #208) was sunset by Determinate Systems
       # in Feb 2025. We rely on cache.nixos.org substituters here; a FlakeHub
       # cache action can be added later once a token is provisioned.
@@ -694,7 +694,7 @@ jobs:
         with:
           pattern: '^(config/agents/calendar-handshake/|home/tests/calendar-handshake-spec\.nix$|flake\.(nix|lock)$|\.github/actions/changed-paths/)'
       - if: steps.scope.outputs.run == 'true'
-        uses: DeterminateSystems/nix-installer-action@9383ce2bf08796b65508822f5982f49151badc4e # main
+        uses: DeterminateSystems/nix-installer-action@2559b44fed7d4fc978e8dd0e379661afb8b73590 # main
       - if: steps.scope.outputs.run == 'true'
         run: nix build --print-build-logs --no-link .#checks.x86_64-linux.calendar-handshake-spec
 
@@ -714,7 +714,7 @@ jobs:
         with:
           pattern: '^(config/agents/mail-lifecycle/|home/tests/mail-lifecycle-(spec|itf)\.nix$|crates/worklog/|flake\.(nix|lock)$|\.github/actions/changed-paths/)'
       - if: steps.scope.outputs.run == 'true'
-        uses: DeterminateSystems/nix-installer-action@9383ce2bf08796b65508822f5982f49151badc4e # main
+        uses: DeterminateSystems/nix-installer-action@2559b44fed7d4fc978e8dd0e379661afb8b73590 # main
       - if: steps.scope.outputs.run == 'true'
         run: nix build --print-build-logs --no-link .#checks.x86_64-linux.mail-lifecycle-spec
       # 仕様の軌跡(ITF)の各状態のノートの行を、実装の畳み込みに通して、仕様の結果と一致することを確かめる。
@@ -756,7 +756,7 @@ jobs:
     if: ${{ !cancelled() && needs.stack-position.outputs.rust != 'false' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - uses: DeterminateSystems/nix-installer-action@9383ce2bf08796b65508822f5982f49151badc4e # main
+      - uses: DeterminateSystems/nix-installer-action@2559b44fed7d4fc978e8dd0e379661afb8b73590 # main
       # clippy + rustfmt だけ。release の package(`checks.dotfiles-tools`)は、
       # ここでは作らない: build-host の activationPackage が必ず同じ derivation を作る
       # (`home.file.*.source = "${pkgs.dotfiles-tools}/bin/<name>"`)ので、ここで
