@@ -14,7 +14,7 @@ inputs:
 runs:
   using: composite
   steps:
-    - uses: DeterminateSystems/nix-installer-action@9383ce2bf08796b65508822f5982f49151badc4e # main
+    - uses: DeterminateSystems/nix-installer-action@2559b44fed7d4fc978e8dd0e379661afb8b73590 # main
 
     # cache.nixos.org never substitutes two classes of package this repo
     # builds: herdr (patches/herdr-worktree-names.patch, ADR-0001
