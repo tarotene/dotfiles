@@ -164,7 +164,7 @@ ADR-1677 の範囲外)。空のツリーを読んで通ってしまわないよ�
 
 ### 共有の部品(`web_components::check_tree`、ADR-1687)
 
-`config/web/components.css` を、正本 `config/web/variables.css` の宣言と突き合わせて読む。コメントは読まない。
+`config/web/components.css` を正本 `config/web/variables.css` の宣言と照合して読み込む。コメントは無視する。
 
 | 検査 | 内容 |
 |---|---|
@@ -175,7 +175,7 @@ ADR-1677 の範囲外)。空のツリーを読んで通ってしまわないよ�
 | 置き方 | `.actions` が `flex-direction: row-reverse;` と `justify-content: space-between;`(主な操作を右端、副の操作を左端)を持たなければ落ちる |
 | 二重書き | `@media (prefers-color-scheme)` の規則があれば落ちる |
 
-例外は無い。届くのは部品の CSS 1 ファイルだけで、各面が部品を使う HTML の検査は、未実装(意図あり)。
+例外はない。この検査が対象にするのは、部品の CSS 1 ファイルのみである。各面が部品を使う HTML の検査は、`未実装(意図あり)` である。
 
 ### 依存グラフ(`deps::check_tree`、#1446)
 
