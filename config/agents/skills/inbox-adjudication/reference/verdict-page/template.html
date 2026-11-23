@@ -388,6 +388,10 @@ function confirmAll() {
   showCursor();
 }
 function typingTarget(t) { return !!t && (t.tagName === "TEXTAREA" || t.tagName === "INPUT" || t.isContentEditable === true); }
+/* 日本語の入力方式(IME)がオンのとき、`-` のキーは長音「ー」になり、数字は全角になりうる。回の番号の照合は、全角を半角に直し、長音・各種のハイフンを `-` にそろえて比べる。 */
+function normRun(s) { return String(s).normalize("NFKC").replace(/[ー‐‑‒–—―−－]/g, "-").replace(/\s+/g, ""); }
+/* IME がオンのとき、e.key が文字でなく "Process" や "Unidentified" になる。その場合は物理キー(e.code)から文字を導く。 */
+function keyOf(e) { if (e.key && e.key.length === 1) return e.key; const c = e.code || ""; const m = /^Key([A-Z])$/.exec(c); if (m) return m[1].toLowerCase(); if (c === "Space") return " "; return e.key; }
 document.addEventListener("keydown", e => {
   if (e.ctrlKey && e.key === "Enter") { e.preventDefault(); confirmAll(); return; }
   if (typingTarget(e.target)) {
@@ -397,8 +401,8 @@ document.addEventListener("keydown", e => {
   }
   if (e.ctrlKey || e.metaKey || e.altKey || !keysOn || confirmed) return;
   const id = ORDER[cur]; if (!id) return;
-  if (e.key === "Backspace") { e.preventDefault(); moveTo(cur - 1); return; }
-  const o = optionForKey(optsOf(ITEM[id]), e.key);
+  if (e.key === "Backspace" || e.code === "Backspace") { e.preventDefault(); moveTo(cur - 1); return; }
+  const o = optionForKey(optsOf(ITEM[id]), keyOf(e));
   if (!o) return;
   e.preventDefault();
   choose(ITEM[id], o);
@@ -409,8 +413,8 @@ document.addEventListener("keydown", e => {
   if (!DATA.run_no) return;
   document.getElementById("runcheck").hidden = false;
   const inp = document.getElementById("run-check"), st = document.getElementById("run-status");
-  inp.addEventListener("input", () => {
-    const ok = inp.value.trim() === DATA.run_no;
+  const check = () => {
+    const ok = normRun(inp.value) === normRun(DATA.run_no);
     keysOn = ok;
     st.className = ok ? "status" : "status bad";
     st.textContent = ok ? "一致しました。キー入力が使えます(入力欄から外れました)" : "紙の回の番号と違います。キー入力は使えません(ボタンは押せます)";
@@ -418,7 +422,9 @@ document.addEventListener("keydown", e => {
     /* 欄にフォーカスが残ると、keydown は typingTarget として何もせず戻り、キー入力が効かない(2026-11-19 に本人が指摘)。
        番号が一致した時点で欄から出し、キーを文書に渡す。 */
     if (ok) inp.blur();
-  });
+  };
+  inp.addEventListener("input", check);
+  inp.addEventListener("compositionend", check);
 })();
 
 function persist(it) {

@@ -264,6 +264,14 @@ selftest() {
   got=$(node -e "$(grep '^function docId' "$TEMPLATE"); const rows = JSON.parse(require('fs').readFileSync(process.argv[1], 'utf8')); const ids = rows.map(r => docId('gh:' + r.thread + '/' + r.receipt)); const bad = ids.filter(i => !/^[A-Za-z0-9_.~:@+-]+\$/.test(i)); console.log(bad.length + ',' + (ids.length - new Set(ids).size))" "$HERE/fixtures/gh-keys.json")
   if [ "$got" = "0,0" ]; then ok "テンプレート: GitHub の鍵の docId が、db の許す文字だけで、衝突しない"; else ng "テンプレート: GitHub の鍵の docId に、許されない文字か衝突がある(違反,衝突=$got)"; fi
   if grep -qF 'inp.blur()' "$TEMPLATE"; then ok "テンプレート: 回の番号が一致したら入力欄から出る(キー入力が効く)"; else ng "テンプレート: 回の番号が一致しても入力欄に残る(キー入力が効かない)"; fi
+  # 日本語の入力方式(IME)がオンのとき、`-` のキーは長音「ー」、数字は全角になりうる。回の番号の照合がそれを受け入れないと、キー入力が使えないままになる
+  # (2026-11-23 に「キーボードが相変わらず効かない」と指摘された。かつての検査は `inp.blur()` の文字列があるかだけを見て、入力の挙動を見ていなかった)。
+  got=$(node -e "$(grep '^function normRun' "$TEMPLATE"); const want = '20261123-1'; const cases = ['20261123-1', '20261123ー1', '２０２６１１２３－１', ' 20261123−1 ', '20261123‐1']; console.log(cases.filter(c => normRun(c) !== want).length)")
+  if [ "$got" = "0" ]; then ok "テンプレート: 回の番号は、全角・長音・各種のハイフン・前後の空白があっても一致する"; else ng "テンプレート: 回の番号の照合が、IME の入力を受け入れない(不一致=$got)"; fi
+  # IME がオンのとき、e.key は文字でなく Process や Unidentified になる。物理キー(e.code)から文字を導けること。
+  got=$(node -e "$(grep '^function keyOf' "$TEMPLATE"); const t = [[{key:'a',code:'KeyA'},'a'],[{key:'Process',code:'KeyB'},'b'],[{key:'Unidentified',code:'KeyC'},'c'],[{key:' ',code:'Space'},' '],[{key:'Process',code:'Space'},' '],[{key:'Backspace',code:'Backspace'},'Backspace']]; console.log(t.filter(([e, w]) => keyOf(e) !== w).length)")
+  if [ "$got" = "0" ]; then ok "テンプレート: キーの文字は、IME がオンでも物理キーから導ける"; else ng "テンプレート: IME がオンのとき、キーの文字を導けない(不一致=$got)"; fi
+  if grep -qF 'normRun(inp.value)' "$TEMPLATE" && grep -qF 'keyOf(e)' "$TEMPLATE"; then ok "テンプレート: 回の番号の照合とキー入力が、上の 2 つの関数を使う"; else ng "テンプレート: 回の番号の照合かキー入力が、IME 対応の関数を使っていない"; fi
   if grep -qF 'gEdited' "$TEMPLATE"; then ok "テンプレート: 古いフィードバックを回答に含めない"; else ng "テンプレート: 古いフィードバックを回答に含める"; fi
 
   # 5. 選択肢の正本(options.json)が、画面・保存先の形・項目の kind と食い違わないこと
