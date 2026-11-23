@@ -49,6 +49,13 @@ SessionStart の宣言は bool の `injects` を必ず持つ(付け忘れは nix
 登録を担う hook(`session-wrapup-start`・`pr-gate-session-start` など)で、包まない(Stop の検査が前提を失うため)。Codex・Copilot の
 登録は包まない(command が変わると、Codex の hook の信頼がやり直しになる)。
 
+### D6: 健全さは、触れた決定の一覧を機械的に出して担保する
+
+既存の検査(`decision-colocation-check`)は、足された ADR の執行点が実在するかだけを見て、**旧 ADR の執行点が消えた・変わったこと**は、
+どの検査も見ない。モードの PR は、決定を読まずに執行点を消すので、この穴を通る。`decision-colocation-touched --base <ref>` が、
+base 時点の ADR の `## 執行点` のうち、変更・削除・改名されたものを ADR ごとに出し、あわせて、消した・変えたテストと CI の設定を出す。
+PR 本文の `## 触れた決定` に貼り、通常のセッションが、覆す決定ごとに新しい ADR(見出しの `- Supersedes:`)を同じブランチへ足す。
+
 ## 先行例との対比
 
 - D1: 起動時に、宣言から設定・追記する文・環境変数を束ねて渡す
@@ -70,6 +77,12 @@ SessionStart の宣言は bool の `injects` を必ず持つ(付け忘れは nix
   各 hook の crate に同じ判定を散らさず、宣言の 1 属性に寄せる
   軸: 表現不可能 — 閉語彙(`injects` が無い宣言は評価で落ちる)。単一正本 > 複写
 
+- D6: 触れた決定の一覧を、既存の検査と同じ crate で、同じ読み方(`extract_paths`)から導く
+  先行例: crates/decision-colocation/src/check.rs の `run_check` (取得 2026-11-18)。足された ADR・Amendment・決定成果物だけを見る
+  先行例: docs/adr/0008-documentation-artifact-selection.md の 2026-11-09 の Amendment (取得 2026-11-18)。覆すときは新しい ADR が `- Supersedes:` で宣言する
+  差分: 異なる — 既存は新しい ADR の執行点が実在するかだけを見る。旧 ADR の執行点が消えたことは、どの検査も見ない
+  軸: 表現不可能 — 単一正本(ADR の執行点)から導く > 人が書く一覧
+
 ## Consequences
 
 - 同じ worktree で、通常のセッションとモードのセッションを並べられる(モードは起動したプロセスだけに効く)。
@@ -86,3 +99,4 @@ SessionStart の宣言は bool の `injects` を必ず持つ(付け忘れは nix
 - config/agents/modes/refactor.toml
 - config/zsh/modules/53-tools-claude.zsh
 - home/modules/agents.nix
+- crates/decision-colocation/src/touched.rs

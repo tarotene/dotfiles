@@ -2539,6 +2539,9 @@ assert lib.assertMsg (lib.all skillNameMatches skillNames)
     # agent-mode (docs/agents/agent-mode.md): `CLAUDE_MODE=<name> claude` の展開役。zsh の `claude` 関数が
     # 呼ぶ(config/zsh/modules/53-tools-claude.zsh)。手動の入口で、hook ではない。
     "agent-mode"
+    # decision-colocation-touched (docs/agents/agent-mode.md): PR 本文の `## 触れた決定` の節を出す。
+    # 旧 ADR の執行点が消えた・変わったことは、どの検査も見ないので、その一覧を機械的に出す。手動の入口。
+    "decision-colocation-touched"
   ];
 
   # agent-mode の宣言(モードごとに <名前>.toml と、追記する文のファイル)。Literal file を配る(ADR-0002)。
