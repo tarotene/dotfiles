@@ -1,7 +1,7 @@
 name: 'Check the design pin'
 description: >-
   各面(Web のサイト・Artifact の雛形)が持つ、デザイン正本(config/web/)の複写の固定を検査する共通部品
-  (ADR-0000。先行例は、裁定ページの保存先 Schema を commit で固定した URL と sha256 で固定する、個人の記録のリポジトリの型)。
+  (ADR-1685。先行例は、裁定ページの保存先 Schema を commit で固定した URL と sha256 で固定する、個人の記録のリポジトリの型)。
 
   各面は、正本(variables.css など)を自分のリポジトリに複写し、複写の出所を `design-pin.toml` に書く。
   この action は、その固定が嘘でないことを確かめる。複写が正本から勝手にずれる(手で直した、別の版を貼った)

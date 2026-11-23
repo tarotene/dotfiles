@@ -1,4 +1,4 @@
-# ADR-0000 — Pages のデザインの正本は `config/web/` に置き、各面は commit で固定した URL と sha256 で複写を pin し、CI が検査する
+# ADR-1685 — Pages のデザインの正本は `config/web/` に置き、各面は commit で固定した URL と sha256 で複写を pin し、CI が検査する
 
 - Status: Accepted
 - Date: 2026-11-24

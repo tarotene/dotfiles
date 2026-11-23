@@ -115,7 +115,7 @@ What runs automatically, when, and on which stack: see the [pipeline map](pipeli
 - [ADR-1608](adr/1608-repo-scope-by-machine-contract.md) — 個人の契約の機体は、別の側の持ち主の非公開リポジトリを読まない
 - [ADR-1660](adr/1660-personal-web-app-standard.md) — 入力と保存を持つ private な個人用 Web アプリは、Worker + D1 + Access を標準にし、マイグレーションと About の URL を共通 action に載せる
 - [ADR-1677](adr/1677-web-design-baseline.md) — Pages のデザインは、DADS を土台にした自分用の基準に従い、正本は公開のこのリポジトリに置き、第三者からの書体・スタイルの読み込みを禁じる
-- [ADR-0000](adr/0000-web-design-distribution.md) — Pages のデザインの正本は `config/web/` に置き、各面は commit で固定した URL と sha256 で複写を pin し、CI が検査する
+- [ADR-1685](adr/1685-web-design-distribution.md) — Pages のデザインの正本は `config/web/` に置き、各面は commit で固定した URL と sha256 で複写を pin し、CI が検査する
 <!-- END GENERATED -->
 
 ## 運用・調査・設計(`docs/` 直下)

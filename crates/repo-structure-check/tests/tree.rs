@@ -256,7 +256,7 @@ fn the_web_assets_check_reads_what_it_is_about() {
     }
 }
 
-/// デザイントークンの正本は、役割の集合が閉じていて、明暗の両方でコントラストの基準を満たす(ADR-0000)。
+/// デザイントークンの正本は、役割の集合が閉じていて、明暗の両方でコントラストの基準を満たす(ADR-1685)。
 #[test]
 fn the_design_tokens_satisfy_the_contrast_and_shape_invariants() {
     let violations = web_variables::check_tree(&repo_root()).expect("read the design tokens");

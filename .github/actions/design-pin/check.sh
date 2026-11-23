@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 各面が持つ、デザイン正本(config/web/)の複写の固定(design-pin.toml)を検査する(ADR-0000)。
+# 各面が持つ、デザイン正本(config/web/)の複写の固定(design-pin.toml)を検査する(ADR-1685)。
 # 先行例: 裁定ページの保存先 Schema を、commit で固定した URL と sha256 で固定する bash 検査(個人の記録のリポジトリの型)。
 #
 # pin の形(TOML。複数の複写は [[file]] を並べる)。URL は pin に書かず、正本のリポジトリ(SOURCE_REPO。

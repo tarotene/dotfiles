@@ -342,7 +342,7 @@ jobs:
       - name: ci-consumers --selftest
         run: scripts/ci-consumers --selftest
 
-      # design-pin: 各面が持つ、デザイン正本(config/web/)の複写の固定を検査する共通部品(ADR-0000)。
+      # design-pin: 各面が持つ、デザイン正本(config/web/)の複写の固定を検査する共通部品(ADR-1685)。
       - name: design-pin --selftest
         run: bash .github/actions/design-pin/check.sh --selftest
 

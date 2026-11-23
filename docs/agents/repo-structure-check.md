@@ -146,7 +146,7 @@ typed な option にして、identity のファイル(`home/identities/**`)と h
 ADR-1677 の範囲外)。空のツリーを読んで通ってしまわないよう、`tests/tree.rs` が、裁定ページの `template.html`・`plan-view.css`・
 `model-equivalence` の `page.html` を読んでいることを確かめる。
 
-### デザイントークン(`web_variables::check_tree`、ADR-0000)
+### デザイントークン(`web_variables::check_tree`、ADR-1685)
 
 正本 `config/web/variables.css` を読む。値は、16 進(`#rgb`・`#rrggbb`)・`var(--名前)`・`light-dark(明, 暗)` だけを解釈する。コメントは
 読まない(説明のコメントに、規則の綴りを書いてよい)。

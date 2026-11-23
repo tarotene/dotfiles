@@ -1,6 +1,6 @@
 /*
  * Web の面(GitHub Pages・Cloudflare Workers のサイト・claude.ai の Artifact の雛形)が共有する、
- * デザイントークンの正本。基準は ADR-1677、配り方は ADR-0000(docs/adr/)。
+ * デザイントークンの正本。基準は ADR-1677、配り方は ADR-1685(docs/adr/)。
  *
  * 層は 2 つ。
  *   1. 原色(`--ref-*`): 16 進の値だけを持つ。このファイルでだけ 16 進を書く。
