@@ -146,6 +146,22 @@ typed な option にして、identity のファイル(`home/identities/**`)と h
 ADR-1677 の範囲外)。空のツリーを読んで通ってしまわないよう、`tests/tree.rs` が、裁定ページの `template.html`・`plan-view.css`・
 `model-equivalence` の `page.html` を読んでいることを確かめる。
 
+### デザイントークン(`web_variables::check_tree`、ADR-0000)
+
+正本 `config/web/variables.css` を読む。値は、16 進(`#rgb`・`#rrggbb`)・`var(--名前)`・`light-dark(明, 暗)` だけを解釈する。コメントは
+読まない(説明のコメントに、規則の綴りを書いてよい)。
+
+| 検査 | 内容 |
+|---|---|
+| 層 | 原色(`--ref-*`)は 16 進の値だけを持つ。役割・尺度の層が 16 進を直書きしたら落ちる(原色を `var()` で指す) |
+| 役割の集合 | `REQUIRED_ROLES` の 16 の役割(`--bg`・`--surface`・`--text`・`--text-muted`・`--border`・`--border-subtle`・`--accent`・`--on-accent`・`--accent-text`・`--focus`・`--ok`・`--ok-bg`・`--ng`・`--ng-bg`・`--warn`・`--warn-bg`)が、明暗の両方で色に解けること。欠けても、解けなくても(`oklch()` など)落ちる。読めない色を、通してしまわない |
+| コントラスト | `PAIRS` の 21 の組を、明暗の両方で WCAG 2.2 の式で計算する。文字は 4.5:1(本文・弱い文字・リンク・強調色の上の文字・成功/誤り/注意の文字)、図形は 3:1(境界・フォーカスの輪・強調色) |
+| 規則の形 | `color-scheme: light dark`、Artifact のホストの契約 `:root[data-theme="light"]`・`:root[data-theme="dark"]`、`prefers-reduced-motion` の規則が要る。`@media (prefers-color-scheme)` の規則(明暗の二重書き)は落ちる |
+
+例外は無い。範囲は正本 1 ファイルの値と形で、各面が自分のテーマで上書きした値には届かない(各面を正本に従わせる段で、同じ組を
+面のテーマに当てる。未実装、意図あり)。各面が持つ複写の検査は、`.github/actions/design-pin`(`check.sh --selftest` を CI が走らせる)。
+空のツリーを読んで通ってしまわないよう、`tests/tree.rs` が、16 の役割と尺度の主な名前の宣言が正本にあることを確かめる。
+
 ### 依存グラフ(`deps::check_tree`、#1446)
 
 各 `crates/*/Cargo.toml` の `[dependencies]`・`[build-dependencies]`(`[target.<cfg>.…]` も)の `path` の依存を辺として読む。
@@ -212,6 +228,7 @@ ADR-1529 の置き場 4)。例外を解消すると鮮度の検査が落ちる�
 - crates/repo-structure-check/src/process_env.rs
 - crates/repo-structure-check/src/civil_time.rs
 - crates/repo-structure-check/src/deps.rs
+- crates/repo-structure-check/src/web_variables.rs
 - crates/civil-time/src/lib.rs
 - crates/process-env/src/lib.rs
 - crates/repo-structure-check/tests/tree.rs
