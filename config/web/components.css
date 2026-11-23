@@ -1,0 +1,194 @@
+/*
+ * 共有の部品(ADR-0000)。variables.css の役割と尺度だけを参照する(16 進・原色を直書きしない)。
+ * 面ごとのテーマは variables.css の役割を上書きするので、部品は書き換えずに主色が変わる。
+ *
+ * 置き方の裁定(2026-11-24): 主な操作(次へ)と副の操作(戻る)は、HTML では主を先に書く。
+ * PC(幅 40rem 以上)は「戻る」を左端、「次へ」を右端に離して置き、スマートフォンは縦に積んで
+ * 「次へ」を上にする(DADS の置き方)。画面の下端に固定する帯は、基準に入れない。
+ *
+ *   <div class="actions">
+ *     <button type="button" class="btn btn-main">次へ</button>
+ *     <button type="button" class="btn btn-sub">戻る</button>
+ *   </div>
+ *
+ * 保存の表示は、書き込みの成功を確かめてから data-state を saved にする(UX の型 P1)。
+ *
+ *   <span class="status" role="status" data-state="saving">保存中…</span>
+ */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
+}
+
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.skip-link {
+  position: absolute;
+  top: -4rem;
+  left: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  background: var(--bg);
+  color: var(--accent-text);
+  border: 2px solid var(--accent);
+  border-radius: var(--radius-m);
+}
+
+.skip-link:focus {
+  top: var(--space-2);
+}
+
+.btn {
+  min-height: var(--target);
+  padding: var(--space-2) var(--space-5);
+  border: 2px solid var(--accent);
+  border-radius: var(--radius-m);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background var(--dur) ease;
+}
+
+.btn-main {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.btn-sub {
+  background: var(--bg);
+  color: var(--accent-text);
+}
+
+.btn-link {
+  min-height: var(--target);
+  padding: 0 var(--space-2);
+  border: 0;
+  background: none;
+  color: var(--accent-text);
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+@media (min-width: 40rem) {
+  .actions {
+    flex-direction: row-reverse;
+    justify-content: space-between;
+    align-items: center;
+  }
+}
+
+.choices {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.choice {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: var(--target);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-m);
+}
+
+.choice:has(input:checked) {
+  border: 2px solid var(--accent);
+  background: var(--surface);
+}
+
+.status {
+  display: inline-block;
+  font-size: var(--fs-small);
+  color: var(--text-muted);
+}
+
+.status[data-state="saved"] {
+  color: var(--ok);
+}
+
+.status[data-state="failed"] {
+  color: var(--ng);
+}
+
+.alert {
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-m);
+}
+
+.alert-ok {
+  background: var(--ok-bg);
+  color: var(--ok);
+  border-color: var(--ok);
+}
+
+.alert-ng {
+  background: var(--ng-bg);
+  color: var(--ng);
+  border-color: var(--ng);
+}
+
+.alert-warn {
+  background: var(--warn-bg);
+  color: var(--warn);
+  border-color: var(--warn);
+}
+
+.empty {
+  padding: var(--space-6) var(--space-4);
+  color: var(--text-muted);
+  text-align: center;
+}
+
+/* 表を、狭い画面で 1 行 1 枚に組み替える(列を隠さない)。各欄の名前は data-label から出す。 */
+@media (max-width: 40rem) {
+  .table-cards thead {
+    position: absolute;
+    left: -100vw;
+  }
+
+  .table-cards tr {
+    display: block;
+    margin-bottom: var(--space-3);
+    padding: var(--space-3);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-m);
+  }
+
+  .table-cards td {
+    display: flex;
+    gap: var(--space-3);
+    padding: var(--space-1) 0;
+  }
+
+  .table-cards td::before {
+    content: attr(data-label);
+    min-width: 6rem;
+    color: var(--text-muted);
+  }
+}

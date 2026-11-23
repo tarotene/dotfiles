@@ -102,7 +102,7 @@ fn violation(path: &str, detail: String) -> Violation {
 }
 
 /// `/* … */` を取り除く(複数行を含む)。
-fn strip_comments(text: &str) -> String {
+pub(crate) fn strip_comments(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
     let mut rest = text;
     while let Some(start) = rest.find("/*") {
@@ -117,7 +117,7 @@ fn strip_comments(text: &str) -> String {
 }
 
 /// `--名前: 値;`(1 行)の宣言を、出てきた順に取る。
-fn declarations(stripped: &str) -> Vec<(String, String)> {
+pub(crate) fn declarations(stripped: &str) -> Vec<(String, String)> {
     let mut out = Vec::new();
     for line in stripped.lines() {
         let line = line.trim();
