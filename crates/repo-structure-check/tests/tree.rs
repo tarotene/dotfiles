@@ -11,6 +11,7 @@ use repo_structure_check::host_names;
 use repo_structure_check::manifest::{check_tree, read_members, ZERO_DEPENDENCY_CRATES};
 use repo_structure_check::process_env::{self, HELPER_EXCEPTIONS, XDG_EXCEPTIONS};
 use repo_structure_check::side_symmetry;
+use repo_structure_check::web_assets;
 
 fn repo_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
@@ -224,6 +225,33 @@ fn the_process_env_check_reads_what_it_is_about() {
     }
     for (path, _) in XDG_EXCEPTIONS.iter().chain(HELPER_EXCEPTIONS) {
         assert!(sources.iter().any(|s| s.path == *path), "{path} が無い");
+    }
+}
+
+#[test]
+fn the_tree_loads_no_fonts_or_styles_from_third_parties() {
+    let violations = web_assets::check_tree(&repo_root()).expect("read the web assets");
+    let report: Vec<String> = violations.iter().map(ToString::to_string).collect();
+    assert!(
+        violations.is_empty(),
+        "第三者から書体・スタイルを読む HTML・CSS がある:\n{}",
+        report.join("\n")
+    );
+}
+
+/// 空のツリーを読んで「違反なし」で通ってしまわないための番兵。
+#[test]
+fn the_web_assets_check_reads_what_it_is_about() {
+    let files = web_assets::read_files(&repo_root()).expect("read the web assets");
+    for expected in [
+        "config/agents/skills/inbox-adjudication/reference/verdict-page/template.html",
+        "config/claude/assets/plan-view.css",
+        "crates/model-equivalence/page.html",
+    ] {
+        assert!(
+            files.iter().any(|f| f.path == expected),
+            "{expected} が読まれていない"
+        );
     }
 }
 

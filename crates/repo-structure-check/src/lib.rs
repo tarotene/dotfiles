@@ -14,3 +14,4 @@ pub mod host_names;
 pub mod manifest;
 pub mod process_env;
 pub mod side_symmetry;
+pub mod web_assets;
