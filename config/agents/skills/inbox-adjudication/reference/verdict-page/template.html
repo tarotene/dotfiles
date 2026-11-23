@@ -98,9 +98,19 @@ label.note .warn { color: var(--warn); font-size: 0.8rem; }
 .status { font-size: 0.85rem; color: var(--muted); }
 .status.bad { color: var(--warn); }
 #summary { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; background: var(--panel); border: 1px solid var(--rule); border-radius: 6px; padding: 12px; font-size: 0.85rem; }
-.cursorbar { position: sticky; top: 0; z-index: 5; background: var(--panel); border: 2px solid var(--accent); border-radius: 6px; padding: 8px 14px; font-size: 1.15rem; font-weight: 700; display: none; gap: 2px; }
-.cursorbar.on { display: grid; }
-.cursorbar .cb-sel { color: var(--accent); }
+/* 最上段の状態の行。キーが効くか・どのカードに効くか・何を押せるか・残り・直前の結果を、常に出す(FORMAT.md「キー入力の仕様」)。 */
+.statusbar { position: sticky; top: 0; z-index: 5; background: var(--panel); border: 2px solid var(--accent); border-radius: 6px; padding: 5px 12px; font-size: 0.95rem; line-height: 1.35; display: grid; gap: 1px; }
+.statusbar[data-keys="off"] { border-color: var(--warn); }
+.statusbar .sb-top { display: flex; flex-wrap: wrap; gap: 0 14px; align-items: baseline; }
+.statusbar .sb-keys { font-weight: 700; white-space: nowrap; }
+.statusbar[data-keys="off"] .sb-keys { color: var(--warn); white-space: normal; }
+.statusbar .sb-title { font-weight: 700; flex: 1 1 14rem; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.statusbar .sb-hint { font-size: 0.9rem; }
+.statusbar .sb-hint:empty, .statusbar .sb-last:empty { display: none; }
+.statusbar .sb-last { font-size: 0.85rem; color: var(--muted); }
+/* 固定表示の状態の行に、カードの上端が隠れないようにする(スクロールで寄せたとき・フォーカスしたとき)。 */
+.item { scroll-margin-top: 8rem; }
+.statusbar kbd { font-family: var(--font-mono); font-size: 0.85rem; padding: 0 5px; border: 1px solid var(--rule); border-radius: 3px; margin-right: 3px; }
 .item[data-cur="1"] { outline: 3px solid var(--accent); outline-offset: 2px; }
 .opts button .code { font-family: var(--font-mono); font-size: 0.8rem; margin-right: 6px; padding: 0 5px; border: 1px solid var(--rule); border-radius: 3px; }
 .opts button[aria-checked="true"] .code { border-color: var(--accent-ink); }
@@ -112,7 +122,11 @@ label.note .warn { color: var(--warn); font-size: 0.8rem; }
 </style>
 </head><body>
 <main>
-  <div class="cursorbar" id="cursorbar" role="status" aria-live="polite"></div>
+  <div class="statusbar" id="statusbar" data-keys="off">
+    <div class="sb-top"><span class="sb-keys" id="sb-keys"></span><span class="sb-title" id="sb-title"></span></div>
+    <div class="sb-hint" id="sb-hint"></div>
+    <div class="sb-last" id="sb-last" role="status" aria-live="polite"></div>
+  </div>
   <header style="display:grid;gap:10px">
     <h1>メール裁定</h1>
     <p class="sub"><span id="run-label"></span>。各項目で「どうするか」と「誰がやるか」を一緒に選びます。選んだ内容は保存先に残り、次の机か次のセッションが読んで、記録(<span class="mono">worklog</span>)に書きます。</p>
@@ -120,11 +134,10 @@ label.note .warn { color: var(--warn); font-size: 0.8rem; }
     <section class="handoff" id="handoff" aria-live="polite" aria-label="この選択のあとの分担"></section>
     <p class="status" id="dbstatus">保存先に接続中です。</p>
     <div class="runcheck" id="runcheck" hidden>
-      <label for="run-check">紙の回の番号(紙の右上に刷ってあります)を打つと、キー入力が使えます</label>
+      <label for="run-check">紙の回の番号(紙の右上): 打つと、この画面が同じ回かを照合します(任意。打たなくても、キーは使えます)</label>
       <input id="run-check" autocomplete="off" size="14" aria-describedby="run-status">
       <span class="status" id="run-status"></span>
     </div>
-    <p class="sub" id="keys-help">キー入力: 符号(a・b・…)で選びます。Space は「あとで」、Backspace は一つ戻る、「その他」はメモ欄に移り、Esc で次の項目へ。Ctrl+Enter で確定します。</p>
     <p class="status" id="confirmstatus"></p>
   </header>
 
@@ -132,7 +145,7 @@ label.note .warn { color: var(--warn); font-size: 0.8rem; }
 
   <section style="display:grid;gap:12px" aria-labelledby="h-judge">
     <h2 id="h-judge">判断の表</h2>
-    <p class="sub">種類ごとの枠に並べています。返信の下書きは、その項目の枠の中にあります。「推奨」の印は私の案で、選ぶのはあなたです。「その他」を選ぶと、項目の下の記入欄があなたの指示になり、次の机が読んでそのとおりに動きます。「あとで」は何も記録せず、7 日後に再通知します。選び直すときは「選択を外す」を押します。</p>
+    <p class="sub">紙と同じ順に並べています(№ は紙のカードの番号)。返信の下書きは、その項目の枠の中にあります。「推奨」の印は私の案で、選ぶのはあなたです。「その他」を選ぶと、項目の下の記入欄があなたの指示になり、次の机が読んでそのとおりに動きます。「あとで」は何も記録せず、7 日後に再通知します。選び直すときは「選択を外す」を押します。</p>
     <div class="list" id="list"></div>
     <div class="guidance">
       <h2 style="font-size:1rem">今後の裁定へのフィードバック</h2>
@@ -176,14 +189,13 @@ const chain = {};          // id -> Promise, 1 doc 1 write at a time
 function docId(key) { return key.replace(/[:\/]/g, ".").replace(/=/g, "+"); }
 function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
 function hhmm(iso) { try { const d = new Date(iso); return d.toLocaleString("ja-JP", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }); } catch (e) { return ""; } }
+/* @pure:begin — 画面に触れない関数(状態 → 表示・挙動の決め方)。build.sh --selftest が、この区間だけを取り出して、
+   「表示するキー」と「実際に効くキー」が一致することを検査する(FORMAT.md「キー入力の仕様」)。DOM・window を参照しない。 */
+const ORDER = ITEMS.map(it => it.id);   // 紙と同じ順の項目 id。画面の順も、キー入力の順も、この 1 つ
 function optsOf(it) { return OPTIONS.kinds[it.kind].options; }
 /* キー入力の符号。later 以外の選択肢に、options.json の並びの順で a から振る。later は Space(" ")。紙と同じ表から導く(FORMAT.md)。 */
 function codesOf(opts) { const m = {}; let n = 0; for (const o of opts) { m[o.id] = o.verdict === "later" ? " " : String.fromCharCode(97 + n++); } return m; }
 function optionForKey(opts, k) { const m = codesOf(opts); const key = k === " " ? " " : String(k).toLowerCase(); return opts.find(o => m[o.id] === key) || null; }
-const ORDER = [];          // 画面に出る順の項目 id(キー入力の順)
-let cur = 0;               // キー入力のカーソル(ORDER の添字)
-let keysOn = !DATA.run_no; // 回の番号を照合するまで、キー入力は受けない(run_no が無い入力は、すぐ受ける)
-let confirmed = false;     // Ctrl+Enter の確定は 1 回だけ
 
 /* 保存された裁定から、押されたボタンを決める。option が無い古い文書は、verdict と owner から選ぶ。 */
 function optionOf(it, s) {
@@ -199,6 +211,46 @@ function settled(s) {
   if (s.verdict === "other") return !!(s.note && s.note.trim());
   return s.verdict === "decide" || s.verdict === "pass";
 }
+/* 件数の数え方は、ここ 1 か所。件数欄・確定の文・状態の行が、すべてこれを使う。
+   選んだ(chosen)=あとで以外で選んだもの(その他は、指示があるものだけ)、あとで(later)、未選択(none)、その他で指示が空(waiting)。残り=未選択+指示が空。 */
+function progress() {
+  let chosen = 0, later = 0, none = 0, waiting = 0;
+  for (const it of ITEMS) {
+    const s = state[it.id], o = optionOf(it, s);
+    if (!o) none++;
+    else if (o.verdict === "later") later++;
+    else if (o.verdict === "other" && !settled(s)) waiting++;
+    else chosen++;
+  }
+  return { total: ITEMS.length, chosen, later, none, waiting, remaining: none + waiting };
+}
+/* キーが効くか。c = { focused: 枠にフォーカスがあるか, typing: null | "memo" | "field", confirmed }。理由は、効かないときの画面にそのまま出す。 */
+function keyState(c) {
+  if (c.confirmed) return { on: false, text: "確定しました。キー入力は止まっています" };
+  if (!c.focused) return { on: false, text: "止まっています: このページのどこかをクリックすると、キーが使えます" };
+  if (c.typing === "memo") return { on: false, text: "メモ欄に入力中です: Esc で次のカードへ" };
+  if (c.typing === "field") return { on: false, text: "入力欄の中です: Esc で出ると、キーが使えます" };
+  return { on: true, text: "受付中" };
+}
+/* いま押せる選択肢のキー(そのカードの選択肢から毎回導く。固定の表は出さない)。 */
+function hintsOf(it) { const m = codesOf(optsOf(it)); return optsOf(it).map(o => ({ key: m[o.id] === " " ? "Space" : m[o.id], label: o.label, option: o })); }
+/* 1 回のキー入力で何が起きるか。c = { order, cur, confirmed }、e = { key, ctrl, meta, alt, target: null | "memo" | "field" }。
+   画面の挙動も、状態の行の「押せる」も、同じ keyState と optionForKey から導く。 */
+function decideKey(c, e) {
+  if (e.ctrl && e.key === "Enter") return { act: "confirm" };
+  if (e.target) return { act: e.key === "Escape" ? (e.target === "memo" ? "esc-memo" : "esc-field") : "ignore", why: "typing" };
+  if (e.ctrl || e.meta || e.alt) return { act: "ignore", why: "modifier" };
+  if (c.confirmed) return { act: "ignore", why: "confirmed" };
+  const id = c.order[c.cur]; if (!id) return { act: "ignore", why: "empty" };
+  if (e.key === "Backspace") return { act: "back" };
+  const o = optionForKey(optsOf(ITEM[id]), e.key);
+  if (!o) return { act: "ignore", why: "nokey", id };
+  return { act: "choose", id, option: o };
+}
+/* @pure:end */
+let cur = 0;               // キー入力のカーソル(ORDER の添字)。マウスで触ったカードにも移る
+let confirmed = false;     // Ctrl+Enter の確定は 1 回だけ
+let lastResult = "";       // 状態の行の「直前の結果」(読み上げの対象はここだけ)
 
 /* 検査の報告にある、相手の依頼の処分(reply-coverage。未回答は検査に合格しないので出ない)。 */
 const ASK_STATUS = { answered: "答える", declined: "断る", deferred: "保留", answered_before: "先に答え済み", retracted: "取り下げ済み" };
@@ -232,21 +284,21 @@ function render() {
   }
   const list = document.getElementById("list");
   const usedDrafts = new Set();
-  /* 同じ種類の項目は同じ枠(pane)に並べる。枠の順は options.json の kind の順。 */
-  for (const kind of Object.keys(OPTIONS.kinds)) {
-    const mineItems = ITEMS.filter(it => it.kind === kind);
-    if (!mineItems.length) continue;
-    const pane = el("section", "pane"); pane.append(el("h3", "pane-title", OPTIONS.kinds[kind].pane + "(" + mineItems.length + ")"));
+  /* 紙と同じ順に、1 つの枠(pane)へ並べる。№ は、紙のカードの番号(ORDER の位置 + 1)。種類ごとの枠分けはしない。 */
+  {
+    const pane = el("section", "pane"); pane.append(el("h3", "pane-title", "裁定カード(" + ITEMS.length + " 枚)"));
     const inner = el("div", "list");
-    for (const it of mineItems) {
+    for (const it of ITEMS) {
       const card = el("div", "item"); card.id = "it-" + it.id; cards[it.id] = card;
+      /* マウス・フォーカスで触ったカードに、キーのカーソルも移す(カーソルは 1 本)。 */
+      const syncCursor = () => { const i = ORDER.indexOf(it.id); if (i >= 0 && i !== cur) { cur = i; paintStatus(); } };
+      card.addEventListener("focusin", syncCursor); card.addEventListener("click", syncCursor);
       const meta = el("div", "meta");
       const w = el("span", "when", it.when);
       if (it.when_class === "urgent" || it.when_class === "near") w.classList.add(it.when_class);
-      meta.append(w, el("span", "title", it.title));
+      meta.append(el("span", "badge", "№ " + (ORDER.indexOf(it.id) + 1)), w, el("span", "title", it.title));
       if (it.stale) meta.append(el("span", "badge stale", "紙の版と違います"));
       if (it.rev) meta.append(el("span", "badge", "版 " + it.rev));
-      ORDER.push(it.id);
       const from = el("div", "from", it.from);
       const recOpt = optsOf(it).find(o => o.id === it.rec_option);
       const rec = el("div", "rec"); rec.append("推奨: ", Object.assign(el("b"), { textContent: (recOpt ? recOpt.label + "。" : "") + it.rec }));
@@ -337,7 +389,8 @@ function summary() {
     (o.owner === "agent" ? agent : me).push([it, o]);
   }
   const c = document.getElementById("counts"); c.textContent = "";
-  for (const [num, label] of [[n, "件"], [decided, "決めた"], [later, "あとで"], [none + waiting, "未選択・指示待ち"]]) {
+  const pg = progress();
+  for (const [num, label] of [[pg.total, "件"], [pg.chosen, "決めた"], [pg.later, "あとで"], [pg.remaining, "未選択・指示待ち"]]) {
     const d = el("div"); d.append(Object.assign(el("b"), { textContent: String(num) }), " ", Object.assign(el("span"), { textContent: label })); c.append(d);
   }
   const h = document.getElementById("handoff"); h.textContent = "";
@@ -353,24 +406,40 @@ function summary() {
     }
     h.append(cols);
   }
-  h.append(el("p", "sub", "やらない " + passed + " 件。あとで " + later + " 件。未選択 " + none + " 件。その他で指示が空 " + waiting + " 件。"));
-  showCursor();
+  h.append(el("p", "sub", "やらない " + passed + " 件。あとで " + pg.later + " 件。未選択 " + pg.none + " 件。その他で指示が空 " + pg.waiting + " 件。"));
+  paintStatus();
 }
 
-/* カーソルのある項目の題と、選んだ語を、大きく出す。 */
-function showCursor() {
-  const bar = document.getElementById("cursorbar");
-  const id = ORDER[cur];
+function typingTarget(t) { return !!t && (t.tagName === "TEXTAREA" || t.tagName === "INPUT" || t.isContentEditable === true); }
+/* 状態の行: キーが効くか(理由つき)・どのカードに効くか・いま押せるキー・残り・直前の結果。毎回、状態から導く(固定の文は持たない)。 */
+function paintStatus() {
   for (const c of Object.values(cards)) c.dataset.cur = "";
-  if (!id || !keysOn) { bar.className = "cursorbar"; bar.textContent = ""; return; }
-  const it = ITEM[id], o = optionOf(it, state[id]);
-  if (cards[id]) cards[id].dataset.cur = "1";
-  bar.className = "cursorbar on"; bar.textContent = "";
-  bar.append(el("span", null, (cur + 1) + "/" + ORDER.length + "  " + it.title), el("span", "cb-sel", o ? "選択: " + o.label : "選択: まだ"));
+  const a = document.activeElement;
+  const typing = !typingTarget(a) ? null : (a.tagName === "TEXTAREA" && /^n-/.test(a.id || "")) ? "memo" : "field";
+  const ks = keyState({ focused: document.hasFocus(), typing, confirmed });
+  document.getElementById("statusbar").dataset.keys = ks.on ? "on" : "off";
+  document.getElementById("sb-keys").textContent = "キー " + (ks.on ? "● " : "○ ") + ks.text;
+  const id = ORDER[cur], p = progress();
+  const title = document.getElementById("sb-title"), hint = document.getElementById("sb-hint");
+  hint.textContent = "";
+  if (id) {
+    const it = ITEM[id], o = optionOf(it, state[id]);
+    if (cards[id]) cards[id].dataset.cur = "1";
+    title.textContent = "№ " + (cur + 1) + " / " + ORDER.length + "  " + it.title + "  選択: " + (o ? o.label : "まだ") + "  残り " + p.remaining + " 枚";
+    if (ks.on) {
+      hint.append("押せる: ");
+      for (const h of hintsOf(it)) hint.append(el("kbd", null, h.key), h.label + "  ");
+      if (cur > 0) hint.append(el("kbd", null, "Backspace"), "前へ  ");
+      if (p.remaining === 0) hint.append(el("kbd", null, "Ctrl+Enter"), "全部選びました。確定");
+    }
+  } else { title.textContent = ""; }
+  const last = document.getElementById("sb-last");
+  if (last.textContent !== lastResult) last.textContent = lastResult;
 }
+for (const [t, ev] of [[window, "focus"], [window, "blur"], [document, "focusin"], [document, "focusout"]]) t.addEventListener(ev, () => setTimeout(paintStatus, 0));
 function moveTo(i) {
   cur = Math.max(0, Math.min(ORDER.length - 1, i));
-  showCursor();
+  paintStatus();
   const c = cards[ORDER[cur]]; if (c && c.scrollIntoView) c.scrollIntoView({ block: "center" });
 }
 function emptyOthers() {
@@ -383,41 +452,41 @@ function confirmAll() {
   const bad = emptyOthers();
   if (bad.length) { st.className = "status bad"; st.textContent = "その他で指示が空の項目が " + bad.length + " 件あります。書くか、選び直してください(確定していません)"; moveTo(ORDER.indexOf(bad[0].id)); return; }
   confirmed = true;
-  const decided = ITEMS.filter(it => settled(state[it.id]) || (optionOf(it, state[it.id]) || {}).verdict === "later").length;
-  st.className = "status"; st.textContent = "確定しました(" + decided + " 件を選んだ。未選択 " + (ITEMS.length - decided) + " 件)。これ以降のキー入力は受けません";
-  showCursor();
+  const p = progress();
+  st.className = "status"; st.textContent = "確定しました(" + (p.chosen + p.later) + " 件を選んだ。未選択 " + p.remaining + " 件)。これ以降のキー入力は受けません";
+  paintStatus();
 }
-function typingTarget(t) { return !!t && (t.tagName === "TEXTAREA" || t.tagName === "INPUT" || t.isContentEditable === true); }
+/* キー入力は、decideKey(画面に触れない関数)が決め、ここは、その結果を画面に写すだけ。 */
 document.addEventListener("keydown", e => {
-  if (e.ctrlKey && e.key === "Enter") { e.preventDefault(); confirmAll(); return; }
-  if (typingTarget(e.target)) {
-    /* メモ欄の中では、Space・Backspace を移動に使わない。Esc でメモ欄を出て、次の項目へ。 */
-    if (e.key === "Escape" && e.target.tagName === "TEXTAREA" && /^n-/.test(e.target.id || "")) { e.target.blur(); moveTo(ORDER.indexOf(e.target.id.slice(2)) + 1); }
-    return;
+  const t = e.target;
+  const target = !typingTarget(t) ? null : (t.tagName === "TEXTAREA" && /^n-/.test(t.id || "")) ? "memo" : "field";
+  const d = decideKey({ order: ORDER, cur, confirmed }, { key: e.key, ctrl: e.ctrlKey, meta: e.metaKey, alt: e.altKey, target });
+  if (d.act === "confirm") { e.preventDefault(); confirmAll(); }
+  else if (d.act === "esc-memo") { t.blur(); moveTo(ORDER.indexOf(t.id.slice(2)) + 1); }
+  else if (d.act === "esc-field") { t.blur(); paintStatus(); }
+  else if (d.act === "back") { e.preventDefault(); moveTo(cur - 1); lastResult = "№ " + (cur + 1) + " へ戻りました"; paintStatus(); }
+  else if (d.act === "choose") {
+    e.preventDefault();
+    if (e.repeat) return; /* 押しっぱなしで、複数のカードに選択が入らないようにする */
+    choose(ITEM[d.id], d.option);
+    if (d.option.verdict !== "other") moveTo(cur + 1);
   }
-  if (e.ctrlKey || e.metaKey || e.altKey || !keysOn || confirmed) return;
-  const id = ORDER[cur]; if (!id) return;
-  if (e.key === "Backspace") { e.preventDefault(); moveTo(cur - 1); return; }
-  const o = optionForKey(optsOf(ITEM[id]), e.key);
-  if (!o) return;
-  e.preventDefault();
-  choose(ITEM[id], o);
-  if (o.verdict !== "other") moveTo(cur + 1);
+  else if (d.why === "nokey" && e.key.length === 1) {
+    lastResult = "「" + e.key + "」は、№ " + (cur + 1) + " では使えません(使えるのは " + hintsOf(ITEM[d.id]).map(h => h.key).join("・") + ")";
+    paintStatus();
+  }
 });
-/* 回の番号の照合: 紙の番号を打つまで、キー入力を受けない(保存先には書かない)。 */
+/* 回の番号の照合(任意): 打つと、この画面が紙と同じ回かを確かめる。キー入力の条件にはしない(2026-11-23。条件にすると、効かない理由が見えなかった)。 */
 (function () {
   if (!DATA.run_no) return;
   document.getElementById("runcheck").hidden = false;
   const inp = document.getElementById("run-check"), st = document.getElementById("run-status");
   inp.addEventListener("input", () => {
-    const ok = inp.value.trim() === DATA.run_no;
-    keysOn = ok;
+    const v = inp.value.normalize("NFKC").replace(/[ー‐‑‒–—―−－]/g, "-").replace(/\s+/g, ""); /* 日本語の入力方式で打つと、`-` が長音「ー」・数字が全角になる */
+    if (!v) { st.className = "status"; st.textContent = ""; return; }
+    const ok = v === DATA.run_no;
     st.className = ok ? "status" : "status bad";
-    st.textContent = ok ? "一致しました。キー入力が使えます(入力欄から外れました)" : "紙の回の番号と違います。キー入力は使えません(ボタンは押せます)";
-    showCursor();
-    /* 欄にフォーカスが残ると、keydown は typingTarget として何もせず戻り、キー入力が効かない(2026-11-19 に本人が指摘)。
-       番号が一致した時点で欄から出し、キーを文書に渡す。 */
-    if (ok) inp.blur();
+    st.textContent = ok ? "この画面は、紙と同じ回です" : "紙の回の番号と違います。別の回の紙を見ていないか、確かめてください";
   });
 })();
 
@@ -436,6 +505,9 @@ function choose(it, o) {
   const at = new Date().toISOString();
   const prev = state[it.id] || {};
   state[it.id] = { verdict: o.verdict, owner: o.owner || "", option: o.id, at, note: prev.note || "" };
+  const i = ORDER.indexOf(it.id); if (i >= 0) cur = i; /* カーソルは 1 本: 選んだカードが、キーの効き先になる */
+  const code = codesOf(optsOf(it))[o.id];
+  lastResult = "№ " + (i + 1) + " に「" + (code === " " ? "Space" : code) + " " + o.label + "」を選びました";
   paint(it.id); persist(it);
   if (o.verdict === "other") { const ta = document.getElementById("n-" + it.id); if (ta) ta.focus(); }
 }
@@ -443,6 +515,8 @@ function clearChoice(it) {
   const at = new Date().toISOString();
   const prev = state[it.id] || {};
   state[it.id] = { verdict: "", owner: "", option: "", at, note: prev.note || "" };
+  const i = ORDER.indexOf(it.id); if (i >= 0) cur = i;
+  lastResult = "№ " + (i + 1) + " の選択を外しました";
   paint(it.id); persist(it);
 }
 const timers = {};

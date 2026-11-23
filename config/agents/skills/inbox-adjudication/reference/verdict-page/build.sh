@@ -263,7 +263,52 @@ selftest() {
   # 1 件も保存されない(2026-11-18・19 に実測。かつての検査は、換えの 1 対 1 だけを見て、許される文字を見ていなかった)。
   got=$(node -e "$(grep '^function docId' "$TEMPLATE"); const rows = JSON.parse(require('fs').readFileSync(process.argv[1], 'utf8')); const ids = rows.map(r => docId('gh:' + r.thread + '/' + r.receipt)); const bad = ids.filter(i => !/^[A-Za-z0-9_.~:@+-]+\$/.test(i)); console.log(bad.length + ',' + (ids.length - new Set(ids).size))" "$HERE/fixtures/gh-keys.json")
   if [ "$got" = "0,0" ]; then ok "テンプレート: GitHub の鍵の docId が、db の許す文字だけで、衝突しない"; else ng "テンプレート: GitHub の鍵の docId に、許されない文字か衝突がある(違反,衝突=$got)"; fi
-  if grep -qF 'inp.blur()' "$TEMPLATE"; then ok "テンプレート: 回の番号が一致したら入力欄から出る(キー入力が効く)"; else ng "テンプレート: 回の番号が一致しても入力欄に残る(キー入力が効かない)"; fi
+  # キー入力の仕様(FORMAT.md「キー入力の仕様」)を、状態の表で検査する。画面に触れない関数(@pure の区間)だけを取り出して、node で動かす。
+  # (1) 順: 画面の順・キーの順は、入力の並び(紙の順)と同じ 1 つ。(2) 状態 × 符号: 「いま押せる」と表示するキーと、実際に選択が入るキーが、すべての状態で一致する。
+  # キーが止まっている状態(確定後・入力欄・メモ欄)では、どのキーも選択にならない。(3) 件数: どの組合せでも、全項目が選んだ・あとで・未選択・指示が空のどれか 1 つに入る。
+  # かつての検査は `inp.blur()` の文字列があるかだけを見て、入力の挙動と、表示との一致を見ていなかった(2026-11-23 に、キーが効かない原因が画面に出ないまま 2 回直した)。
+  tjs=$(mktemp)
+  {
+    echo "const OPTIONS = JSON.parse(require('fs').readFileSync(process.argv[2], 'utf8')); const DATA = JSON.parse(require('fs').readFileSync(process.argv[3], 'utf8')); const ITEMS = DATA.items, ITEM = {}, state = {}; for (const it of ITEMS) ITEM[it.id] = it;"
+    sed -n '/@pure:begin/,/@pure:end/p' "$TEMPLATE"
+    cat <<'EOF'
+const bad = [];
+if (JSON.stringify(ORDER) !== JSON.stringify(ITEMS.map(it => it.id))) bad.push('順が、入力の並び(紙の順)と違う');
+const letters = 'abcdefghijklmnopqrstuvwxyz'.split('').concat([' ']);
+for (const it of ITEMS) {
+  const cur = ORDER.indexOf(it.id);
+  const shownKeys = hintsOf(it).map(h => h.key === 'Space' ? ' ' : h.key);
+  for (const confirmed of [false, true]) for (const target of [null, 'memo', 'field']) {
+    const ks = keyState({ focused: true, typing: target, confirmed });
+    for (const k of letters) {
+      const d = decideKey({ order: ORDER, cur, confirmed }, { key: k, ctrl: false, meta: false, alt: false, target });
+      const acts = d.act === 'choose', shown = shownKeys.includes(k);
+      if (ks.on && shown !== acts) bad.push(it.id + ': キー ' + JSON.stringify(k) + ' は、表示=' + shown + '、挙動=' + acts);
+      if (!ks.on && acts) bad.push(it.id + ': キーが止まっているのに、' + JSON.stringify(k) + ' が効く');
+      if (ks.on && acts && shown) {
+        const want = hintsOf(it).find(h => (h.key === 'Space' ? ' ' : h.key) === k).option;
+        if (d.option.id !== want.id) bad.push(it.id + ': キー ' + JSON.stringify(k) + ' は、表示では ' + want.id + '、挙動では ' + d.option.id);
+      }
+    }
+  }
+}
+if (keyState({ focused: false, typing: null, confirmed: false }).on) bad.push('フォーカスが無いのに、キーが受付中と表示される');
+for (let n = 0; n < 60; n++) {
+  for (const it of ITEMS) {
+    const os = optsOf(it), r = (n * 7 + it.id.length) % (os.length + 1);
+    state[it.id] = r === os.length ? undefined : { verdict: os[r].verdict, owner: os[r].owner || '', option: os[r].id, at: 't', note: n % 2 ? 'x' : '' };
+  }
+  const p = progress();
+  if (p.chosen + p.later + p.none + p.waiting !== p.total || p.remaining !== p.none + p.waiting) bad.push('件数が合わない: ' + JSON.stringify(p));
+}
+console.log([...new Set(bad)].slice(0, 5).join(' / '));
+EOF
+  } > "$tjs"
+  got=$(node "$tjs" "$OPTIONS_FILE" "$HERE/fixtures/valid.items.json" 2>&1); rm -f "$tjs"
+  if [ -z "$got" ]; then ok "キー入力の仕様: 順が紙と同じで、表示するキーと効くキーがすべての状態で一致し、件数が合う"; else ng "キー入力の仕様: $got"; fi
+  # 画面の側が、上の関数だけを使っていること(試験した関数と、実際の挙動が別物にならない)。
+  if grep -qF 'decideKey({ order: ORDER, cur, confirmed }' "$TEMPLATE" && grep -qF 'keyState({ focused: document.hasFocus()' "$TEMPLATE" && ! grep -qE 'keysOn|showCursor|cursorbar' "$TEMPLATE"; then ok "テンプレート: キー入力と状態の行は、画面に触れない関数(decideKey・keyState)から導く"; else ng "テンプレート: キー入力か状態の行が、画面に触れない関数を使っていない(または古い名前が残っている)"; fi
+  if grep -qF 'syncCursor' "$TEMPLATE"; then ok "テンプレート: マウス・フォーカスで触ったカードに、キーのカーソルも移る"; else ng "テンプレート: カーソルが 2 系統に戻っている(マウスで触ったカードに、キーのカーソルが移らない)"; fi
   if grep -qF 'gEdited' "$TEMPLATE"; then ok "テンプレート: 古いフィードバックを回答に含めない"; else ng "テンプレート: 古いフィードバックを回答に含める"; fi
 
   # 5. 選択肢の正本(options.json)が、画面・保存先の形・項目の kind と食い違わないこと
