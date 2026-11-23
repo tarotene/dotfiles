@@ -129,6 +129,23 @@ typed な option にして、identity のファイル(`home/identities/**`)と h
 
 例外は無い。
 
+### Web の資産(`web_assets::check_tree`、ADR-0000)
+
+このリポジトリが持つ `*.html`・`*.htm`・`*.css`(`.` で始まる名前、`target/`、`node_modules/` を除く)を読む。表示のたびに第三者
+(Google Fonts など)へ要求が飛ぶと、開いた事実と IP アドレスがその第三者に渡る。書体は機体のものを既定にし、第三者からの書体・
+スタイルの読み込みは禁止する(ADR-0000 の D6)。コメントの中も読む(コメントに書いた参照を、あとで外し忘れる形を避けるため)。
+
+| 検査 | 内容 |
+|---|---|
+| 書体の配信元 | `fonts.googleapis.com`・`fonts.gstatic.com` への参照が、どこにあっても落ちる。下の 3 つの形に当たらない書き方も拾う |
+| `<link>` | `rel` が `stylesheet`・`preconnect`・`dns-prefetch`・`preload` のどれかで、`href` が外部(`http://`・`https://`・`//`)のとき落ちる。`rel="canonical"` や `rel="icon"` の外部 URL は読み込みでないので対象にしない |
+| `@import` | 先が外部のとき落ちる(`url("…")`・引用符つき・`url(//…)` のどれも) |
+| `@font-face` | ブロックの中の `url(...)` が外部のとき落ちる。`@font-face` の外の `url(...)`(背景画像など)は、書体・スタイルの読み込みでないので対象にしない |
+
+例外は無い。範囲はこのリポジトリの内側だけで、ほかのリポジトリの面はこの検査では守られない(他のリポジトリへの配り方は、
+ADR-0000 の範囲外)。空のツリーを読んで通ってしまわないよう、`tests/tree.rs` が、裁定ページの `template.html`・`plan-view.css`・
+`model-equivalence` の `page.html` を読んでいることを確かめる。
+
 ### 依存グラフ(`deps::check_tree`、#1446)
 
 各 `crates/*/Cargo.toml` の `[dependencies]`・`[build-dependencies]`(`[target.<cfg>.…]` も)の `path` の依存を辺として読む。
