@@ -162,7 +162,7 @@ ADR-1677 の範囲外)。空のツリーを読んで通ってしまわないよ�
 面のテーマに当てる。未実装、意図あり)。各面が持つ複写の検査は、`.github/actions/design-pin`(`check.sh --selftest` を CI が走らせる)。
 空のツリーを読んで通ってしまわないよう、`tests/tree.rs` が、16 の役割と尺度の主な名前の宣言が正本にあることを確かめる。
 
-### 共有の部品(`web_components::check_tree`、ADR-0000)
+### 共有の部品(`web_components::check_tree`、ADR-1687)
 
 `config/web/components.css` を、正本 `config/web/variables.css` の宣言と突き合わせて読む。コメントは読まない。
 

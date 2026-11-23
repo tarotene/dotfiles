@@ -285,7 +285,7 @@ fn the_design_tokens_check_reads_what_it_is_about() {
     }
 }
 
-/// 共有の部品は、正本の役割と尺度だけを参照し、操作部の大きさと置き方の裁定を守る(ADR-0000)。
+/// 共有の部品は、正本の役割と尺度だけを参照し、操作部の大きさと置き方の裁定を守る(ADR-1687)。
 #[test]
 fn the_shared_components_use_only_the_design_variables() {
     let violations = web_components::check_tree(&repo_root()).expect("read the components");
