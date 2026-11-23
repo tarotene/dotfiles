@@ -37,7 +37,7 @@ agent-mode check refactor            # 展開の結果(設定の JSON・追記�
 |---|---|
 | `description` | 1 行の説明 |
 | `prompt` | 追記する文のファイル名(同じディレクトリ)。`--append-system-prompt-file` で渡す |
-| `injection` | `"off"` で、セッション開始時の文脈の注入を止める(段2 の `inject-gate` が読む) |
+| `injection` | `"off"` で、セッション開始時の文脈の注入を止める(下の「セッション開始時の注入を止める」。`inject-gate` が読む) |
 | `skip` | 止める検査の stem(`crates/agent-session/src/escape.rs` の `ALL`)。`SKIP_<STEM>=1` が立つ |
 | `[records].globs` | 読めず・書けないパス(gitignore 形式)。`permissions.deny` の `Read(..)` と `Edit(..)` になる |
 
@@ -57,6 +57,22 @@ agent-mode check refactor            # 展開の結果(設定の JSON・追記�
   `pr-gate` も止めない(PR を作る完了の定義と、closing keyword・stack の検査まで外れるため)。共通規約の本文
   (`@~/.agents/AGENTS.md` の import)は、段1 では読み込まれたままで、追記する文で「このセッションでは適用しない」節を宣言する
   (文脈として扱われるので、守られる保証はない。段3 が、読み込まれない状態にする)。
+
+## セッション開始時の注入を止める(`injection = "off"`)
+
+`home/modules/agents.nix` の `claudeHookDeclarations` のうち、SessionStart の宣言は、bool の `injects` を必ず持つ。付け忘れ・
+SessionStart 以外への付与は、nix の評価で落ちる(`injectGate`)。
+
+| `injects` | 意味 | 該当(2026-11-18) |
+|---|---|---|
+| `true` | 文脈を足すだけの hook。Claude の登録だけを `agent-mode inject-gate -- <元のコマンド>` で包む | `issue-index`・`esa-mirror-context`・`daily-desk-reminder`・`worklog`・`herdr-status-advisory`・`gate-failopen-advisory`・`worktree-audit-context`・`calendar-handshake-reminder` |
+| `false` | 注入のほかに、状態の書き込み・登録を担う hook。包まない | `session-wrapup-start`(feedback の印)・`pr-gate-session-start`(Stop の gate の対象登録)・`gpg-prewarm`・`worktree-base-sync`・`herdr-agent-metadata` |
+
+- `inject-gate` は、`DOTFILES_AGENT_MODE_INJECTION=off`(モードの `injection = "off"` が立てる)のとき、元の hook を実行せず、
+  無音で終わる。そうでなければ、元の hook をそのまま exec する(標準入力・終了コード・出力は変わらない)。
+- Codex・Copilot の登録は包まない。command が変わると、Codex の hook の信頼が、機体ごとにやり直しになる。
+- 残る注入: `session-wrapup-start`(未裁定の気づきの案内)と `pr-gate-session-start`(残骸ブランチの通知)。どちらも、
+  状態の書き込み・登録と同じ hook の中にある。注入だけを止めるには、hook の中で出力を止める必要がある(後続の改善)。
 
 ## 2 段階の運用
 
