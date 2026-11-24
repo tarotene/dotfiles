@@ -1,15 +1,19 @@
-//! Web の資産の不変条件: このリポジトリが持つ HTML・CSS は、第三者から書体・スタイルを読み込まない。
+//! Web の資産の不変条件: このリポジトリが持つ HTML・CSS は、第三者から書体・スタイル・スクリプトを読み込まない。
 //!
 //! 表示のたびに第三者(Google Fonts など)へ要求が飛ぶと、開いた事実と IP アドレスがその第三者に渡る。
 //! 書体は機体のものを既定にし、自分のサイトから配信できる面だけが Web フォントを選ぶ(ADR-1677)。
+//! スクリプトも同じ(ADR-0000 D4。ADR-1677 D6 の文言には含まれていなかったが、要件 C9 が最初から含めていた)。
+//! 外部のスクリプトが要るときは、同梱して自分のサイトから配り、`sha256` を pin する。
 //!
 //! 読む対象は、追跡されうる `*.html`・`*.htm`・`*.css`(`.` で始まる名前、`target/`、`node_modules/` を除く)。
 //! 次の形を違反とする。コメントの中も読む(コメントに書いた参照を、あとで外し忘れる形を避けるため)。
 //!
 //! - 書体の配信元のホスト(`fonts.googleapis.com`・`fonts.gstatic.com`)への参照
-//! - `<link>` の `rel` が `stylesheet`・`preconnect`・`dns-prefetch`・`preload` で、`href` が外部(`http://`・`https://`・`//`)
+//! - `<link>` の `rel` が `stylesheet`・`preconnect`・`dns-prefetch`・`preload`・`modulepreload` で、`href` が外部(`http://`・`https://`・`//`)
 //! - `@import` の先が外部
 //! - `@font-face` の中の `url(...)` が外部
+//! - `<script>` の `src` が外部
+//! - スクリプトの `import("…")`・`from "…"` の先が外部
 //!
 //! 例外の一覧は持たない。範囲はこのリポジトリの内側だけで、ほかのリポジトリの面は検査しない
 //! (配り方は別の裁定。`docs/agents/repo-structure-check.md`)。
@@ -31,7 +35,13 @@ pub struct WebFile {
 const FONT_HOSTS: [&str; 2] = ["fonts.googleapis.com", "fonts.gstatic.com"];
 
 /// 外部の資源を読む `<link rel>` の値。
-const LOADING_RELS: [&str; 4] = ["stylesheet", "preconnect", "dns-prefetch", "preload"];
+const LOADING_RELS: [&str; 5] = [
+    "stylesheet",
+    "preconnect",
+    "dns-prefetch",
+    "preload",
+    "modulepreload",
+];
 
 fn violation(subject: &str, line: usize, detail: &str) -> Violation {
     Violation {
@@ -173,6 +183,65 @@ fn font_face_violations(file: &WebFile, out: &mut Vec<(usize, Violation)>) {
     }
 }
 
+/// `<script ...>` のタグごとに、`src` が外部のものを探す。
+fn script_violations(file: &WebFile, out: &mut Vec<(usize, Violation)>) {
+    let lower = file.text.to_ascii_lowercase();
+    let mut from = 0;
+    while let Some(pos) = lower[from..].find("<script") {
+        let start = from + pos;
+        let end = file.text[start..]
+            .find('>')
+            .map_or(file.text.len(), |e| start + e + 1);
+        // `<script` の直後が空白・`>`・`/` でなければ、別のタグ(`<scripted>` など)。
+        let is_script = lower[start + "<script".len()..]
+            .chars()
+            .next()
+            .is_some_and(|c| c.is_whitespace() || c == '>' || c == '/');
+        if is_script {
+            if let Some(src) = attr(&file.text[start..end], "src") {
+                if is_remote(&src) {
+                    let line = line_of(&file.text, start);
+                    out.push((
+                        line,
+                        violation(
+                            &file.path,
+                            line,
+                            &format!("`<script src>` が外部 `{src}` を読む。スクリプトは自分のサイトから配信する(外部のものは、同梱して sha256 を pin する)"),
+                        ),
+                    ));
+                }
+            }
+        }
+        from = end;
+    }
+}
+
+/// スクリプトの `import("…")`・`from "…"` の先が外部のものを探す。
+fn script_import_violations(file: &WebFile, out: &mut Vec<(usize, Violation)>) {
+    let lower = file.text.to_ascii_lowercase();
+    for needle in ["import(", " from "] {
+        let mut from = 0;
+        while let Some(pos) = lower[from..].find(needle) {
+            let start = from + pos;
+            let after = start + needle.len();
+            let rest = file.text[after..].trim_start();
+            let quoted = rest.starts_with(['"', '\'', '`']);
+            if quoted && is_remote(rest.trim_start_matches(['"', '\'', '`'])) {
+                let line = line_of(&file.text, start);
+                out.push((
+                    line,
+                    violation(
+                        &file.path,
+                        line,
+                        "スクリプトの `import`・`from` が外部のモジュールを読む。スクリプトは自分のサイトから配信する(外部のものは、同梱して sha256 を pin する)",
+                    ),
+                ));
+            }
+            from = after;
+        }
+    }
+}
+
 /// 書体の配信元のホストへの参照を探す(上の形に当たらない書き方の取りこぼしを拾う)。
 fn host_violations(file: &WebFile, out: &mut Vec<(usize, Violation)>) {
     let lower = file.text.to_ascii_lowercase();
@@ -203,6 +272,8 @@ pub fn check_web_assets(files: &[WebFile]) -> Vec<Violation> {
         link_violations(f, &mut found);
         import_violations(f, &mut found);
         font_face_violations(f, &mut found);
+        script_violations(f, &mut found);
+        script_import_violations(f, &mut found);
         let mut hosts: Vec<(usize, Violation)> = Vec::new();
         host_violations(f, &mut hosts);
         for (line, v) in hosts {
@@ -397,5 +468,60 @@ mod tests {
     fn only_html_and_css_files_are_read() {
         assert!(is_web_file("a.html") && is_web_file("A.CSS") && is_web_file("b.htm"));
         assert!(!is_web_file("a.md") && !is_web_file("a.rs") && !is_web_file("html"));
+    }
+
+    #[test]
+    fn a_remote_script_src_is_reported_in_each_syntax() {
+        let page = file(
+            "a.html",
+            "<script src=\"https://cdn.example.com/a.js\"></script>\n\
+             <SCRIPT type=module SRC=//cdn.example.com/b.js></SCRIPT>\n\
+             <script\n  src='http://cdn.example.com/c.js'></script>",
+        );
+        let v = details(&[page]);
+        assert_eq!(v.len(), 3, "{v:?}");
+        assert!(v.iter().all(|m| m.contains("`<script src>`")), "{v:?}");
+        assert!(v[0].starts_with("a.html: 1 行目:"), "{v:?}");
+    }
+
+    #[test]
+    fn a_local_script_and_an_inline_script_are_clean() {
+        let page = file(
+            "a.html",
+            "<script src=\"behavior.js\"></script>\n<script src=\"/behavior.js\"></script>\n\
+             <script>const a = 1; // https://example.com/ in a comment is not a load\n</script>\n\
+             <scripted src=\"https://cdn.example.com/x.js\"></scripted>",
+        );
+        assert_eq!(details(&[page]), Vec::<String>::new());
+    }
+
+    #[test]
+    fn a_remote_modulepreload_is_reported() {
+        let page = file(
+            "a.html",
+            "<link rel=\"modulepreload\" href=\"https://cdn.example.com/a.js\">",
+        );
+        let v = details(&[page]);
+        assert_eq!(v.len(), 1, "{v:?}");
+        assert!(v[0].contains("modulepreload"), "{v:?}");
+    }
+
+    #[test]
+    fn a_remote_dynamic_import_and_a_remote_from_are_reported() {
+        let page = file(
+            "a.html",
+            "<script type=module>\n\
+             const m = await import(\"https://cdn.example.com/a.js\");\n\
+             import x from 'https://cdn.example.com/b.js';\n\
+             const ok = await import(\"./local.js\");\n\
+             // it came from https://example.com/ (prose, no quote)\n\
+             </script>",
+        );
+        let v = details(&[page]);
+        assert_eq!(v.len(), 2, "{v:?}");
+        assert!(
+            v[0].starts_with("a.html: 2 行目:") && v[1].starts_with("a.html: 3 行目:"),
+            "{v:?}"
+        );
     }
 }

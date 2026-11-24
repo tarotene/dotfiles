@@ -1,0 +1,168 @@
+# 作業の種類 → 選び方の対応表(ADR-0000)。
+#
+# 部品や振る舞いが要るとき、手で作り直す前に、この表で「どの手段を選ぶか」を引く。順序は
+#   platform(ブラウザ標準の要素)→ shared(`config/web/` の共有の部品)→ external(外部ライブラリ)
+# で、どれにも当てはまらない作業だけが、手書き(handwritten)か、使わない(not-used)になる。
+# 表に無い作業が出たら、行を足す(裁定を、この表に残す)。
+#
+# way(選び方。閉じた語彙):
+#   platform     ブラウザ標準の要素で済ませる。`use` に使う要素、`baseline` に Baseline の状態を書く。
+#                `baseline` は `widely`(Widely available)だけ書ける。newly の機能は、この行にできない。
+#   shared       `config/web/` の共有の部品を使う。`files` に、使う共有のファイル(実在が検査される)。
+#   external     外部のライブラリを使う。`pin`(版)と `sha256`(同梱するファイルの値)が要る。
+#                読み込みは、同梱して自分のサイトから配る(第三者から読み込まない。ADR-1677 D6)。
+#   handwritten  手書きのまま残す。`reason = "few-surfaces"`(使う面が少なく、共有の部品にしない)。
+#                使う面が増えたら、共有にするかを裁定し直す。
+#   not-used     使わない。`reason` が `requirement` なら、`req` に、その選び方と向きが逆の要件(`page-types.toml` の ID)。
+#                `reason` が `no-surface` なら、該当する面が無い(出たら、この表に行を足して裁定する)。
+#
+# `note` は人が読む補足で、検査しない(Baseline の取得日・面の実測など、日付つきの事実を書く)。
+
+[[task]]
+id = "dialog"
+title = "ダイアログ"
+way = "platform"
+use = "`<dialog>` 要素(`showModal()`・`close()`)"
+baseline = "widely"
+note = "Baseline widely(high_date 2024-09-14)。web-platform-dx の公開 API https://api.webstatus.dev/v1/features/dialog (取得 2026-11-24)。確認ダイアログ(`confirm`)は別の行(F4)"
+
+[[task]]
+id = "disclosure"
+title = "折りたたみ"
+way = "platform"
+use = "`<details>`・`<summary>`"
+baseline = "widely"
+note = "Baseline widely(high_date 2022-07-15)。https://api.webstatus.dev/v1/features/details (取得 2026-11-24)"
+
+[[task]]
+id = "radio-group"
+title = "ラジオボタン(選択肢)"
+way = "platform"
+use = "ネイティブの `<input type=\"radio\">`(矢印・Tab・Space をブラウザが担う)"
+baseline = "widely"
+note = "Baseline widely(high_date 2018-01-29)。https://api.webstatus.dev/v1/features/input-radio (取得 2026-11-24)。ラジオグループ固有の機能の個別の記録は、取得した資料に記述なし"
+
+[[task]]
+id = "buttons"
+title = "ボタンと操作の並べ方"
+way = "shared"
+use = "`.btn`・`.btn-main`・`.btn-sub`・`.btn-link`・`.actions`(ADR-1687 D2 の置き方)"
+files = ["config/web/components.css"]
+
+[[task]]
+id = "choices"
+title = "選択肢の行"
+way = "shared"
+use = "`.choices`・`.choice`(ネイティブの `input` の上に、見た目だけを載せる)"
+files = ["config/web/components.css"]
+
+[[task]]
+id = "save-status"
+title = "保存の表示"
+way = "shared"
+use = "`.status`(`data-state` は `saving`・`saved`・`failed`)"
+files = ["config/web/components.css"]
+note = "見た目だけ。保存の状態を切り替える振る舞い(JavaScript)の共有は、次の段で足す"
+
+[[task]]
+id = "alert"
+title = "警告・エラーの文"
+way = "shared"
+use = "`.alert`・`.alert-ok`・`.alert-ng`・`.alert-warn`"
+files = ["config/web/components.css"]
+
+[[task]]
+id = "empty-state"
+title = "空の状態"
+way = "shared"
+use = "`.empty`"
+files = ["config/web/components.css"]
+
+[[task]]
+id = "table-reflow"
+title = "狭い画面の表"
+way = "shared"
+use = "`.table-cards`(表の要素のまま、1 行 1 枚に組み替える)"
+files = ["config/web/components.css"]
+
+[[task]]
+id = "tabs"
+title = "タブ"
+way = "handwritten"
+reason = "few-surfaces"
+note = "2026-11-24 の実測で 2 面(解答シートとモデル同等性マップ)が手書き。3 つ目の面が出たら、共有にするかを裁定する"
+
+[[task]]
+id = "chart"
+title = "グラフ"
+way = "handwritten"
+reason = "few-surfaces"
+note = "2026-11-24 の実測で 2 面が、インライン SVG の手書き。量は長さで示し、色を主な手段にしない"
+
+[[task]]
+id = "toast"
+title = "トースト(画面の隅に出る通知)"
+way = "not-used"
+reason = "requirement"
+req = ["F3", "D6"]
+note = "保存の結果は項目の横に出す(F3)。通知を増やさない(D6)"
+
+[[task]]
+id = "theme-toggle"
+title = "テーマ切替(明暗の切替の操作)"
+way = "not-used"
+reason = "requirement"
+req = ["C8"]
+note = "暗色は OS の設定に追従するだけで、切り替えの操作を持たない"
+
+[[task]]
+id = "confirm-dialog"
+title = "確認ダイアログ"
+way = "not-used"
+reason = "requirement"
+req = ["F4"]
+note = "日常の操作は、選び直しで戻せる形にする"
+
+[[task]]
+id = "menu-popover"
+title = "メニュー・ポップオーバー"
+way = "not-used"
+reason = "no-surface"
+note = "該当する面が無い。`popover` 属性は Baseline newly(low_date 2025-01-27。https://api.webstatus.dev/v1/features/popover 、取得 2026-11-24)で、platform の行にできない。Widely に入ったら、第一候補にする(Baseline は newly から 30 か月後に widely。low_date からの算出は 2027-07-27 ごろで、推論)"
+
+[[task]]
+id = "drawer"
+title = "引き出し(ボトムシート)"
+way = "not-used"
+reason = "no-surface"
+note = "該当する面が無い"
+
+[[task]]
+id = "command-menu"
+title = "コマンドメニュー(⌘K)"
+way = "not-used"
+reason = "no-surface"
+
+[[task]]
+id = "otp-input"
+title = "確認コードの入力"
+way = "not-used"
+reason = "no-surface"
+
+[[task]]
+id = "drag-and-drop"
+title = "ドラッグ&ドロップ"
+way = "not-used"
+reason = "no-surface"
+
+[[task]]
+id = "virtual-list"
+title = "長いリストの仮想化"
+way = "not-used"
+reason = "no-surface"
+
+[[task]]
+id = "syntax-highlight"
+title = "コードの構文ハイライト"
+way = "not-used"
+reason = "no-surface"

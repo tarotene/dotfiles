@@ -13,6 +13,7 @@ use repo_structure_check::process_env::{self, HELPER_EXCEPTIONS, XDG_EXCEPTIONS}
 use repo_structure_check::side_symmetry;
 use repo_structure_check::web_assets;
 use repo_structure_check::web_components;
+use repo_structure_check::web_selection;
 use repo_structure_check::web_specimen;
 use repo_structure_check::web_variables;
 
@@ -305,6 +306,36 @@ fn the_components_check_reads_what_it_is_about() {
         .expect("read the components");
     for needle in [".btn-main", ".actions", "var(--target)", "var(--accent)"] {
         assert!(css.contains(needle), "{needle} が読まれていない");
+    }
+}
+
+/// 選び方の対応表は、語彙が閉じていて、`platform` は Widely available だけ、`shared` は実在するファイル、
+/// `not-used` の `req` は実在する要件の ID を指す(ADR-0000)。
+#[test]
+fn the_selection_table_is_closed_and_consistent() {
+    let violations = web_selection::check_tree(&repo_root()).expect("read the selection table");
+    let report: Vec<String> = violations.iter().map(ToString::to_string).collect();
+    assert!(
+        violations.is_empty(),
+        "選び方の対応表が不変条件を満たさない:\n{}",
+        report.join("\n")
+    );
+}
+
+/// 対応表を読めずに「違反なし」で通ってしまわないための番兵。5 つの選び方のうち、実物が持つ行が読まれている。
+#[test]
+fn the_selection_check_reads_what_it_is_about() {
+    let text = std::fs::read_to_string(repo_root().join(web_selection::SELECTION_PATH))
+        .expect("read the selection table");
+    for needle in [
+        "id = \"dialog\"",
+        "way = \"platform\"",
+        "way = \"shared\"",
+        "way = \"handwritten\"",
+        "way = \"not-used\"",
+        "id = \"toast\"",
+    ] {
+        assert!(text.contains(needle), "{needle} が読まれていない");
     }
 }
 
