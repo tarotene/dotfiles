@@ -117,6 +117,7 @@ What runs automatically, when, and on which stack: see the [pipeline map](pipeli
 - [ADR-1677](adr/1677-web-design-baseline.md) — Pages のデザインは、DADS を土台にした自分用の基準に従い、正本は公開のこのリポジトリに置き、第三者からの書体・スタイルの読み込みを禁じる
 - [ADR-1685](adr/1685-web-design-distribution.md) — Pages のデザインの正本は `config/web/` に置き、各面は commit で固定した URL と sha256 で複写を pin し、CI が検査する
 - [ADR-1687](adr/1687-web-components.md) — 共有の部品は正本の役割だけを参照し、主な操作を先に書いて、PC では右端・スマートフォンでは上に置く
+- [ADR-0000](adr/0000-visual-before-after.md) — 見た目の変更は、基準の ref から取り出した Before と After を固定の行列で撮り、Diff つきの並べたページで本人に見せる
 <!-- END GENERATED -->
 
 ## 運用・調査・設計(`docs/` 直下)
@@ -251,6 +252,7 @@ What runs automatically, when, and on which stack: see the [pipeline map](pipeli
 - [`agents/tracking-issue.md`](agents/tracking-issue.md) — tracking-issue スキル
 - [`agents/venue-search.md`](agents/venue-search.md) — venue-search — 会場探しの判断知識と URL 生成
 - [`agents/verdict-escalate.md`](agents/verdict-escalate.md) — verdict-escalate — 判定レッジャーの deny/ask を集約し、人間の GO 後に開発元へフィードバックする
+- [`agents/visual-diff.md`](agents/visual-diff.md) — visual-diff — 見た目の Before | After | Diff を、固定の撮り方で撮り、本人に見せる
 - [`agents/worklog.md`](agents/worklog.md) — worklog — 粒度の小さい作業ログを、vault の当日ノートに 1 行ずつ書く
 - [`agents/worktree-base-sync.md`](agents/worktree-base-sync.md) — pristine worktree の自動 fast-forward — herdr Workspace Fork の鮮度問題
 - [`agents/worktree-lease.md`](agents/worktree-lease.md) — worktree-lease — 1 つの linked worktree を、同時に 2 つのセッションが git で動かさない

@@ -207,7 +207,8 @@ app の README に、段を宣言する。
    - Playwright の `page.route` と `route.fulfill({ path })` で、本番と同じ CSP のヘッダを付けて返す。
    - コンソールの CSP 違反が自分のページのものかは、`document.querySelectorAll('style, [style]')` で見分ける(ブラウザ拡張が差し込む `<style>` が混じる)。
    - 明暗・幅 390px と 1280px で、コントラスト・横スクロール・操作部の大きさを測る。**初期状態だけでなく、押下・エラー・解答後など、状態ごとに測る。** 初期状態だけの実測は、上の 3 の型を拾えなかった。
-   - 環境の制約(2026-11-24 に実測した Firefox の Playwright): `emulateMedia` の明指定が効かず(常に暗)、`setViewportSize` は要求した幅の 0.75 倍が `innerWidth` になる(要求 520 → 390。`await` せずに投げる)。`file://` は拒否され、sandbox の内側で立てたサーバーには届かない(sandbox の外で静的サーバーを立てる)。明側は、CSS の `prefers-color-scheme` を書き換えたコピーで近似するか、実機で確かめる。
+   - 撮り方は、`pr-description` スキル §5b の固定の手順(`scripts/visual_diff.py`。Chromium で撮り、Before は基準の ref から取り出し、Before | After | Diff を本人に見せる)に従う。
+   - 環境の制約(2026-11-24 に実測した、Playwright MCP の Firefox): `emulateMedia` の明指定が効かず(常に暗)、`setViewportSize` は要求した幅の 0.75 倍が `innerWidth` になる(要求 520 → 390。`await` せずに投げる)。`file://` は拒否され、sandbox の内側で立てたサーバーには届かない。`visual_diff.py` は Chromium を自前で起動し、`color_scheme` と `viewport` を指定して、`route` で配信するので、この制約に当たらない(同日、sandbox の中で、明暗の描き分け・幅の一致・2 回の撮影の画素の一致を確かめた)。
 8. **踏んだ落とし穴(dotfiles#1664)。** 節への移動を画面の上に留めると、狭い画面で横スクロールのバーが出た(余白を詰め、バーを隠した)。保存失敗の文が出ると、状態の欄が広がって品目名を押しつぶした(欄の幅に上限を付けた)。
 
 画面を作るときの進め方の選択肢: 対象の固定 → 色・文字・レイアウトの案 → 既定の見た目への寄りの自己批評 → 実装 → 撮って批評、の順(Anthropic の frontend-design の手順)。
