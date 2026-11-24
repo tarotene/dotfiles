@@ -1,7 +1,7 @@
 /*
  * 見本ページ(specimen.html)の配置。variables.css の役割と尺度だけを参照する(16 進・原色を直書きしない)。
  * 見本は、正本(variables.css・components.css)を実際に読み込んで描くので、正本を変えると見本の見た目も変わる。
- * それを pr-description スキル §5b の手順で撮れば、正本の変更の Diff になる。`web_specimen` が検査する(ADR-0000)。
+ * それを pr-description スキル §5b の手順で撮れば、正本の変更の Diff になる。`web_specimen` が検査する(ADR-1700)。
  */
 
 main {

@@ -1,5 +1,5 @@
 //! 見本ページの不変条件: `config/web/specimen.html` は、正本(`variables.css`・`components.css`)を実際に読み込み、
-//! 役割のすべてと部品のすべてを 1 枚に並べる。見本は正本を複写せず、値を持たない(ADR-0000)。
+//! 役割のすべてと部品のすべてを 1 枚に並べる。見本は正本を複写せず、値を持たない(ADR-1700)。
 //!
 //! - 3 つの CSS(`variables.css`・`components.css`・`specimen.css`)を、相対パスで読み込む。
 //! - インラインの `style` 属性・`<style>`・`<script>` を持たない(位置と大きさは CSS のクラスで与える)。

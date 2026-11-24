@@ -308,7 +308,7 @@ fn the_components_check_reads_what_it_is_about() {
     }
 }
 
-/// 生成した `variables.json` は、正本の CSS から作った内容と一致する(手で書かない。ADR-0000)。
+/// 生成した `variables.json` は、正本の CSS から作った内容と一致する(手で書かない。ADR-1700)。
 #[test]
 fn the_generated_tokens_json_matches_the_css() {
     let violations =
@@ -331,7 +331,7 @@ fn the_generated_tokens_json_carries_resolved_colors() {
     }
 }
 
-/// 見本ページは、正本を実際に読み込み、役割と部品のすべてを並べ、値を複写しない(ADR-0000)。
+/// 見本ページは、正本を実際に読み込み、役割と部品のすべてを並べ、値を複写しない(ADR-1700)。
 #[test]
 fn the_specimen_loads_the_canon_and_shows_every_role_and_component() {
     let violations = web_specimen::check_tree(&repo_root()).expect("read the specimen");

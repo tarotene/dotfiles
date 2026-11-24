@@ -118,7 +118,7 @@ What runs automatically, when, and on which stack: see the [pipeline map](pipeli
 - [ADR-1685](adr/1685-web-design-distribution.md) — Pages のデザインの正本は `config/web/` に置き、各面は commit で固定した URL と sha256 で複写を pin し、CI が検査する
 - [ADR-1687](adr/1687-web-components.md) — 共有の部品は正本の役割だけを参照し、主な操作を先に書いて、PC では右端・スマートフォンでは上に置く
 - [ADR-1698](adr/1698-visual-before-after.md) — 見た目の変更は、基準の ref から取り出した Before と After を固定の行列で撮り、Diff つきの並べたページで本人に見せる
-- [ADR-0000](adr/0000-web-design-system-formalization.md) — デザインの正本は CSS の 1 つのまま、見て確かめる見本ページと、生成した機械可読の値と、1 枚だけの HTML が取り込む区間の pin を足す
+- [ADR-1700](adr/1700-web-design-system-formalization.md) — デザインの正本は CSS の 1 つのまま、見て確かめる見本ページと、生成した機械可読の値と、1 枚だけの HTML が取り込む区間の pin を足す
 <!-- END GENERATED -->
 
 ## 運用・調査・設計(`docs/` 直下)

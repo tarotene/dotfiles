@@ -177,7 +177,7 @@ ADR-1677 の範囲外)。空のツリーを読んで通ってしまわないよ�
 
 例外はない。この検査が対象にするのは、部品の CSS 1 ファイルのみである。各面が部品を使う HTML の検査は、`未実装(意図あり)` である。
 
-### 見本ページと生成した値(`web_specimen::check_tree`・`web_variables::check_tokens_json_tree`、ADR-0000)
+### 見本ページと生成した値(`web_specimen::check_tree`・`web_variables::check_tokens_json_tree`、ADR-1700)
 
 見本ページ `config/web/specimen.html` は、正本を複写せず実際に読み込み、役割と部品のすべてを並べる。`variables.json` は、CSS から生成した派生物。
 

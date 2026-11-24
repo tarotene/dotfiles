@@ -1,4 +1,4 @@
-# 見本ページの撮影定義(pr-description スキル §5b の `visual_diff.py`。ADR-0000)。
+# 見本ページの撮影定義(pr-description スキル §5b の `visual_diff.py`。ADR-1700)。
 # 正本(variables.css・components.css)を変えたら、変更の前の ref を Before、作業ツリーを After にして撮ると、見本の Diff が出る。
 
 [[page]]
