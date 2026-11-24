@@ -3,7 +3,7 @@
 # requires-python = ">=3.11"
 # dependencies = ["playwright==1.63.0", "pillow==11.3.0"]  # playwright は apply-offer-plan と同じ版。上げるときは --selftest --browser を通す
 # ///
-"""visual_diff.py — 見た目の Before / After / Diff を、固定の撮り方で撮り、並べる(ADR-0000 の執行点)。
+"""visual_diff.py — 見た目の Before / After / Diff を、固定の撮り方で撮り、並べる(ADR-1698 の執行点)。
 
   capture  撮影定義(visual.toml)の全セル(面 × 状態 × 明暗 × 幅)を撮る。画面のファイルは --ref から取り出す
   diff     2 つの撮影ディレクトリを比べ、セルごとに Before | After | Diff の 1 枚と report.json を出す

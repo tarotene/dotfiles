@@ -1,4 +1,4 @@
-# ADR-0000 — 見た目の変更は、基準の ref から取り出した Before と After を固定の行列で撮り、Diff つきの並べたページで本人に見せる
+# ADR-1698 — 見た目の変更は、基準の ref から取り出した Before と After を固定の行列で撮り、Diff つきの並べたページで本人に見せる
 
 - Status: Accepted
 - Date: 2026-11-24

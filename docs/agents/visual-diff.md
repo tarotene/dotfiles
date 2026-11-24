@@ -2,7 +2,7 @@
 
 実装: `config/agents/skills/pr-description/scripts/visual_diff.py`(`uv run --script`。PEP 723 で `playwright==1.63.0`・`pillow==11.3.0`)
 手順の正本: `config/agents/skills/pr-description/SKILL.md` §5b
-決定: ADR-0000(見た目の変更は、基準の ref から取り出した Before と After を固定の行列で撮り、Diff つきの並べたページで本人に見せる)
+決定: ADR-1698(見た目の変更は、基準の ref から取り出した Before と After を固定の行列で撮り、Diff つきの並べたページで本人に見せる)
 走る場所: 手元は `visual_diff.py capture|diff|page`。CI は `--selftest`(ブラウザ無し)だけを `Escape-hatch dry-run` ジョブが走らせる。撮影を伴う `--selftest --browser` は手元。
 
 ## 動機
