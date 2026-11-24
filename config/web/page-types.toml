@@ -16,7 +16,7 @@ title = "共通(すべての面)"
 
 [[type.requirement]]
 id = "C1"
-text = "`lang`・viewport・`<title>`・`<main>`・`<h1>` がある(ホストが殻を付ける Artifact の断片は、`lang`・viewport を除く)。"
+text = "`lang`・viewport・`<title>`・`<main>`・`<h1>` がある(ホストが殻を付ける Artifact の断片は、`lang`・viewport を除く)。viewport は拡大を禁じない(`user-scalable=no` や、2 未満の `maximum-scale` を書かない)。"
 check = "audit"
 audit = "document"
 
@@ -89,6 +89,23 @@ check = "visual"
 id = "C14"
 text = "幅 390px で、タップだけで、主なタスクが最後まで完結する(確定・取り消しなど、完了に要る操作は、画面に操作部として出す)。"
 check = "walkthrough"
+
+[[type.requirement]]
+id = "C15"
+text = "実在しうる最悪のデータ(長い名前・長いメール・0 件/1 件/多数の件数・欠けた項目)でも、重なり・欠け・横スクロールが出ず、省略した文字は全文を読む手段がある(`title` 属性だけに頼らない)。"
+check = "visual"
+
+[[type.requirement]]
+id = "C16"
+text = "`:hover` の見た目は `@media (hover: hover)` の中に書く(スマートフォンで、1 度タップした要素のホバー表示が残らない)。"
+check = "audit"
+audit = "hover"
+
+[[type.requirement]]
+id = "C17"
+text = "入力欄(`input`・`select`・`textarea`)の文字は 16px 以上(iOS Safari が、小さい文字の入力欄へのフォーカスでページを拡大して戻さない)。"
+check = "audit"
+audit = "input-size"
 
 [[type]]
 id = "study"
