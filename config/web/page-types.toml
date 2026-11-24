@@ -1,0 +1,227 @@
+# ページの型の要件(ADR-0000。ADR-1677 D5 が「次の ADR 以降」とした、型ごとの要件の起こし)。
+#
+# 各要件は、検査の種別を 1 つ持つ(閉じた語彙)。
+#   audit        描画した HTML を、`visual_diff.py audit` が機械で検査する(`audit` の欄が、検査の名前)
+#   walkthrough  人(または独立した評価者)が、認知的ウォークスルーの 4 問で通す。機械では測れない
+#   visual       人が画面(`visual_diff.py` の撮影)を見て判断する。機械では測れない
+# 機械で測れない要件を、「通った」にしない。`audit` の出力は、測れなかった要件を「未検査」として並べる。
+#
+# 面(撮影定義 visual.toml の page)は、`types = ["common", "form"]` のように、当てはまる型を宣言する(省略は common だけ)。
+# 要件の ID は、WCAG 2.2・NN/g のヒューリスティック・デジタル庁デザインシステム・GOV.UK などの公開の基準から起こした。
+# 起こし方は、実際の面を描画して測った結果と、独立した評価者の審査から得た(ADR-0000)。
+
+[[type]]
+id = "common"
+title = "共通(すべての面)"
+
+[[type.requirement]]
+id = "C1"
+text = "`lang`・viewport・`<title>`・`<main>`・`<h1>` がある(ホストが殻を付ける Artifact の断片は、`lang`・viewport を除く)。"
+check = "audit"
+audit = "document"
+
+[[type.requirement]]
+id = "C2"
+text = "文字のコントラストが 4.5:1(24px 以上、または 18.66px 以上の太字は 3:1)。明暗の両方、撮影した状態のすべてで。"
+check = "audit"
+audit = "contrast"
+
+[[type.requirement]]
+id = "C3"
+text = "操作部(button・input・select・textarea・summary・文中でないリンク)が 24×24 CSS px 以上。基準値は 44px。"
+check = "audit"
+audit = "targets"
+
+[[type.requirement]]
+id = "C4"
+text = "幅 390px で横スクロールが出ない(表・コードは自分の容器の中だけ)。"
+check = "audit"
+audit = "overflow"
+
+[[type.requirement]]
+id = "C5"
+text = "状態・情報を色だけで伝えない(形・文言・位置を併用する)。"
+check = "visual"
+
+[[type.requirement]]
+id = "C6"
+text = "キーボードだけで完結でき、フォーカスが見える(`:focus-visible`)。"
+check = "walkthrough"
+
+[[type.requirement]]
+id = "C7"
+text = "`prefers-reduced-motion: reduce` で、移動・拡縮をやめる。"
+check = "visual"
+
+[[type.requirement]]
+id = "C8"
+text = "暗色は OS の設定に追従し、切り替えの UI を持たない(Artifact は `data-theme` の契約に従う)。"
+check = "visual"
+
+[[type.requirement]]
+id = "C9"
+text = "第三者からの書体・スタイル・スクリプト・画像を読み込まない(ADR-1677 D6)。"
+check = "audit"
+audit = "third-party"
+
+[[type.requirement]]
+id = "C10"
+text = "1 行の長さが和文で約 40 字以内(本文の幅 ÷ 文字の大きさ ≦ 40em の目安)。"
+check = "visual"
+
+[[type.requirement]]
+id = "C11"
+text = "状態を持つ画面は、読み込み中・失敗・空を同じ表示にしない。失敗には再読み込みの導線を出し、エラーの出し先を DOM に常に置く。"
+check = "walkthrough"
+
+[[type.requirement]]
+id = "C12"
+text = "ボタンにフォーカスして Enter・Space を押すと、ボタンが押される(ショートカットのキーが、操作部の標準のキー操作を奪わない)。"
+check = "audit"
+audit = "keyboard"
+
+[[type.requirement]]
+id = "C13"
+text = "accent の上の文字は `--on-accent` を使い、固定の `#fff` を書かない。コントラストは、押下・エラー・解答後の状態も含めて保つ(C2 が状態ごとに症状を拾う)。"
+check = "visual"
+
+[[type.requirement]]
+id = "C14"
+text = "幅 390px で、タップだけで、主なタスクが最後まで完結する(確定・取り消しなど、完了に要る操作は、画面に操作部として出す)。"
+check = "walkthrough"
+
+[[type]]
+id = "study"
+title = "学習・演習"
+
+[[type.requirement]]
+id = "L1"
+text = "1 問 1 画面で、問いの向き(適切なものを選ぶか、不適切なものを選ぶか)を設問の上に示す。"
+check = "visual"
+
+[[type.requirement]]
+id = "L2"
+text = "選択した直後に、正誤・正答・各選択肢の適否と理由を、同じカードに出す。"
+check = "walkthrough"
+
+[[type.requirement]]
+id = "L3"
+text = "正答率を前面に出さず、次に復習する日・再出題待ちの数を出す。"
+check = "visual"
+
+[[type.requirement]]
+id = "L4"
+text = "間違えた問題が、間隔を空けて再び出る(1 周目と 2 周目は別の記録)。"
+check = "walkthrough"
+
+[[type.requirement]]
+id = "L5"
+text = "連続日数など、途切れたときに離脱を誘う表示を出さない。"
+check = "visual"
+
+[[type.requirement]]
+id = "L6"
+text = "誤りの種類(知識の誤り・読み違い)を 1 操作で申告でき、集計は分けて数える。"
+check = "walkthrough"
+
+[[type.requirement]]
+id = "L7"
+text = "正誤を色だけで伝えない(記号・文言を併用する)。"
+check = "visual"
+
+[[type.requirement]]
+id = "L8"
+text = "端末をまたぐと記録が別になることを、画面で示す(または同期する)。"
+check = "visual"
+
+[[type]]
+id = "form"
+title = "裁定フォーム"
+
+[[type.requirement]]
+id = "F1"
+text = "1 画面の主操作(`.btn-main`)は 1 つ。ボタンを無効にせず、何をすべきかを示す。"
+check = "audit"
+audit = "main-button"
+
+[[type.requirement]]
+id = "F2"
+text = "選択肢が少ないときは、ラジオで全部見せ、初期状態で選択済みにしない(未決を表す選択肢か、取り消しを用意する)。"
+check = "audit"
+audit = "default-choice"
+
+[[type.requirement]]
+id = "F3"
+text = "保存は項目ごとに「保存中 → 保存済み」を出し、書き込みの成功を確かめてから「保存済み」にする。失敗は、その項目の横に、再保存の操作と一緒に出す。"
+check = "walkthrough"
+
+[[type.requirement]]
+id = "F4"
+text = "日常の操作に確認ダイアログ(`confirm`)を使わず、選び直しで戻せる。"
+check = "audit"
+audit = "confirm"
+
+[[type.requirement]]
+id = "F5"
+text = "エラーは、何が起きたかと直し方を、項目の近くに書く。色だけに頼らない。"
+check = "visual"
+
+[[type.requirement]]
+id = "F6"
+text = "確定の前に、全回答の一覧を見せ、各項目から修正できる。"
+check = "visual"
+
+[[type.requirement]]
+id = "F7"
+text = "完了画面は、何が保存され、次に何が起きるかを書く。"
+check = "visual"
+
+[[type.requirement]]
+id = "F8"
+text = "保存先が無いときは、貼り付け用の要約に縮退する。"
+check = "walkthrough"
+
+[[type.requirement]]
+id = "F9"
+text = "ラジオ・ボタンは、矢印・Tab・Space だけで完結する(ネイティブの `input` を使う)。"
+check = "walkthrough"
+
+[[type]]
+id = "dashboard"
+title = "ダッシュボード"
+
+[[type.requirement]]
+id = "D1"
+text = "すぐ行動するための情報(残り日数・次の予定・未完了)を先頭に置き、分析のための情報は別にする。"
+check = "visual"
+
+[[type.requirement]]
+id = "D2"
+text = "初期表示は少数に絞り、幅 390px で 1 画面に収める。"
+check = "visual"
+
+[[type.requirement]]
+id = "D3"
+text = "状態は、形(ピル・長さ)と数で示し、色を主な手段にしない。"
+check = "visual"
+
+[[type.requirement]]
+id = "D4"
+text = "空(まだ無い)と完了(全部済んだ)を書き分け、空には次の一手を 1 つ出す。"
+check = "visual"
+
+[[type.requirement]]
+id = "D5"
+text = "入力を兼ねる面は、F3 と同じ保存の伝え方を持つ。"
+check = "walkthrough"
+
+[[type.requirement]]
+id = "D6"
+text = "通知・バッジを増やさず、開いたときに一目で分かる。"
+check = "visual"
+
+[[type.requirement]]
+id = "D7"
+text = "行の高さが 24px 未満のリンクの列を作らない(リンクの列は、行間を 24px 以上にする)。"
+check = "audit"
+audit = "links"

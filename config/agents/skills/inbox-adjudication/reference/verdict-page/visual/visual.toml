@@ -10,6 +10,7 @@ prepare = "REPLY_COVERAGE_BIN=true bash build.sh --data fixtures/valid.items.jso
 entry = "built.html"
 stub = "stub.js"
 host = "artifact"
+types = ["common", "form"]
 clock = "2026-01-01T09:00:00+09:00"
 
 [[page.state]]
