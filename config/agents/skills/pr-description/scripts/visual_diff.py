@@ -66,6 +66,8 @@ AUDITS = (
     "hover", "input-size",
 )
 REQ_ID_RE = re.compile(r"^[CLFD][0-9]+$")
+# 要件が結びつく原則の ID(config/web/principles.toml)。実在の照合は repo-structure-check の web_principles が行う。
+PRINCIPLE_ID_RE = re.compile(r"^[a-z][a-z0-9-]*$")
 STATE_KEYS = {"name", "globals", "steps"}
 STEP_KEYS = {"click", "press", "fill", "value", "wait"}
 
@@ -401,7 +403,7 @@ def load_types(path: Path) -> dict[str, dict]:
             raise SpecError(f"{path}: type.id が重複しています: {t['id']}")
         reqs = []
         for r in t.get("requirement") or []:
-            extra = set(r) - {"id", "text", "check", "audit"}
+            extra = set(r) - {"id", "text", "check", "audit", "principles"}
             if extra:
                 raise SpecError(f"{path}: requirement に知らないキー {sorted(extra)}")
             if not REQ_ID_RE.match(str(r.get("id", ""))):
@@ -411,6 +413,13 @@ def load_types(path: Path) -> dict[str, dict]:
             seen_reqs.add(r["id"])
             if not isinstance(r.get("text"), str) or not r["text"]:
                 raise SpecError(f"{path}: {r['id']} に text がありません")
+            ps = r.get("principles")
+            if (
+                not isinstance(ps, list) or not ps
+                or not all(isinstance(p, str) and PRINCIPLE_ID_RE.match(p) for p in ps)
+                or len(set(ps)) != len(ps)
+            ):
+                raise SpecError(f"{path}: {r['id']} の principles は、原則の ID([a-z0-9-]+)の、空でない配列です(重複なし): {ps!r}")
             if r.get("check") not in CHECKS:
                 raise SpecError(f"{path}: {r['id']} の check は {CHECKS} のどれか: {r.get('check')!r}")
             if (r["check"] == "audit") != ("audit" in r):
@@ -542,7 +551,7 @@ def run_audit(spec_path: Path, types_path: Path, ref: str, only: str | None = No
         for detail, state in keyboard_by_page.get(pid, []):
             found.setdefault("keyboard", {}).setdefault(detail, []).append(f"状態 {state}")
         violations = [
-            {"req": by_audit[a]["id"], "text": by_audit[a]["text"], "detail": d, "cells": c}
+            {"req": by_audit[a]["id"], "text": by_audit[a]["text"], "principles": by_audit[a]["principles"], "detail": d, "cells": c}
             for a, details in found.items() for d, c in details.items()
         ]
         violations.sort(key=lambda v: (v["req"], v["detail"]))
@@ -558,7 +567,7 @@ def summarize_audit(report: dict) -> str:
         lines.append(f"[{pg['page']}] 型 {', '.join(pg['types'])}: 違反 {len(pg['violations'])} 件 / 通った検査 {len(pg['passed'])} 件({' '.join(pg['passed'])}) / 人が見る {len(pg['manual'])} 件")
         for v in pg["violations"]:
             where = "、".join(v["cells"][:3]) + (f" ほか {len(v['cells']) - 3} セル" if len(v["cells"]) > 3 else "")
-            lines.append(f"  違反 {v['req']}: {v['detail']}  [{where}]")
+            lines.append(f"  違反 {v['req']}[{' '.join(v['principles'])}]: {v['detail']}  [{where}]")
         manual = " ".join(f"{m['req']}({'WT' if m['check'] == 'walkthrough' else '目視'})" for m in pg["manual"])
         lines.append(f"  未検査(機械では測れない。人が見る): {manual}")
     return "\n".join(lines)
@@ -867,7 +876,12 @@ def selftest(browser: bool) -> int:
             check({r["audit"] for r in reqs if "audit" in r} == set(AUDITS), "すべての検査が、どれかの要件に結びついている")
             check(all(r["check"] == "audit" for r in reqs if r["id"] in ("C1", "C2", "C3", "C4", "C9", "C12", "C16", "C17", "F1", "F2", "F4", "D7")), "機械で測れると宣言した要件は、audit")
             check(any(r["id"] == "C15" and r["check"] == "visual" for r in reqs), "最悪のデータでの描画(C15)は、人が見る要件")
+            check(all(r["principles"] for r in reqs), "すべての要件が、原則の ID を 1 つ以上持つ")
         for label, body in (
+            ("principles が無い", '[[type]]\nid = "common"\ntitle = "c"\n[[type.requirement]]\nid = "C1"\ntext = "x"\ncheck = "visual"\n'),
+            ("principles が空", '[[type]]\nid = "common"\ntitle = "c"\n[[type.requirement]]\nid = "C1"\ntext = "x"\nprinciples = []\ncheck = "visual"\n'),
+            ("principles の ID の形", '[[type]]\nid = "common"\ntitle = "c"\n[[type.requirement]]\nid = "C1"\ntext = "x"\nprinciples = ["Bad_Id"]\ncheck = "visual"\n'),
+            ("principles の重複", '[[type]]\nid = "common"\ntitle = "c"\n[[type.requirement]]\nid = "C1"\ntext = "x"\nprinciples = ["a", "a"]\ncheck = "visual"\n'),
             ("知らないキー", '[[type]]\nid = "common"\ntitle = "c"\nbogus = 1\n'),
             ("check が語彙の外", '[[type]]\nid = "common"\ntitle = "c"\n[[type.requirement]]\nid = "C1"\ntext = "x"\ncheck = "maybe"\n'),
             ("walkthrough に audit の名前", '[[type]]\nid = "common"\ntitle = "c"\n[[type.requirement]]\nid = "C1"\ntext = "x"\ncheck = "walkthrough"\naudit = "document"\n'),
@@ -879,6 +893,8 @@ def selftest(browser: bool) -> int:
             ("どの要件にも結びつかない検査がある", '[[type]]\nid = "common"\ntitle = "c"\n[[type.requirement]]\nid = "C1"\ntext = "x"\ncheck = "visual"\n'),
         ):
             bad = t / "bad-types.toml"
+            if not label.startswith("principles"):  # 他の誤りの fixture は、原則の欄を満たして、狙った理由で落とす
+                body = body.replace('text = "x"\n', 'text = "x"\nprinciples = ["x"]\n').replace('text = "y"\n', 'text = "y"\nprinciples = ["x"]\n')
             bad.write_text(body, encoding="utf-8")
             try:
                 load_types(bad)
@@ -979,7 +995,7 @@ def selftest(browser: bool) -> int:
                    "C12": "keyboard", "C16": "hover", "C17": "input-size", "F1": "main-button", "F2": "default-choice",
                    "F4": "confirm", "D7": "links"}
             toml_types = '[[type]]\nid = "common"\ntitle = "c"\n' + "".join(
-                f'[[type.requirement]]\nid = "{i}"\ntext = "{a}"\ncheck = "audit"\naudit = "{a}"\n' for i, a in ids.items())
+                f'[[type.requirement]]\nid = "{i}"\ntext = "{a}"\nprinciples = ["x"]\ncheck = "audit"\naudit = "{a}"\n' for i, a in ids.items())
             (t / "types.toml").write_text(toml_types, encoding="utf-8")
             (repo / "site/bad.html").write_text(
                 '<!doctype html><title></title><style>body{margin:0;background:#fff;color:#bbb}.wide{width:900px;height:10px;background:#000}</style>'

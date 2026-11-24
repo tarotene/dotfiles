@@ -234,6 +234,23 @@ ADR-1677 の範囲外)。空のツリーを読んで通ってしまわないよ�
 例外はない。`note` は人間が読むための補足であり、検査しない(Baseline の取得日や画面の実測値など、日付付きの事実を記述する)。空のツリーを読み込んで通過して
 しまわないよう、`tests/tree.rs` が、5 つの選択肢それぞれの行と、`dialog`・`toast` の行が読み込まれていることを検証する。
 
+### 原則の層(`web_principles::check_tree`、ADR-0000)
+
+`config/web/principles.toml` は、ページの型の要件(`page-types.toml`)が、どの原則から起こされたかを、閉じた語彙の表で保持する。各原則は、
+`id`・`title`・`kind`(`principle` = 外部の原則 / `decision` = このリポジトリの決定)・`scope`(`structure` / `general`)・`source`・`retrieved`・`quote`
+(逐語の引用)をすべて持つ。各要件は `principles = [...]` で、原則を 1 つ以上指す。
+
+| 検査 | 落ちる条件 |
+|---|---|
+| 形 | TOML として読めない、表の先頭に `[[principle]]` 以外のキーがある、`[[principle]]` が無い、知らないキー、必須のキーの欠け・空、`id` が小文字・数字・`-` でない、`id` の重複、`retrieved` が `YYYY-MM-DD` でない |
+| 語彙 | `kind`・`scope` が語彙の外 |
+| 出典 | `kind = "principle"` の `source` が https の URL でない。`kind = "decision"` の `source` がリポジトリ内に実在しない、または `quote` がそのファイルに、そのまま含まれない |
+| 要件 → 原則 | 要件に `principles` が無い・空・配列でない、または実在しない原則の ID を含む |
+| 死んだ原則 | `scope = "general"` の原則が、どの要件にも指されていない(`scope = "structure"` は、構造パターンの表が指すので対象外) |
+
+外部の原則の `quote` は、検査では原文と照合できない(ネットワークを使わない)。載せるときに、取得した原文と逐語で照合した(取得日は `retrieved`)。取り直せなかった
+原則は載せない。空のツリーを読み込んで通過してしまわないよう、`tests/tree.rs` が、外部・決定・構造の各行と、要件 C3 の結びつきが読み込まれていることを検証する。
+
 ### 依存グラフ(`deps::check_tree`、#1446)
 
 各 `crates/*/Cargo.toml` の `[dependencies]`・`[build-dependencies]`(`[target.<cfg>.…]` も)の `path` の依存を辺として読む。
@@ -304,6 +321,7 @@ ADR-1529 の置き場 4)。例外を解消すると鮮度の検査が落ちる�
 - crates/repo-structure-check/src/web_components.rs
 - crates/repo-structure-check/src/web_specimen.rs
 - crates/repo-structure-check/src/web_selection.rs
+- crates/repo-structure-check/src/web_principles.rs
 - crates/repo-structure-check/src/web_behavior.rs
 - crates/repo-structure-check/src/web_assets.rs
 - crates/civil-time/src/lib.rs

@@ -17,6 +17,7 @@ pub mod side_symmetry;
 pub mod web_assets;
 pub mod web_behavior;
 pub mod web_components;
+pub mod web_principles;
 pub mod web_selection;
 pub mod web_specimen;
 pub mod web_variables;

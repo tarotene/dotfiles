@@ -14,6 +14,7 @@ use repo_structure_check::side_symmetry;
 use repo_structure_check::web_assets;
 use repo_structure_check::web_behavior;
 use repo_structure_check::web_components;
+use repo_structure_check::web_principles;
 use repo_structure_check::web_selection;
 use repo_structure_check::web_specimen;
 use repo_structure_check::web_variables;
@@ -373,6 +374,49 @@ fn the_selection_check_reads_what_it_is_about() {
     ] {
         assert!(text.contains(needle), "{needle} が読まれていない");
     }
+}
+
+/// 原則の表は、語彙が閉じていて、決定の引用は出典のファイルにそのまま含まれ、すべての要件が実在する原則を
+/// 指し、どの要件にも使われない一般の原則が無い(ADR-0000)。
+#[test]
+fn the_principles_table_is_closed_and_every_requirement_is_grounded() {
+    let violations = web_principles::check_tree(&repo_root()).expect("read the principles");
+    let report: Vec<String> = violations.iter().map(ToString::to_string).collect();
+    assert!(
+        violations.is_empty(),
+        "原則の層が不変条件を満たさない:\n{}",
+        report.join("\n")
+    );
+}
+
+/// 原則の表と要件を読めずに「違反なし」で通ってしまわないための番兵。外部の原則と、決定の原則の両方の行が
+/// 読まれ、要件に `principles` の欄が書かれている。
+#[test]
+fn the_principles_check_reads_what_it_is_about() {
+    let root = repo_root();
+    let principles = std::fs::read_to_string(root.join(web_principles::PRINCIPLES_PATH))
+        .expect("read the principles table");
+    for needle in [
+        "id = \"wcag-2-5-8\"",
+        "kind = \"principle\"",
+        "kind = \"decision\"",
+        "scope = \"structure\"",
+        "id = \"adr-1677-d6\"",
+    ] {
+        assert!(principles.contains(needle), "{needle} が読まれていない");
+    }
+    let reqs = web_principles::requirements(
+        &std::fs::read_to_string(root.join(web_principles::PAGE_TYPES_PATH))
+            .expect("read the page types"),
+    )
+    .expect("parse the page types");
+    assert!(reqs.len() >= 41, "要件が読まれていない: {}", reqs.len());
+    assert!(
+        reqs.iter()
+            .any(|r| r.id == "C3"
+                && r.principles.as_deref() == Some(&["wcag-2-5-8".to_string()][..])),
+        "C3 が原則 wcag-2-5-8 に結びついていない"
+    );
 }
 
 /// 生成した `variables.json` は、正本の CSS から作った内容と一致する(手で書かない。ADR-1700)。

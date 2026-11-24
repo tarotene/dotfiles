@@ -31,6 +31,7 @@
 - 検査は 12 個(閉じた語彙 `AUDITS`)。`document`(C1。viewport が拡大を禁じる `user-scalable=no`・2 未満の `maximum-scale` も見る)・`contrast`(C2)・`targets`(C3)・`overflow`(C4。幅 390px のセルだけ)・`third-party`(C9)・`keyboard`(C12)・`hover`(C16。`document.styleSheets` を入れ子まで読み、`@media (hover: hover)` の外にある `:hover` の規則を数える。読めないシートは数えない)・`input-size`(C17。`input`・`select`・`textarea` の計算後の文字が 16px 未満。幅 390px のセルだけ)・`main-button`(F1)・`default-choice`(F2。初期状態だけ)・`confirm`(F4。開いたダイアログと、スクリプトの静的な検出)・`links`(D7)。最悪のデータでの描画(C15)は、機械で測れず、人が見る(`visual`)。
 - 測定(`AUDIT_JS`)は、撮影と同じ行列の各セルで、描画した状態のページの中で走る。コントラストは、文字を持つ要素ごとに、祖先をたどって重ねた背景色から WCAG 2.2 の式で出す。`keyboard` は、撮影定義の状態ごとに、先頭の 4 ボタンにフォーカスして Enter・Space を押し、押されるかを見る(明・幅 1280px で、状態を開き直して)。
 - 測定から違反を作る部分(`cell_findings`)は、ブラウザ無しで試験できる純粋関数。要件の読み込み(`load_types`)も、種別と検査の名前が閉語彙で、結びつかない検査を落とす。
+- 各要件は、`principles`(`config/web/principles.toml` の原則の ID の、空でない配列)を持つ(ADR-0000)。`load_types` は形(ID の形・空でない・重複なし)を見る。実在する原則を指すことは `repo-structure-check` の `web_principles` が落とす。違反の出力には、要件の ID に続けて原則の ID が付く(`違反 C3[wcag-2-5-8]: …`。`--json` では、違反ごとの `principles`)。
 - 機械で測れない要件(`walkthrough`・`visual`)は、出力の「未検査」に ID と種別で並ぶ。通ったことにしない。
 - 限界: ラベルに結びついたラジオ・チェックボックスは、ラベルの大きさで測る。`keyboard` は、状態の操作で現れるボタンの全部ではなく、先頭の 4 つ。`audit` は CI では走らない(ブラウザが要る。`--selftest` は走る)。
 
