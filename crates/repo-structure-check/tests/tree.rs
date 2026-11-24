@@ -12,6 +12,7 @@ use repo_structure_check::manifest::{check_tree, read_members, ZERO_DEPENDENCY_C
 use repo_structure_check::process_env::{self, HELPER_EXCEPTIONS, XDG_EXCEPTIONS};
 use repo_structure_check::side_symmetry;
 use repo_structure_check::web_assets;
+use repo_structure_check::web_variables;
 
 fn repo_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
@@ -252,6 +253,34 @@ fn the_web_assets_check_reads_what_it_is_about() {
             files.iter().any(|f| f.path == expected),
             "{expected} が読まれていない"
         );
+    }
+}
+
+/// デザイントークンの正本は、役割の集合が閉じていて、明暗の両方でコントラストの基準を満たす(ADR-1685)。
+#[test]
+fn the_design_tokens_satisfy_the_contrast_and_shape_invariants() {
+    let violations = web_variables::check_tree(&repo_root()).expect("read the design tokens");
+    let report: Vec<String> = violations.iter().map(ToString::to_string).collect();
+    assert!(
+        violations.is_empty(),
+        "デザイントークンの正本が不変条件を満たさない:\n{}",
+        report.join("\n")
+    );
+}
+
+/// 正本を読めずに「違反なし」で通ってしまわないための番兵。役割と尺度の主な名前が、実際に読まれている。
+#[test]
+fn the_design_tokens_check_reads_what_it_is_about() {
+    let text = std::fs::read_to_string(repo_root().join(web_variables::VARIABLES_PATH))
+        .expect("read the design tokens");
+    for role in web_variables::REQUIRED_ROLES {
+        assert!(
+            text.contains(&format!("{role}:")),
+            "{role} の宣言が読まれていない"
+        );
+    }
+    for scale in ["--font-sans:", "--fs-body:", "--target:", "--dur:"] {
+        assert!(text.contains(scale), "{scale} が読まれていない");
     }
 }
 

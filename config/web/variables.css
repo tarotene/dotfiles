@@ -1,0 +1,121 @@
+/*
+ * Web の面(GitHub Pages・Cloudflare Workers のサイト・claude.ai の Artifact の雛形)が共有する、
+ * デザイントークンの正本。基準は ADR-1677、配り方は ADR-1685(docs/adr/)。
+ *
+ * 層は 2 つ。
+ *   1. 原色(`--ref-*`): 16 進の値だけを持つ。このファイルでだけ 16 進を書く。
+ *   2. 役割(`--bg` など): 原色を `var()` で指し、明暗は `light-dark()` で 1 回だけ書く。
+ * 面ごとのテーマは、このファイルの後に、役割(`--accent`・`--on-accent`・`--accent-text`・`--focus`)の
+ * 値だけを上書きする。役割の集合と、状態の色(`--ok`・`--ng`・`--warn`)の意味は変えない。
+ *
+ * 明暗の切り替えは、OS の設定に追従するだけにする(切り替えの UI を持たない)。claude.ai の Artifact は、
+ * ホストが root に `data-theme="light"`・`data-theme="dark"` を付けることがあるので、その契約に
+ * `color-scheme` で応える(下の 2 つの規則)。`@media (prefers-color-scheme)` の二重書きは要らない。
+ *
+ * このファイルの 16 進の値と寸法は、デジタル庁デザインシステム(DADS)のデザイントークンを出発点にした。
+ *   出典: https://github.com/digital-go-jp/design-tokens (examples/tokens.css、commit 9891ff60f0b35917eebec66d83094ff43ae24626、
+ *         2026-10-20。取得 2026-11-24)
+ *   ライセンス: MIT。著作権表示と許諾文は licenses/digital-agency-design-system.MIT に残す。
+ * 加工した旨(DADS の「利用上の注意事項」が求める記載): このファイルは、DADS のトークンを編集・加工したもので、
+ * デジタル庁が作成したものではない。デジタル庁のロゴ・キーカラーの規定は使わない。
+ *
+ * DADS から変えた点(理由つき):
+ *   - 明暗の役割で書き直した。DADS のトークンは明の画面だけを定める。暗の値は、同じ原色の階調から、
+ *     WCAG 2.2 AA(文字 4.5:1、図形 3:1)を満たす階調を選んだ(`crates/repo-structure-check` の `web_variables` が検査する)。
+ *   - `--ref-gray-850`(#262626)は DADS に無い。暗の `--surface` を、背景(gray-900)から区別するために足した。
+ *   - 警告の文字は、DADS の semantic の orange-800 でなく orange-900 にした。明の面(#ffffff・#f2f2f2)の上で、
+ *     余裕を持って 4.5:1 を超えるため。
+ *   - 書体は、機体の書体を既定にする(ADR-1677 D6)。Linux の和文の書体名 `Noto Sans CJK JP` を足した。
+ *     第三者からの書体の読み込みは禁止(`web_assets` が検査する)。
+ */
+
+:root {
+  /* ── 層 1: 原色(DADS のトークン名の階調) ─────────────────────────── */
+  --ref-white: #ffffff;
+  --ref-gray-50: #f2f2f2;
+  --ref-gray-200: #cccccc;
+  --ref-gray-300: #b3b3b3;
+  --ref-gray-400: #999999;
+  --ref-gray-536: #767676;
+  --ref-gray-700: #4d4d4d;
+  --ref-gray-850: #262626;
+  --ref-gray-900: #1a1a1a;
+  --ref-blue-300: #9db7f9;
+  --ref-blue-900: #0017c1;
+  --ref-green-50: #e6f5ec;
+  --ref-green-300: #71c598;
+  --ref-green-800: #197a4b;
+  --ref-green-1100: #08351f;
+  --ref-red-50: #fdeeee;
+  --ref-red-300: #ff9696;
+  --ref-red-900: #ce0000;
+  --ref-red-1200: #620000;
+  --ref-orange-50: #ffeee2;
+  --ref-orange-300: #ffa66d;
+  --ref-orange-900: #ac3e00;
+  --ref-orange-1200: #541e00;
+
+  /* ── 層 2: 役割(明, 暗)。面ごとのテーマが上書きしてよいのは、accent の 4 つだけ ── */
+  --bg: light-dark(var(--ref-white), var(--ref-gray-900));
+  --surface: light-dark(var(--ref-gray-50), var(--ref-gray-850));
+  --text: light-dark(var(--ref-gray-900), var(--ref-gray-50));
+  --text-muted: light-dark(var(--ref-gray-700), var(--ref-gray-300));
+  --border: light-dark(var(--ref-gray-536), var(--ref-gray-400));
+  --border-subtle: light-dark(var(--ref-gray-200), var(--ref-gray-700));
+  --accent: light-dark(var(--ref-blue-900), var(--ref-blue-300));
+  --on-accent: light-dark(var(--ref-white), var(--ref-gray-900));
+  --accent-text: light-dark(var(--ref-blue-900), var(--ref-blue-300));
+  --focus: light-dark(var(--ref-blue-900), var(--ref-blue-300));
+  --ok: light-dark(var(--ref-green-800), var(--ref-green-300));
+  --ok-bg: light-dark(var(--ref-green-50), var(--ref-green-1100));
+  --ng: light-dark(var(--ref-red-900), var(--ref-red-300));
+  --ng-bg: light-dark(var(--ref-red-50), var(--ref-red-1200));
+  --warn: light-dark(var(--ref-orange-900), var(--ref-orange-300));
+  --warn-bg: light-dark(var(--ref-orange-50), var(--ref-orange-1200));
+
+  /* ── 尺度 ──────────────────────────────────────────────────────── */
+  --font-sans: "Noto Sans JP", "Noto Sans CJK JP", "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic", system-ui, sans-serif;
+  --font-mono: "Noto Sans Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  --fs-small: 0.875rem;
+  --fs-body: 1rem;
+  --fs-lead: 1.125rem;
+  --fs-h3: 1.25rem;
+  --fs-h2: 1.5rem;
+  --fs-h1: 2rem;
+  --lh-body: 1.7;
+  --lh-tight: 1.4;
+  --measure: 40em;
+  --radius-s: 0.25rem;
+  --radius-m: 0.5rem;
+  --radius-l: 0.75rem;
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+  --space-6: 2rem;
+  --target-min: 1.5rem;
+  --target: 2.75rem;
+  --dur-fast: 100ms;
+  --dur: 200ms;
+  --dur-slow: 400ms;
+
+  color-scheme: light dark;
+}
+
+/* claude.ai の Artifact は、ホストが root に data-theme を付けることがある。 */
+:root[data-theme="light"] {
+  color-scheme: light;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --dur-fast: 0ms;
+    --dur: 0ms;
+    --dur-slow: 0ms;
+  }
+}

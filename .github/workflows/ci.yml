@@ -342,6 +342,10 @@ jobs:
       - name: ci-consumers --selftest
         run: scripts/ci-consumers --selftest
 
+      # design-pin: 各面が持つ、デザイン正本(config/web/)の複写の固定を検査する共通部品(ADR-1685)。
+      - name: design-pin --selftest
+        run: bash .github/actions/design-pin/check.sh --selftest
+
       # vocab-graph-check (ADR-1293, docs/agents/state-vocabulary.md): 対象の状態遷移の語彙 JSON の
       # Schema とグラフの性質(到達・出口・担い手の解決など)の検査。--skills は、どの語彙にも
       # external-objects.json にも載らない skill を落とす(全 skill を載せ切ったので配線した。ADR-1305)。

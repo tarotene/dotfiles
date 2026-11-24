@@ -1,0 +1,48 @@
+name: 'Check the design pin'
+description: >-
+  各面(Web のサイト・Artifact の雛形)が持つ、デザイン正本(config/web/)の複写の固定を検査する共通部品
+  (ADR-1685。先行例は、裁定ページの保存先 Schema を commit で固定した URL と sha256 で固定する、個人の記録のリポジトリの型)。
+
+  各面は、正本(variables.css など)を自分のリポジトリに複写し、複写の出所を `design-pin.toml` に書く。
+  この action は、その固定が嘘でないことを確かめる。複写が正本から勝手にずれる(手で直した、別の版を貼った)
+  のを、CI が落とす。
+
+  pin の形(TOML。複数の複写は `[[file]]` を並べる)。URL は書かない。正本のリポジトリは、この action が
+  自分のリポジトリ(`github.action_repository`)から決めるので、所有者名も、別のリポジトリへの参照も、
+  各面のファイルに書けない:
+
+      [[file]]
+      commit = "<40 桁の小文字 16 進>"
+      name   = "variables.css"
+      sha256 = "<64 桁の小文字 16 進>"
+      path   = "web/variables.css"
+
+  検査は 3 つ。(1) `commit` が 40 桁の 16 進で、`name` が正本の `config/web/` の下の 1 つのファイル名であること
+  (main などの浮動した参照を書けない)。(2) `path` の複写の sha256 が、pin の `sha256` と一致すること。
+  (3) `check-upstream` が `true` のときは、その commit の正本の内容の sha256 も pin と一致すること(pin 自体が、
+  正本と別の内容を指していないこと)。取得できないとき(オフライン)は、警告を出して (3) だけを飛ばす。
+
+  正本を変えるときは、正本のリポジトリの PR を 1 本出し、各面で `commit`・`sha256`・複写を同じ変更で上げる。
+  検査の本体は check.sh(`--selftest` を持つ。正本のリポジトリの CI が走らせる)。
+
+inputs:
+  pin-file:
+    description: 呼び出し側のリポジトリにある pin のファイル(根からの相対パス)
+    required: false
+    default: 'design-pin.toml'
+  check-upstream:
+    description: '正本の内容を取得して sha256 を照合する(`true`)か、複写だけを検査する(`false`)'
+    required: false
+    default: 'true'
+
+runs:
+  using: composite
+  steps:
+    - name: Check the vendored copies against the pin
+      shell: bash
+      env:
+        PIN_FILE: ${{ inputs.pin-file }}
+        CHECK_UPSTREAM: ${{ inputs.check-upstream }}
+        SOURCE_REPO: ${{ github.action_repository }}
+        ACTION_PATH: ${{ github.action_path }}
+      run: bash "$ACTION_PATH/check.sh"
