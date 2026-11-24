@@ -234,7 +234,7 @@ ADR-1677 の範囲外)。空のツリーを読んで通ってしまわないよ�
 例外はない。`note` は人間が読むための補足であり、検査しない(Baseline の取得日や画面の実測値など、日付付きの事実を記述する)。空のツリーを読み込んで通過して
 しまわないよう、`tests/tree.rs` が、5 つの選択肢それぞれの行と、`dialog`・`toast` の行が読み込まれていることを検証する。
 
-### 原則の層(`web_principles::check_tree`、ADR-0000)
+### 原則の層(`web_principles::check_tree`、ADR-1708)
 
 `config/web/principles.toml` は、ページの型の要件(`page-types.toml`)が、どの原則から起こされたかを、閉じた語彙の表で保持する。各原則は、
 `id`・`title`・`kind`(`principle` = 外部の原則 / `decision` = このリポジトリの決定)・`scope`(`structure` / `general`)・`source`・`retrieved`・`quote`

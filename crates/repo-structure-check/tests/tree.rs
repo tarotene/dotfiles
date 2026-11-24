@@ -377,7 +377,7 @@ fn the_selection_check_reads_what_it_is_about() {
 }
 
 /// 原則の表は、語彙が閉じていて、決定の引用は出典のファイルにそのまま含まれ、すべての要件が実在する原則を
-/// 指し、どの要件にも使われない一般の原則が無い(ADR-0000)。
+/// 指し、どの要件にも使われない一般の原則が無い(ADR-1708)。
 #[test]
 fn the_principles_table_is_closed_and_every_requirement_is_grounded() {
     let violations = web_principles::check_tree(&repo_root()).expect("read the principles");
