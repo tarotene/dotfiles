@@ -51,6 +51,10 @@ let
     "Bash(gh pr checks *)"
     "Bash(pr-checks-wait *)"
     "Bash(pr-hygiene-check *)"
+    # show-image (crates/show-image, docs/agents/show-image.md): draws one image file in the pane
+    # next to the agent's. It takes a path only and types a fixed command line into the pane, so it
+    # is allowed without a question; `herdr pane run`, which would type anything, is not.
+    "Bash(show-image *)"
     "Bash(lpstat *)"
     "Bash(gh issue view *)"
     "Bash(gh issue list *)"
@@ -344,6 +348,13 @@ in
         # worktree can be cut from a stale local `main`, so `git fetch origin` in it first
         # (config/claude/CLAUDE.md).
         "herdr worktree create *"
+        # `show-image` talks to herdr's socket (`herdr pane split` / `herdr pane run`), which the
+        # sandbox refuses: `herdr pane current` exited with `Operation not permitted` inside it
+        # (measured 2026-11-24) and passed outside. Only this CLI is excluded, not `herdr pane *`:
+        # `herdr pane run` types any command into the pane's shell, so excluding it would be a way
+        # out of the sandbox, whereas `show-image` takes one image path and types a fixed line
+        # (crates/show-image/src/main.rs). Call it alone.
+        "show-image *"
         # An away run (an attendance sync the owner approves once and then leaves running): none
         # of these may stop for a permission decision nobody is there to answer. `ts-browser` starts a visible Chromium, which creates Unix
         # domain sockets and so cannot run in the sandbox (measured inside it 2026-10-30:
