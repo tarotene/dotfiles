@@ -278,28 +278,51 @@ const letters = 'abcdefghijklmnopqrstuvwxyz'.split('').concat([' ']);
 for (const it of ITEMS) {
   const cur = ORDER.indexOf(it.id);
   const shownKeys = hintsOf(it).map(h => h.key === 'Space' ? ' ' : h.key);
-  for (const confirmed of [false, true]) for (const target of [null, 'memo', 'field']) {
-    const ks = keyState({ focused: true, typing: target, confirmed });
+  /* 状態 = 画面(step・confirm・done) × 入力先(無し・メモ欄・入力欄)。選択になるのは、1 件の画面で、キーが受付中のときだけ。 */
+  for (const view of ['step', 'confirm', 'done']) for (const target of [null, 'memo', 'field']) {
+    const ks = keyState({ focused: true, typing: target, view });
     for (const k of letters) {
-      const d = decideKey({ order: ORDER, cur, confirmed }, { key: k, ctrl: false, meta: false, alt: false, target });
+      const d = decideKey({ order: ORDER, cur, view }, { key: k, ctrl: false, meta: false, alt: false, target });
       const acts = d.act === 'choose', shown = shownKeys.includes(k);
-      if (ks.on && shown !== acts) bad.push(it.id + ': キー ' + JSON.stringify(k) + ' は、表示=' + shown + '、挙動=' + acts);
-      if (!ks.on && acts) bad.push(it.id + ': キーが止まっているのに、' + JSON.stringify(k) + ' が効く');
-      if (ks.on && acts && shown) {
+      if (view === 'step' && ks.on && shown !== acts) bad.push(it.id + ': キー ' + JSON.stringify(k) + ' は、表示=' + shown + '、挙動=' + acts);
+      if (!(view === 'step' && ks.on) && acts) bad.push(it.id + ': ' + view + '/' + target + ' で、' + JSON.stringify(k) + ' が選択になる');
+      if (view === 'step' && ks.on && acts && shown) {
         const want = hintsOf(it).find(h => (h.key === 'Space' ? ' ' : h.key) === k).option;
         if (d.option.id !== want.id) bad.push(it.id + ': キー ' + JSON.stringify(k) + ' は、表示では ' + want.id + '、挙動では ' + d.option.id);
       }
     }
   }
 }
-if (keyState({ focused: false, typing: null, confirmed: false }).on) bad.push('フォーカスが無いのに、キーが受付中と表示される');
+/* 画面ごとの、符号以外のキー。確認画面は Backspace だけが最後の件へ戻る。完了画面は、すべて無視する。 */
+const E = (key, extra) => Object.assign({ key, ctrl: false, meta: false, alt: false, target: null }, extra || {});
+const dk = (view, e) => decideKey({ order: ORDER, cur: 0, view }, e).act;
+if (dk('confirm', E('Backspace')) !== 'back-to-steps') bad.push('確認画面の Backspace が最後の件へ戻らない');
+if (dk('confirm', E('ArrowRight')) !== 'ignore') bad.push('確認画面の → が効く');
+if (dk('done', E('Backspace')) !== 'ignore') bad.push('完了画面の Backspace が効く');
+if (dk('step', E('Enter', { ctrl: true })) !== 'confirm') bad.push('Ctrl+Enter が確認・確定に行かない');
+if (dk('step', E('Backspace')) !== 'prev' || dk('step', E('ArrowLeft')) !== 'prev') bad.push('Backspace・← が前へでない');
+if (dk('step', E('ArrowRight')) !== 'next') bad.push('→ が次へでない');
+if (dk('step', E('a', { ctrl: true })) !== 'ignore') bad.push('Ctrl+a が効く');
+if (dk('step', E('Escape', { target: 'memo' })) !== 'esc-memo') bad.push('メモ欄の Esc が次へ進まない');
+if (dk('step', E('a', { target: 'memo' })) !== 'ignore') bad.push('メモ欄の中の a が選択になる');
+if (keyState({ focused: false, typing: null, view: 'step' }).on) bad.push('フォーカスが無いのに、キーが受付中と表示される');
+if (keyState({ focused: true, typing: null, view: 'done' }).on) bad.push('完了画面で、キーが受付中と表示される');
+/* 選んだあとの行き先: 途中は次の件、最後の件と、確認画面から直しに来たあとは、確認画面。 */
+for (let c = 0; c < ORDER.length; c++) {
+  const a = advance({ cur: c, n: ORDER.length, fromConfirm: false }), b = advance({ cur: c, n: ORDER.length, fromConfirm: true });
+  if (c < ORDER.length - 1 && !(a.view === 'step' && a.cur === c + 1)) bad.push('行き先: ' + c + ' の次が、次の件でない');
+  if (c === ORDER.length - 1 && a.view !== 'confirm') bad.push('行き先: 最後の件の次が、確認画面でない');
+  if (b.view !== 'confirm') bad.push('行き先: 直したあとが、確認画面でない');
+}
 for (let n = 0; n < 60; n++) {
   for (const it of ITEMS) {
     const os = optsOf(it), r = (n * 7 + it.id.length) % (os.length + 1);
     state[it.id] = r === os.length ? undefined : { verdict: os[r].verdict, owner: os[r].owner || '', option: os[r].id, at: 't', note: n % 2 ? 'x' : '' };
   }
-  const p = progress();
+  const p = progress(), cnt = { none: 0, later: 0, waiting: 0, chosen: 0 };
+  for (const it of ITEMS) cnt[cellState(it, state[it.id])]++;
   if (p.chosen + p.later + p.none + p.waiting !== p.total || p.remaining !== p.none + p.waiting) bad.push('件数が合わない: ' + JSON.stringify(p));
+  if (cnt.none !== p.none || cnt.later !== p.later || cnt.waiting !== p.waiting || cnt.chosen !== p.chosen) bad.push('概観のマスの数が、progress と違う');
 }
 console.log([...new Set(bad)].slice(0, 5).join(' / '));
 EOF
@@ -307,8 +330,11 @@ EOF
   got=$(node "$tjs" "$OPTIONS_FILE" "$HERE/fixtures/valid.items.json" 2>&1); rm -f "$tjs"
   if [ -z "$got" ]; then ok "キー入力の仕様: 順が紙と同じで、表示するキーと効くキーがすべての状態で一致し、件数が合う"; else ng "キー入力の仕様: $got"; fi
   # 画面の側が、上の関数だけを使っていること(試験した関数と、実際の挙動が別物にならない)。
-  if grep -qF 'decideKey({ order: ORDER, cur, confirmed }' "$TEMPLATE" && grep -qF 'keyState({ focused: document.hasFocus()' "$TEMPLATE" && ! grep -qE 'keysOn|showCursor|cursorbar' "$TEMPLATE"; then ok "テンプレート: キー入力と状態の行は、画面に触れない関数(decideKey・keyState)から導く"; else ng "テンプレート: キー入力か状態の行が、画面に触れない関数を使っていない(または古い名前が残っている)"; fi
-  if grep -qF 'syncCursor' "$TEMPLATE"; then ok "テンプレート: マウス・フォーカスで触ったカードに、キーのカーソルも移る"; else ng "テンプレート: カーソルが 2 系統に戻っている(マウスで触ったカードに、キーのカーソルが移らない)"; fi
+  if grep -qF 'decideKey({ order: ORDER, cur, view }' "$TEMPLATE" && grep -qF 'keyState({ focused: document.hasFocus()' "$TEMPLATE" && ! grep -qE 'keysOn|showCursor|cursorbar|syncCursor' "$TEMPLATE"; then ok "テンプレート: キー入力と状態の行は、画面に触れない関数(decideKey・keyState)から導く"; else ng "テンプレート: キー入力か状態の行が、画面に触れない関数を使っていない(または古い名前が残っている)"; fi
+  # ショートカットのキーが、ボタン・要約などの標準のキー操作(Enter・Space)を奪わないのは、共有の keyguard の仕事(C12)。手書きの keydown を足さない。
+  if grep -qF 'window.pageBehavior.keyguard(' "$TEMPLATE" && [ "$(grep -c "addEventListener(\"keydown\"" "$TEMPLATE")" -le 2 ]; then ok "テンプレート: ショートカットのキーは、共有の keyguard で受ける"; else ng "テンプレート: keyguard を使っていない、または手書きの keydown が増えている"; fi
+  # 画面の構造の宣言(ステップ型)。宣言の語彙と整合の検査は、続く規則で足す(ここでは、宣言が在ることだけを見る)。
+  if grep -qF '<meta name="page-structure" content="step">' "$TEMPLATE" && grep -qF '<meta name="page-axes" content="' "$TEMPLATE"; then ok "テンプレート: 画面の構造(step)と、課題の性質の軸が宣言されている"; else ng "テンプレート: 画面の構造の宣言(page-structure・page-axes)が無い"; fi
   if grep -qF 'gEdited' "$TEMPLATE"; then ok "テンプレート: 古いフィードバックを回答に含めない"; else ng "テンプレート: 古いフィードバックを回答に含める"; fi
 
   # 5. 選択肢の正本(options.json)が、画面・保存先の形・項目の kind と食い違わないこと
