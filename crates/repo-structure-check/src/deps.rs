@@ -18,8 +18,10 @@ use toml::{Table, Value};
 /// 他の crate が使うために在る crate(共有のライブラリ。`docs/agents/agent-libraries.md` の責務表と、
 /// 同じ目的の crate)。
 pub const LIBRARIES: &[&str] = &[
-    // 責務表の 10 ライブラリ
+    // 責務表の 11 ライブラリ
     "agent-session",
+    // Chrome の専用窓(`--app`)を切り離して開く。`plan-view` と `show-image` が共有する。
+    "app-window",
     "civil-time",
     "command-inspection",
     "git-repository",

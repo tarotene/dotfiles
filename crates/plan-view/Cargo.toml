@@ -7,6 +7,7 @@ publish.workspace = true
 
 [dependencies]
 agent-session = { version = "0.1.0", path = "../agent-session" }
+app-window = { version = "0.1.0", path = "../app-window" }
 process-control = { version = "0.1.0", path = "../process-control" }
 libc.workspace = true
 serde_json.workspace = true

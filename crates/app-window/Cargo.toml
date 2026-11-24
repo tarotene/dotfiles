@@ -1,0 +1,13 @@
+[package]
+name = "app-window"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "ファイルを Chrome の専用窓(--app)で、切り離して開く(plan-view と show-image が共有する)"
+
+[dependencies]
+process-control = { version = "0.1.0", path = "../process-control" }
+
+[dev-dependencies]
+tempfile.workspace = true

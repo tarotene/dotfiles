@@ -51,9 +51,10 @@ let
     "Bash(gh pr checks *)"
     "Bash(pr-checks-wait *)"
     "Bash(pr-hygiene-check *)"
-    # show-image (crates/show-image, docs/agents/show-image.md): draws one image file in the pane
-    # next to the agent's. It takes a path only and types a fixed command line into the pane, so it
-    # is allowed without a question; `herdr pane run`, which would type anything, is not.
+    # show-image (crates/show-image, docs/agents/show-image.md): opens one image file in a Chrome
+    # window of its own, on the owner's screen. It takes a path only, starts a fixed browser (no
+    # environment variable changes it) and opens only an existing file with an image extension, so
+    # it is allowed without a question. It shows, it does not write.
     "Bash(show-image *)"
     "Bash(lpstat *)"
     "Bash(gh issue view *)"
@@ -348,12 +349,13 @@ in
         # worktree can be cut from a stale local `main`, so `git fetch origin` in it first
         # (config/claude/CLAUDE.md).
         "herdr worktree create *"
-        # `show-image` talks to herdr's socket (`herdr pane split` / `herdr pane run`), which the
-        # sandbox refuses: `herdr pane current` exited with `Operation not permitted` inside it
-        # (measured 2026-11-24) and passed outside. Only this CLI is excluded, not `herdr pane *`:
-        # `herdr pane run` types any command into the pane's shell, so excluding it would be a way
-        # out of the sandbox, whereas `show-image` takes one image path and types a fixed line
-        # (crates/show-image/src/main.rs). Call it alone.
+        # `show-image` opens a visible Chrome window (`google-chrome --app=file://<image>`), which
+        # the sandbox does not let appear: launched inside it, no window came up, and launched
+        # outside it, the window did (measured 2026-11-24 on vega, the owner watching the screen;
+        # same cause as `ts-browser` below, Chrome cannot create its Unix sockets there). Only this
+        # CLI is excluded, not `google-chrome *`: the CLI takes one image path, starts a fixed
+        # browser with fixed flags (crates/show-image/src/main.rs), whereas an excluded
+        # `google-chrome` would run with any flags outside the sandbox. Call it alone.
         "show-image *"
         # An away run (an attendance sync the owner approves once and then leaves running): none
         # of these may stop for a permission decision nobody is there to answer. `ts-browser` starts a visible Chromium, which creates Unix

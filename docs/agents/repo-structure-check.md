@@ -243,7 +243,7 @@ ADR-1677 の範囲外)。空のツリーを読んで通ってしまわないよ�
 
 | 辺 | 内容 |
 |---|---|
-| ライブラリへの依存 | `deps::LIBRARIES`(責務表の 10 ライブラリと、同じ目的の共有 crate、依存ゼロの 2 crate)に名前で列挙する |
+| ライブラリへの依存 | `deps::LIBRARIES`(責務表の 11 ライブラリと、同じ目的の共有 crate、依存ゼロの 2 crate)に名前で列挙する |
 | 集約役からの依存 | `deps::AGGREGATORS`(`hook-router`・`session-wrapup`、互換入口の `wrapup-stop-gate`)に名前で列挙する |
 | 既知の例外 | `deps::EXCEPTIONS` に `(依存する crate, 依存される crate, 理由)` で 1 件ずつ列挙する |
 
