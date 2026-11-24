@@ -351,7 +351,7 @@ jobs:
       - name: design-pin --selftest
         run: bash .github/actions/design-pin/check.sh --selftest
 
-      # このリポジトリ自身の面(裁定ページの雛形)が取り込んだ正本の複写を、`design-pin.toml` の固定と照合する(ADR-0000)。
+      # このリポジトリ自身の面(裁定ページの雛形)が取り込んだ正本の複写を、`design-pin.toml` の固定と照合する(ADR-1710)。
       # 正本の内容の取得(`CHECK_UPSTREAM`)は、pin した commit の raw の内容で行う。
       - name: design-pin (this repository's own surfaces)
         env:
