@@ -34,13 +34,11 @@ use std::time::{Duration, SystemTime};
 pub struct Config {
     pub view_dir: PathBuf,
     pub pandoc: String,
-    pub browser: String,
     pub highlight: String,
-    pub window_size: String,
     pub retention_days: String,
     pub css_override: String,
-    pub darwin_chrome_app: String,
-    pub uname_override: String,
+    /// 専用窓の開き方(ブラウザ・窓の大きさ・darwin の .app・OS の上書き)。show-image と共有する。
+    pub window: app_window::AppWindow,
     /// bash の `SCRIPT_DIR`(`argv[0]` のディレクトリ。シンボリックリンクは解決しない)。
     pub script_dir: PathBuf,
     pub home: PathBuf,
@@ -64,46 +62,35 @@ impl Config {
         Config {
             view_dir,
             pandoc: env_or("PLAN_VIEW_PANDOC", "pandoc"),
-            browser: env_or("PLAN_VIEW_BROWSER", "google-chrome"),
             highlight: env_or("PLAN_VIEW_HIGHLIGHT", "breezeDark"),
-            window_size: env_or("PLAN_VIEW_WINDOW_SIZE", "1000,900"),
             retention_days: env_or("PLAN_VIEW_RETENTION_DAYS", "30"),
             css_override: std::env::var("PLAN_VIEW_CSS").unwrap_or_default(),
-            darwin_chrome_app: env_or(
-                "PLAN_VIEW_DARWIN_CHROME_APP",
-                "/Applications/Google Chrome.app",
-            ),
-            uname_override: std::env::var("PLAN_VIEW_UNAME_OVERRIDE").unwrap_or_default(),
+            window: app_window::AppWindow {
+                browser: env_or("PLAN_VIEW_BROWSER", "google-chrome"),
+                window_size: env_or("PLAN_VIEW_WINDOW_SIZE", "1000,900"),
+                darwin_chrome_app: env_or(
+                    "PLAN_VIEW_DARWIN_CHROME_APP",
+                    "/Applications/Google Chrome.app",
+                ),
+                uname_override: std::env::var("PLAN_VIEW_UNAME_OVERRIDE").unwrap_or_default(),
+            },
             script_dir: script_dir(argv0),
             home,
         }
     }
 
     pub fn is_darwin(&self) -> bool {
-        match self.uname_override.as_str() {
-            "Darwin" => true,
-            "Linux" => false,
-            _ => std::env::consts::OS == "macos",
-        }
+        self.window.is_darwin()
     }
 
     /// darwin のネイティブ GUI セッションは DISPLAY の概念を持たないので常に真(#230)。
     pub fn has_display(&self) -> bool {
-        if self.is_darwin() {
-            return true;
-        }
-        ["DISPLAY", "WAYLAND_DISPLAY"]
-            .iter()
-            .any(|k| std::env::var_os(k).is_some_and(|v| !v.is_empty()))
+        self.window.has_display()
     }
 
     /// ADR-0005: バイナリ(darwin では .app バンドル)の**存在**でゲートする。
     pub fn browser_available(&self) -> bool {
-        if self.is_darwin() {
-            Path::new(&self.darwin_chrome_app).is_dir()
-        } else {
-            process_control::command_exists(&self.browser)
-        }
+        self.window.browser_available()
     }
 
     pub fn pandoc_available(&self) -> bool {
@@ -224,29 +211,7 @@ impl Config {
     /// ブラウザを切り離して起動し、即座に戻る(待たない)。ここを同期にすると
     /// 承認ダイアログが出ない。darwin は `open -a`(LaunchServices に渡してすぐ戻る)。
     pub fn open_window(&self, html: &Path) {
-        let mut url = OsString::from("file://");
-        url.push(html);
-        let mut app = OsString::from("--app=");
-        app.push(&url);
-        let size = format!("--window-size={}", self.window_size);
-        let mut cmd = if self.is_darwin() {
-            let mut c = Command::new("open");
-            c.arg("-a").arg(&self.darwin_chrome_app).arg("--args");
-            c
-        } else if process_control::command_exists("setsid") {
-            let mut c = Command::new("setsid");
-            c.arg(&self.browser);
-            c
-        } else {
-            Command::new(&self.browser)
-        };
-        cmd.arg(app)
-            .arg(size)
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null());
-        // 子は待たない(bash の `&` + `disown`)。
-        let _ = cmd.spawn();
+        self.window.open_file(html);
     }
 
     /// プラン 1 本を HTML にして(必要なら)発射する。
@@ -594,13 +559,13 @@ pub fn run_cli(cfg: &Config, args: &[String]) -> i32 {
             if !cfg.browser_available() {
                 return die(&format!(
                     "Google Chrome.app が見つかりません ({})",
-                    cfg.darwin_chrome_app
+                    cfg.window.darwin_chrome_app
                 ));
             }
         } else if !cfg.browser_available() {
             return die(&format!(
                 "ブラウザが見つかりません (PLAN_VIEW_BROWSER={})",
-                cfg.browser
+                cfg.window.browser
             ));
         }
         if !cfg.has_display() {
@@ -781,13 +746,15 @@ mod tests {
         Config {
             view_dir: dir.to_path_buf(),
             pandoc: "pandoc".into(),
-            browser: "google-chrome".into(),
             highlight: "breezeDark".into(),
-            window_size: "1000,900".into(),
             retention_days: "30".into(),
             css_override: String::new(),
-            darwin_chrome_app: String::new(),
-            uname_override: String::new(),
+            window: app_window::AppWindow {
+                browser: "google-chrome".into(),
+                window_size: "1000,900".into(),
+                darwin_chrome_app: String::new(),
+                uname_override: String::new(),
+            },
             script_dir: dir.to_path_buf(),
             home: dir.to_path_buf(),
         }

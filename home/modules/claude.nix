@@ -51,6 +51,11 @@ let
     "Bash(gh pr checks *)"
     "Bash(pr-checks-wait *)"
     "Bash(pr-hygiene-check *)"
+    # show-image (crates/show-image, docs/agents/show-image.md): opens one image file in a Chrome
+    # window of its own, on the owner's screen. It takes a path only, starts a fixed browser (no
+    # environment variable changes it) and opens only an existing file with an image extension, so
+    # it is allowed without a question. It shows, it does not write.
+    "Bash(show-image *)"
     "Bash(lpstat *)"
     "Bash(gh issue view *)"
     "Bash(gh issue list *)"
@@ -344,6 +349,14 @@ in
         # worktree can be cut from a stale local `main`, so `git fetch origin` in it first
         # (config/claude/CLAUDE.md).
         "herdr worktree create *"
+        # `show-image` opens a visible Chrome window (`google-chrome --app=file://<image>`), which
+        # the sandbox does not let appear: launched inside it, no window came up, and launched
+        # outside it, the window did (measured 2026-11-24 on vega, the owner watching the screen;
+        # same cause as `ts-browser` below, Chrome cannot create its Unix sockets there). Only this
+        # CLI is excluded, not `google-chrome *`: the CLI takes one image path, starts a fixed
+        # browser with fixed flags (crates/show-image/src/main.rs), whereas an excluded
+        # `google-chrome` would run with any flags outside the sandbox. Call it alone.
+        "show-image *"
         # An away run (an attendance sync the owner approves once and then leaves running): none
         # of these may stop for a permission decision nobody is there to answer. `ts-browser` starts a visible Chromium, which creates Unix
         # domain sockets and so cannot run in the sandbox (measured inside it 2026-10-30:

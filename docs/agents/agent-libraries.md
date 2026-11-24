@@ -13,6 +13,7 @@
 | civil-time | unix 秒と暦(UTC と固定の +09:00=JST)の相互変換(`days_from_civil`・`civil_from_days`・`parse_day`・`jst_date`・`utc_timestamp` など)。依存ゼロ | (新設。旧 `agent-session::time`) |
 | process-env | 環境変数の非空の読み(`${VAR:-}`)・`HOME`・XDG の基準ディレクトリの解決(`Xdg`)。依存ゼロ | (新設) |
 | herdr-client | herdr との通信 | herdr |
+| app-window | ファイルを Chrome の専用窓(`--app=file://…`)で、切り離して(待たずに)開く。表示できるか(画面・ブラウザ・darwin の `.app`)の判定も持つ。`plan-view` と `show-image` が共有する(`docs/agents/plan-view.md`・`docs/agents/show-image.md`) | (新設。旧 `plan-view` の `open_window`・`has_display`・`browser_available`) |
 | vault-note | Obsidian vault のノートの解決・一時ファイル + rename での書き換え・追記・排他・frontmatter・ノート名の規則(wrap-up の気づき・retro・裁定待ちの写し) | (新設) |
 
 ## hook の入口と返答は agent-session が持つ
@@ -60,7 +61,7 @@ unix 秒と暦日の変換は `civil-time` が持つ。Howard Hinnant の変換�
 機体の Claude の契約の側（個人 / 会社）は `dotfiles-identity::verify_from_env` が持ち、その側と持ち主の表（GitHub の
 ログイン名 → 側）・リポジトリの可視性（`gh api repos/<o>/<r>`、1 日の写しつき）から「読んでよいリポジトリか」を決める判定は
 `repo-scope`（`Policy::check_repo`・`check_owner`）が持つ。`repo-scope-guard`（拒否）と、持ち主を横断して数える道具が共有する
-（`docs/agents/repo-scope-guard.md`）。どちらも責務表の 10 ライブラリの外の「同じ目的の共有 crate」（`deps::LIBRARIES`）である。
+（`docs/agents/repo-scope-guard.md`）。どちらも責務表の 11 ライブラリの外の「同じ目的の共有 crate」（`deps::LIBRARIES`）である。
 
 `command-inspection::simple_shell` は旧 hook-io の保守的な分割器、`command-inspection::shell` は
 旧 guard-core のシェル解析器である。前者は解釈できない入力を返さず、後者は guard の検査範囲を切り出す。

@@ -339,6 +339,11 @@
     # Rust、crates/apply-rulesets(ADR-0024、#414)の bin。呼び先の
     # `apply-rulesets` は自分の隣(同じ dotfiles-tools の bin/)から探す。
     "github-rulesets-apply"
+    # show-image: 本人にその場で見せる図・画像を、手元の別窓(Chrome の専用窓)に出す入口
+    # (crates/show-image、ADR-1694、docs/agents/show-image.md)。エージェントが単体で呼ぶので
+    # PATH に置く。sandbox の除外と許可は home/modules/claude.nix。SVG を PNG にする rsvg-convert
+    # は上の librsvg。
+    "show-image"
   ];
 
   # Shadow the system `open`/`xdg-open` (both resolve to xdg-utils 1.1.3,
