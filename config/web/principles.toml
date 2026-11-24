@@ -358,7 +358,7 @@ source = "docs/adr/1704-web-mobile-and-worst-case-requirements.md"
 retrieved = "2026-11-25"
 quote = "`input`・`select`・`textarea`(チェックボックス・ラジオ・ボタン類・`hidden` を除く)の計算後の `font-size` が 16px 未満のものを数える。"
 
-# ---- ページの構造を選ぶ原則(構造パターンの表 `structures.toml` が指す。ADR-0000) ----
+# ---- ページの構造を選ぶ原則(構造パターンの表 `structures.toml` が指す。ADR-1711) ----
 
 [[principle]]
 id = "gov-merge"

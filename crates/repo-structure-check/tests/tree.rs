@@ -421,7 +421,7 @@ fn the_principles_check_reads_what_it_is_about() {
 }
 
 /// 構造の表は語彙が閉じていて、リポジトリ内のすべての HTML が、語彙にある構造と、整合する軸を宣言する。
-/// 宣言の無いページを足せない(ADR-0000)。
+/// 宣言の無いページを足せない(ADR-1711)。
 #[test]
 fn the_structures_table_is_closed_and_every_html_declares_its_structure() {
     let violations = web_structures::check_tree(&repo_root()).expect("read the structures");
