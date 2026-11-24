@@ -62,7 +62,7 @@ fn line_of(text: &str, pos: usize) -> usize {
 }
 
 /// タグの文字列から、属性 `name` の値を取る(引用符つきと引用符なし)。属性名は大文字小文字を区別しない。
-fn attr(tag: &str, name: &str) -> Option<String> {
+pub(crate) fn attr(tag: &str, name: &str) -> Option<String> {
     let lower = tag.to_ascii_lowercase();
     let mut from = 0;
     while let Some(pos) = lower[from..].find(name) {

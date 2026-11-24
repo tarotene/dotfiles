@@ -60,9 +60,22 @@ files = ["config/web/components.css"]
 id = "save-status"
 title = "保存の表示"
 way = "shared"
-use = "`.status`(`data-state` は `saving`・`saved`・`failed`)"
-files = ["config/web/components.css"]
-note = "見た目だけ。保存の状態を切り替える振る舞い(JavaScript)の共有は、次の段で足す"
+use = "見た目は `.status`(`data-state` は `saving`・`saved`・`failed`)、状態の切り替えは `pageBehavior.saver`(書き込みの成功を確かめてから「保存済み」にし、失敗は再保存の操作つきで出す)"
+files = ["config/web/components.css", "config/web/behavior.js"]
+
+[[task]]
+id = "shortcut-keys"
+title = "ショートカットのキー"
+way = "shared"
+use = "`pageBehavior.keyguard`(フォーカス中の要素が標準で使うキー・修飾キーつき・変換中のキーは奪わない)"
+files = ["config/web/behavior.js"]
+
+[[task]]
+id = "load-states"
+title = "読み込み中・失敗・空の出し分け"
+way = "shared"
+use = "`pageBehavior.viewstate`(失敗の出し先は最初から DOM にあり、失敗には再読み込みの操作を出す)"
+files = ["config/web/components.css", "config/web/behavior.js"]
 
 [[task]]
 id = "alert"

@@ -12,6 +12,7 @@ use repo_structure_check::manifest::{check_tree, read_members, ZERO_DEPENDENCY_C
 use repo_structure_check::process_env::{self, HELPER_EXCEPTIONS, XDG_EXCEPTIONS};
 use repo_structure_check::side_symmetry;
 use repo_structure_check::web_assets;
+use repo_structure_check::web_behavior;
 use repo_structure_check::web_components;
 use repo_structure_check::web_selection;
 use repo_structure_check::web_specimen;
@@ -307,6 +308,41 @@ fn the_components_check_reads_what_it_is_about() {
     for needle in [".btn-main", ".actions", "var(--target)", "var(--accent)"] {
         assert!(css.contains(needle), "{needle} が読まれていない");
     }
+}
+
+/// 振る舞いの共有部品とその見本のスクリプトは、外部の URL・style の注入・HTML の注入・モジュールの構文・失敗の握りつぶしを持たず、
+/// 3 つの関数を公開して呼ぶ(ADR-1703 D2)。
+#[test]
+fn the_shared_behavior_scripts_satisfy_the_invariants() {
+    let violations = web_behavior::check_tree(&repo_root()).expect("read the behavior scripts");
+    let report: Vec<String> = violations.iter().map(ToString::to_string).collect();
+    assert!(
+        violations.is_empty(),
+        "振る舞いの共有部品が不変条件を満たさない:\n{}",
+        report.join("\n")
+    );
+}
+
+/// スクリプトを読めずに「違反なし」で通ってしまわないための番兵。
+#[test]
+fn the_behavior_check_reads_what_it_is_about() {
+    let root = repo_root();
+    let behavior = std::fs::read_to_string(root.join(web_behavior::BEHAVIOR_PATH))
+        .expect("read the behavior script");
+    for needle in [
+        "function saver(",
+        "function keyguard(",
+        "function viewstate(",
+        "pageBehavior",
+    ] {
+        assert!(behavior.contains(needle), "{needle} が読まれていない");
+    }
+    let specimen = std::fs::read_to_string(root.join(web_behavior::SPECIMEN_JS_PATH))
+        .expect("read the specimen script");
+    assert!(
+        specimen.contains("demo-save-status"),
+        "動く見本が読まれていない"
+    );
 }
 
 /// 選び方の対応表は、語彙が閉じていて、`platform` は Widely available だけ、`shared` は実在するファイル、
