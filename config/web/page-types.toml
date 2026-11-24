@@ -127,6 +127,13 @@ principles = ["adr-1704-input-size"]
 check = "audit"
 audit = "input-size"
 
+[[type.requirement]]
+id = "F10"
+text = "ページの構造(`<meta name=\"page-structure\">`)と、課題の性質の軸(`page-axes`)を宣言し、構造は `structures.toml` の語彙にあって、軸の値と整合する(外れるときは、理由を `page-structure-deviation` に書く)。構造 `step` を宣言したページは、描画した画面全体が縦にスクロールしない。"
+principles = ["gov-one", "nn-progressive", "gov-merge"]
+check = "audit"
+audit = "structure"
+
 [[type]]
 id = "study"
 title = "学習・演習"

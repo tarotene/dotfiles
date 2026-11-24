@@ -125,6 +125,7 @@ What runs automatically, when, and on which stack: see the [pipeline map](pipeli
 - [ADR-1704](adr/1704-web-mobile-and-worst-case-requirements.md) — ページの型の要件に、最悪のデータでの描画・ホバーの囲い・入力欄の文字の大きさ・拡大の禁止を足す
 - [ADR-1708](adr/1708-web-principles-layer.md) — ページの型の要件を、原則の表に結びつける。要件が原則に結びつかなければ、検査が落とす
 - [ADR-1710](adr/1710-verdict-page-step-layout.md) — メール裁定ページの構造を、ステップ型(画面の枠・固定の格子・止まったときだけ理由を出す状態行)にし、デザインの正本に従わせる
+- [ADR-0000](adr/0000-page-structure-rules.md) — ページの構造を、課題の性質の軸から選ぶ規則にし、すべての HTML に構造の宣言を要求する
 <!-- END GENERATED -->
 
 ## 運用・調査・設計(`docs/` 直下)

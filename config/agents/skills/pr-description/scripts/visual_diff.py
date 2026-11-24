@@ -63,7 +63,7 @@ CHECKS = ("audit", "walkthrough", "visual")
 AUDITS = (
     "document", "contrast", "targets", "overflow", "third-party",
     "keyboard", "main-button", "default-choice", "confirm", "links",
-    "hover", "input-size",
+    "hover", "input-size", "structure",
 )
 REQ_ID_RE = re.compile(r"^[CLFD][0-9]+$")
 # 要件が結びつく原則の ID(config/web/principles.toml)。実在の照合は repo-structure-check の web_principles が行う。
@@ -354,6 +354,8 @@ AUDIT_JS = """() => {
     smallControlCount: small.length, smallControls: small.slice(0, 6), smallLinkCount: smallLinks.length, smallLinks: smallLinks.slice(0, 6),
     mainButtons: Array.from(document.querySelectorAll('.btn-main')).filter(visible).length,
     checkedRadios: document.querySelectorAll('input[type=radio]:checked').length,
+    structure: ((document.querySelector('meta[name=page-structure]') || {}).content || '').trim(),
+    pageScrollH: document.documentElement.scrollHeight, pageInnerH: innerHeight,
   };
 }"""
 
@@ -437,8 +439,9 @@ def load_types(path: Path) -> dict[str, dict]:
     return out
 
 
-def cell_findings(cell: dict, host: str, audits: set[str]) -> list[tuple[str, str]]:
-    """撮った 1 セルの測定から、(検査の名前, 違反の説明) を作る。測定だけを見る純粋関数(ブラウザ無しで試験できる)。"""
+def cell_findings(cell: dict, host: str, audits: set[str], structures: dict[str, dict] | None = None) -> list[tuple[str, str]]:
+    """撮った 1 セルの測定から、(検査の名前, 違反の説明) を作る。測定だけを見る純粋関数(ブラウザ無しで試験できる)。
+    `structures`(structures.toml の構造パターンの id → パターン)があれば、宣言した構造が語彙にあるかと、構造ごとの測定(measure)も見る。"""
     m = cell.get("measures") or {}
     out: list[tuple[str, str]] = []
 
@@ -485,6 +488,13 @@ def cell_findings(cell: dict, host: str, audits: set[str]) -> list[tuple[str, st
     if cell.get("width") == 390 and m.get("smallInputCount"):
         first = (m.get("smallInputs") or [{}])[0]
         add("input-size", f"文字が 16px 未満の入力欄が {m['smallInputCount']} 件(例: {first.get('el')} {first.get('px')}px)")
+    declared = m.get("structure") or ""
+    if not declared:
+        add("structure", "`<meta name=\"page-structure\">` が無い(ページの構造を宣言する)")
+    elif structures is not None and declared not in structures:
+        add("structure", f"宣言した構造 `{declared}` が、structures.toml の語彙に無い(使えるのは {sorted(structures)})")
+    elif structures is not None and structures[declared].get("measure") == "viewport-fit" and m.get("pageScrollH", 0) > m.get("pageInnerH", 0) + 1:
+        add("structure", f"構造 `{declared}` は、ページ全体が縦にスクロールしない形だが、スクロールする(高さ {m.get('pageScrollH')}px > 画面 {m.get('pageInnerH')}px)")
     return out
 
 
@@ -513,8 +523,25 @@ def _keyboard_findings(browser, site: Path, p: dict, s: dict, stub: str) -> list
     return out
 
 
-def run_audit(spec_path: Path, types_path: Path, ref: str, only: str | None = None) -> dict:
+def load_structures(path: Path) -> dict[str, dict]:
+    """structures.toml を読み、構造パターンの id → パターンの表を返す。形と整合の検査は repo-structure-check の web_structures が行う。"""
+    try:
+        data = tomllib.loads(path.read_text(encoding="utf-8"))
+    except (OSError, tomllib.TOMLDecodeError) as e:
+        raise SpecError(f"{path}: 読めません({e})") from e
+    out: dict[str, dict] = {}
+    for pat in data.get("pattern") or []:
+        if not isinstance(pat, dict) or not NAME_RE.match(str(pat.get("id", ""))):
+            raise SpecError(f"{path}: pattern には id([a-z0-9-]+)が要ります: {pat!r}")
+        out[pat["id"]] = pat
+    if not out:
+        raise SpecError(f"{path}: pattern が 1 つもありません")
+    return out
+
+
+def run_audit(spec_path: Path, types_path: Path, ref: str, only: str | None = None, structures_path: Path | None = None) -> dict:
     types = load_types(types_path)
+    structures = load_structures(structures_path) if structures_path else None
     pages = {p["id"]: p for p in load_spec(spec_path)}
     for p in pages.values():
         unknown = [t for t in p.get("types", ["common"]) if t not in types]
@@ -544,7 +571,7 @@ def run_audit(spec_path: Path, types_path: Path, ref: str, only: str | None = No
         by_audit = {r["audit"]: r for r in reqs if r["check"] == "audit"}
         found: dict[str, dict[str, list[str]]] = {}
         for cell, audits in cells:
-            for audit, detail in cell_findings(cell, p.get("host", "site"), audits):
+            for audit, detail in cell_findings(cell, p.get("host", "site"), audits, structures):
                 found.setdefault(audit, {}).setdefault(detail, []).append(cell["cell"])
         if "confirm" in by_audit and CONFIRM_RE.search(texts_by_page[pid]):
             found.setdefault("confirm", {}).setdefault("ページのスクリプトが `confirm(` を呼ぶ", []).append("(静的)")
@@ -872,7 +899,7 @@ def selftest(browser: bool) -> int:
         if real_types.is_file():
             ty = load_types(real_types)
             reqs = [r for v in ty.values() for r in v["requirements"]]
-            check(set(ty) == {"common", "study", "form", "dashboard"} and len(reqs) == 41, "実物の page-types.toml を読める(4 つの型・41 の要件)")
+            check(set(ty) == {"common", "study", "form", "dashboard"} and len(reqs) == 42, "実物の page-types.toml を読める(4 つの型・42 の要件)")
             check({r["audit"] for r in reqs if "audit" in r} == set(AUDITS), "すべての検査が、どれかの要件に結びついている")
             check(all(r["check"] == "audit" for r in reqs if r["id"] in ("C1", "C2", "C3", "C4", "C9", "C12", "C16", "C17", "F1", "F2", "F4", "D7")), "機械で測れると宣言した要件は、audit")
             check(any(r["id"] == "C15" and r["check"] == "visual" for r in reqs), "最悪のデータでの描画(C15)は、人が見る要件")
@@ -904,13 +931,14 @@ def selftest(browser: bool) -> int:
         good_cell = {
             "cell": "p--initial--light--390", "state": "initial", "width": 390, "overflow_x": False, "blocked": [], "dialogs": [],
             "measures": {"lang": "ja", "title": "t", "viewport": True, "mains": 1, "h1s": 1, "contrastFailCount": 0, "contrastFails": [],
-                         "smallControlCount": 0, "smallControls": [], "smallLinkCount": 0, "smallLinks": [], "mainButtons": 1, "checkedRadios": 0},
+                         "smallControlCount": 0, "smallControls": [], "smallLinkCount": 0, "smallLinks": [], "mainButtons": 1, "checkedRadios": 0,
+                         "structure": "document", "pageScrollH": 800, "pageInnerH": 800},
         }
         every = set(AUDITS)
         check(cell_findings(good_cell, "site", every) == [], "測定が基準を満たすセルは、違反なし")
         bad_cell = {
             **good_cell, "overflow_x": True, "blocked": ["https://x.example/a.css"], "dialogs": ["confirm"],
-            "measures": {**good_cell["measures"], "lang": "", "title": "", "viewport": False, "mains": 0, "h1s": 0, "contrastFailCount": 2,
+            "measures": {**good_cell["measures"], "lang": "", "title": "", "viewport": False, "mains": 0, "h1s": 0, "contrastFailCount": 2, "structure": "",
                          "contrastFails": [{"el": "p", "text": "薄い", "ratio": 2.1, "px": 16}], "smallControlCount": 1,
                          "smallControls": [{"el": "button#x", "w": 10, "h": 10}], "smallLinkCount": 1, "smallLinks": [{"el": "a", "w": 40, "h": 12}],
                          "mainButtons": 2, "checkedRadios": 1,
@@ -930,6 +958,17 @@ def selftest(browser: bool) -> int:
         rc = {**good_cell, "state": "after-pick"}
         rc["measures"] = {**good_cell["measures"], "checkedRadios": 1}
         check(cell_findings(rc, "site", {"default-choice"}) == [], "選択済みのラジオは、初期状態だけで違反にする")
+        # 構造の宣言(F10): 宣言が無い・語彙に無い・step なのにページが縦にスクロールする、は違反。宣言どおりに収まれば違反なし。
+        pats = {"step": {"measure": "viewport-fit"}, "document": {"measure": "none"}}
+        def struct_findings(structure: str, scroll_h: int = 800, structures=pats) -> list[str]:
+            cell = {**good_cell, "measures": {**good_cell["measures"], "structure": structure, "pageScrollH": scroll_h}}
+            return [d for a, d in cell_findings(cell, "site", {"structure"}, structures)]
+        check(struct_findings("document", 5000) == [], "構造 document は、ページが縦に長くても違反にしない(測定が none)")
+        check(struct_findings("step", 800) == [] and struct_findings("step", 801) == [], "構造 step は、ページ全体が画面に収まれば違反なし(1px の丸めは許す)")
+        check(any("スクロールする" in d for d in struct_findings("step", 1200)), "構造 step で、ページ全体が縦にスクロールすれば違反")
+        check(any("語彙に無い" in d for d in struct_findings("carousel")), "宣言した構造が structures.toml の語彙に無ければ違反")
+        check(any("page-structure" in d for d in struct_findings("")), "構造の宣言が無ければ違反")
+        check(struct_findings("anything", 5000, None) == [], "語彙を渡さないときは、宣言が在ることだけを見る")
         check(CONFIRM_RE.search("if (confirm('x')) go()") is not None and CONFIRM_RE.search("function confirmAll() {}") is None, "`confirm(` の静的な検出は、confirmAll などを拾わない")
 
         # viewport の拡大の禁止・ホバー・入力欄の文字の大きさ
@@ -993,10 +1032,11 @@ def selftest(browser: bool) -> int:
             # 型の要件の検査: わざと悪いページ(番兵)が、すべての検査で落ち、良いページが通る
             ids = {"C1": "document", "C2": "contrast", "C3": "targets", "C4": "overflow", "C9": "third-party",
                    "C12": "keyboard", "C16": "hover", "C17": "input-size", "F1": "main-button", "F2": "default-choice",
-                   "F4": "confirm", "D7": "links"}
+                   "F4": "confirm", "D7": "links", "F10": "structure"}
             toml_types = '[[type]]\nid = "common"\ntitle = "c"\n' + "".join(
                 f'[[type.requirement]]\nid = "{i}"\ntext = "{a}"\nprinciples = ["x"]\ncheck = "audit"\naudit = "{a}"\n' for i, a in ids.items())
             (t / "types.toml").write_text(toml_types, encoding="utf-8")
+            (t / "structures.toml").write_text('[[pattern]]\nid = "document"\nmeasure = "none"\n', encoding="utf-8")
             (repo / "site/bad.html").write_text(
                 '<!doctype html><title></title><style>body{margin:0;background:#fff;color:#bbb}.wide{width:900px;height:10px;background:#000}</style>'
                 '<p>薄い文字</p><button id="tiny" style="width:10px;height:10px">x</button>'
@@ -1007,16 +1047,16 @@ def selftest(browser: bool) -> int:
                 "<script>document.addEventListener('keydown',function(e){if(e.target.id==='steal'&&(e.key==='Enter'||e.key===' '))e.preventDefault();});"
                 "if(false){confirm('x');}</script>", encoding="utf-8")
             (repo / "site/good.html").write_text(
-                '<!doctype html><html lang="ja"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>t</title>'
+                '<!doctype html><html lang="ja"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="page-structure" content="document"><title>t</title>'
                 '<main><h1>見出し</h1><p>本文</p><button style="min-height:44px;min-width:44px">ok</button>'
                 '<label style="display:block;min-height:44px"><input type="radio" name="q">ラベルで囲まれた小さいラジオ(行全体が押せる)</label></main>', encoding="utf-8")
             (repo / "visual.toml").write_text(
                 '[[page]]\nid = "bad"\nroot = "site"\nentry = "bad.html"\n[[page]]\nid = "good"\nroot = "site"\nentry = "good.html"\n', encoding="utf-8")
-            rep = run_audit(repo / "visual.toml", t / "types.toml", "WORKTREE")
+            rep = run_audit(repo / "visual.toml", t / "types.toml", "WORKTREE", structures_path=t / "structures.toml")
             by = {pg["page"]: pg for pg in rep["pages"]}
             got = {v["req"] for v in by["bad"]["violations"]}
-            check(got == set(ids), f"悪いページは、12 の検査のすべてで落ちる(漏れ: {sorted(set(ids) - got)})")
-            check(by["good"]["violations"] == [] and sorted(by["good"]["passed"]) == sorted(ids), "良いページは、12 の検査のすべてを通る")
+            check(got == set(ids), f"悪いページは、13 の検査のすべてで落ちる(漏れ: {sorted(set(ids) - got)})")
+            check(by["good"]["violations"] == [] and sorted(by["good"]["passed"]) == sorted(ids), "良いページは、13 の検査のすべてを通る")
             kb = [v for v in by["bad"]["violations"] if v["req"] == "C12"]
             keys = sorted(k for v in kb for k in ("Enter", "Space") if k in v["detail"])
             check(kb and all("steal" in v["detail"] for v in kb) and keys == ["Enter", "Space"], f"キーを奪うボタンだけを、キーの名前つきで拾う(他のボタンは拾わない): {[v['detail'] for v in kb]}")
@@ -1045,6 +1085,7 @@ def main(argv: list[str]) -> int:
     a = sub.add_parser("audit", help="面が宣言した型の要件のうち、描画した HTML で測れるものを検査する")
     a.add_argument("--spec", required=True, type=Path)
     a.add_argument("--types", type=Path, help="page-types.toml(既定: このスクリプトのあるリポジトリの config/web/page-types.toml)")
+    a.add_argument("--structures", type=Path, help="structures.toml(既定: このスクリプトのあるリポジトリの config/web/structures.toml)")
     a.add_argument("--ref", default="WORKTREE", help="画面のファイルを取り出す git の ref。既定は作業ツリー")
     a.add_argument("--only", help="面[:状態] に絞る")
     a.add_argument("--json", type=Path, help="結果を JSON で書く先")
@@ -1076,7 +1117,8 @@ def main(argv: list[str]) -> int:
             print(summarize(diff_dirs(args.before, args.after, args.out, args.tolerance)))
         elif args.cmd == "audit":
             types_path = args.types or Path(__file__).resolve().parents[5] / "config/web/page-types.toml"
-            report = run_audit(args.spec, types_path, args.ref, args.only)
+            structures_path = args.structures or Path(__file__).resolve().parents[5] / "config/web/structures.toml"
+            report = run_audit(args.spec, types_path, args.ref, args.only, structures_path)
             print(summarize_audit(report))
             if args.json:
                 args.json.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")

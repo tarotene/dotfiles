@@ -17,6 +17,7 @@ use repo_structure_check::web_components;
 use repo_structure_check::web_principles;
 use repo_structure_check::web_selection;
 use repo_structure_check::web_specimen;
+use repo_structure_check::web_structures;
 use repo_structure_check::web_variables;
 
 fn repo_root() -> PathBuf {
@@ -417,6 +418,52 @@ fn the_principles_check_reads_what_it_is_about() {
                 && r.principles.as_deref() == Some(&["wcag-2-5-8".to_string()][..])),
         "C3 が原則 wcag-2-5-8 に結びついていない"
     );
+}
+
+/// 構造の表は語彙が閉じていて、リポジトリ内のすべての HTML が、語彙にある構造と、整合する軸を宣言する。
+/// 宣言の無いページを足せない(ADR-0000)。
+#[test]
+fn the_structures_table_is_closed_and_every_html_declares_its_structure() {
+    let violations = web_structures::check_tree(&repo_root()).expect("read the structures");
+    let report: Vec<String> = violations.iter().map(ToString::to_string).collect();
+    assert!(
+        violations.is_empty(),
+        "構造の規則が不変条件を満たさない:\n{}",
+        report.join("\n")
+    );
+}
+
+/// 構造の表と HTML を読めずに「違反なし」で通ってしまわないための番兵。3 つの構造と既定の構造が表にあり、
+/// 既知の 3 つの HTML が走査の対象で、それぞれ構造を宣言している。
+#[test]
+fn the_structures_check_reads_what_it_is_about() {
+    let root = repo_root();
+    let table = std::fs::read_to_string(root.join(web_structures::STRUCTURES_PATH))
+        .expect("read the structures table");
+    for needle in [
+        "id = \"step\"",
+        "id = \"single-column\"",
+        "id = \"document\"",
+        "default = true",
+        "measure = \"viewport-fit\"",
+    ] {
+        assert!(table.contains(needle), "{needle} が読まれていない");
+    }
+    let files = repo_structure_check::web_assets::read_files(&root).expect("read the web files");
+    for known in [
+        "config/agents/skills/inbox-adjudication/reference/verdict-page/template.html",
+        "config/web/specimen.html",
+        "crates/model-equivalence/page.html",
+    ] {
+        let f = files
+            .iter()
+            .find(|f| f.path == known)
+            .unwrap_or_else(|| panic!("{known} が走査の対象に入っていない"));
+        assert!(
+            f.text.contains("name=\"page-structure\""),
+            "{known} が構造を宣言していない"
+        );
+    }
 }
 
 /// 生成した `variables.json` は、正本の CSS から作った内容と一致する(手で書かない。ADR-1700)。
