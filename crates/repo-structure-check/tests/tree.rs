@@ -12,6 +12,7 @@ use repo_structure_check::manifest::{check_tree, read_members, ZERO_DEPENDENCY_C
 use repo_structure_check::process_env::{self, HELPER_EXCEPTIONS, XDG_EXCEPTIONS};
 use repo_structure_check::side_symmetry;
 use repo_structure_check::web_assets;
+use repo_structure_check::web_components;
 use repo_structure_check::web_variables;
 
 fn repo_root() -> PathBuf {
@@ -281,6 +282,28 @@ fn the_design_tokens_check_reads_what_it_is_about() {
     }
     for scale in ["--font-sans:", "--fs-body:", "--target:", "--dur:"] {
         assert!(text.contains(scale), "{scale} が読まれていない");
+    }
+}
+
+/// 共有の部品は、正本の役割と尺度だけを参照し、操作部の大きさと置き方の裁定を守る(ADR-1687)。
+#[test]
+fn the_shared_components_use_only_the_design_variables() {
+    let violations = web_components::check_tree(&repo_root()).expect("read the components");
+    let report: Vec<String> = violations.iter().map(ToString::to_string).collect();
+    assert!(
+        violations.is_empty(),
+        "共有の部品が不変条件を満たさない:\n{}",
+        report.join("\n")
+    );
+}
+
+/// 部品を読めずに「違反なし」で通ってしまわないための番兵。
+#[test]
+fn the_components_check_reads_what_it_is_about() {
+    let css = std::fs::read_to_string(repo_root().join(web_components::COMPONENTS_PATH))
+        .expect("read the components");
+    for needle in [".btn-main", ".actions", "var(--target)", "var(--accent)"] {
+        assert!(css.contains(needle), "{needle} が読まれていない");
     }
 }
 

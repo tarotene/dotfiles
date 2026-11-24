@@ -162,6 +162,21 @@ ADR-1677 の範囲外)。空のツリーを読んで通ってしまわないよ�
 面のテーマに当てる。未実装、意図あり)。各面が持つ複写の検査は、`.github/actions/design-pin`(`check.sh --selftest` を CI が走らせる)。
 空のツリーを読んで通ってしまわないよう、`tests/tree.rs` が、16 の役割と尺度の主な名前の宣言が正本にあることを確かめる。
 
+### 共有の部品(`web_components::check_tree`、ADR-1687)
+
+`config/web/components.css` を正本 `config/web/variables.css` の宣言と照合して読み込む。コメントは無視する。
+
+| 検査 | 内容 |
+|---|---|
+| 色 | 宣言の値(最初の `:` より後)に、16 進の色(`#rgb`・`#rrggbb` など)の直書きがあれば落ちる。セレクタの `#add` のような id は、色と取り違えない |
+| 変数 | `var(--名前)` の名前が、正本に宣言されていなければ落ちる |
+| 必須の部品 | `.btn-main`・`.btn-sub`・`.btn-link`・`.actions`・`.choice`・`.status`・`.alert-ng`・`.empty`・`.skip-link`・`.table-cards`・`:focus-visible` のどれかが欠ければ落ちる |
+| 操作部の大きさ | `.btn` が `min-height: var(--target);` を先頭に持たなければ落ちる |
+| 置き方 | `.actions` が `flex-direction: row-reverse;` と `justify-content: space-between;`(主な操作を右端、副の操作を左端)を持たなければ落ちる |
+| 二重書き | `@media (prefers-color-scheme)` の規則があれば落ちる |
+
+例外はない。この検査が対象にするのは、部品の CSS 1 ファイルのみである。各面が部品を使う HTML の検査は、`未実装(意図あり)` である。
+
 ### 依存グラフ(`deps::check_tree`、#1446)
 
 各 `crates/*/Cargo.toml` の `[dependencies]`・`[build-dependencies]`(`[target.<cfg>.…]` も)の `path` の依存を辺として読む。
@@ -229,6 +244,7 @@ ADR-1529 の置き場 4)。例外を解消すると鮮度の検査が落ちる�
 - crates/repo-structure-check/src/civil_time.rs
 - crates/repo-structure-check/src/deps.rs
 - crates/repo-structure-check/src/web_variables.rs
+- crates/repo-structure-check/src/web_components.rs
 - crates/civil-time/src/lib.rs
 - crates/process-env/src/lib.rs
 - crates/repo-structure-check/tests/tree.rs
