@@ -131,16 +131,19 @@ typed な option にして、identity のファイル(`home/identities/**`)と h
 
 ### Web の資産(`web_assets::check_tree`、ADR-1677)
 
-このリポジトリが持つ `*.html`・`*.htm`・`*.css`(`.` で始まる名前、`target/`、`node_modules/` を除く)を読む。表示のたびに第三者
-(Google Fonts など)へ要求が飛ぶと、開いた事実と IP アドレスがその第三者に渡る。書体は機体のものを既定にし、第三者からの書体・
-スタイルの読み込みは禁止する(ADR-1677 の D6)。コメントの中も読む(コメントに書いた参照を、あとで外し忘れる形を避けるため)。
+このリポジトリ内の `*.html`・`*.htm`・`*.css`(`.` で始まる名前、`target/`、`node_modules/` を除く)を読み込む。表示のたびに第三者
+(Google Fonts など)へリクエストが送信されると、閲覧した事実と IP アドレスがその第三者に渡ってしまう。書体は機体のものを既定とし、第三者からの書体・
+スタイル・スクリプトの読み込みは禁止する(ADR-1677 の D6。スクリプトを含めることの禁止は ADR-1703 の D4 で明確化された)。外部スクリプトが
+必要な場合は、同梱して自サイトから配信し、`sha256` を pin する。コメント内も読み込む(コメントに書いた参照の削除忘れを防ぐため)。
 
 | 検査 | 内容 |
 |---|---|
-| 書体の配信元 | `fonts.googleapis.com`・`fonts.gstatic.com` への参照が、どこにあっても落ちる。下の 3 つの形に当たらない書き方も拾う |
-| `<link>` | `rel` が `stylesheet`・`preconnect`・`dns-prefetch`・`preload` のどれかで、`href` が外部(`http://`・`https://`・`//`)のとき落ちる。`rel="canonical"` や `rel="icon"` の外部 URL は読み込みでないので対象にしない |
+| 書体の配信元 | `fonts.googleapis.com`・`fonts.gstatic.com` への参照が、どこにあっても落ちる。下の形に当たらない書き方も拾う |
+| `<link>` | `rel` が `stylesheet`・`preconnect`・`dns-prefetch`・`preload`・`modulepreload` のどれかで、`href` が外部(`http://`・`https://`・`//`)のとき落ちる。`rel="canonical"` や `rel="icon"` の外部 URL は読み込みでないので対象にしない |
 | `@import` | 先が外部のとき落ちる(`url("…")`・引用符つき・`url(//…)` のどれも) |
 | `@font-face` | ブロックの中の `url(...)` が外部のとき落ちる。`@font-face` の外の `url(...)`(背景画像など)は、書体・スタイルの読み込みでないので対象にしない |
+| `<script>` | `src` が外部のとき落ちる(引用符つき・引用符なし・`//…`・大文字小文字・属性が改行をまたぐ形のどれも)。`<scripted>` のような別のタグ、自分のサイトのスクリプト、インラインのスクリプトは対象にしない |
+| スクリプトの import | `import("…")` と `from "…"` の先が、引用符つきの外部 URL のとき落ちる。引用符の無い散文の `from https://…` は対象にしない |
 
 例外は無い。範囲はこのリポジトリの内側だけで、ほかのリポジトリの面はこの検査では守られない(他のリポジトリへの配り方は、
 ADR-1677 の範囲外)。空のツリーを読んで通ってしまわないよう、`tests/tree.rs` が、裁定ページの `template.html`・`plan-view.css`・
@@ -192,6 +195,25 @@ ADR-1677 の範囲外)。空のツリーを読んで通ってしまわないよ�
 | `variables.json` | 正本の CSS から生成した内容と違う(再生成: `cargo run -q -p repo-structure-check --example web_variables_json > config/web/variables.json`) |
 
 例外はない。見本は、面ごとのテーマの上書き(accent の 4 つ)を持たない。
+
+### 選び方の対応表(`web_selection::check_tree`、ADR-1703)
+
+`config/web/selection.toml` は、作業の種類(ダイアログ・保存表示・トースト・タブなど)ごとに、ブラウザ標準・共有部品・外部
+ライブラリ・手書き・使わない、のどれを選ぶかを保持する。指定できる語彙は限定されている(`way` は `platform`・`shared`・`external`・`handwritten`・
+`not-used`、`reason` は `requirement`・`no-surface`・`few-surfaces`)。要件 ID の照合先は `config/web/page-types.toml` である。
+
+| 検査 | 落ちる条件 |
+|---|---|
+| 形 | TOML として読めない、表の先頭に `[[task]]` 以外のキーがある、`[[task]]` が無い、知らないキー、`id` が小文字・数字・`-` でない、`id` の重複、`title` が空 |
+| 語彙 | `way`・`reason` が語彙の外。行ごとの必須のキーが欠ける、またはその `way` に書けないキーがある |
+| `platform` | `baseline` が `widely` でない(Baseline が widely でない機能は、標準の行にできない) |
+| `shared` | `files` が空、`config/web/` の下でない、または実在しないファイルを指す |
+| `external` | `sha256` が 64 桁の小文字の 16 進でない(`pin` と `use` が無い場合は「必須のキーが欠ける」) |
+| `not-used` | `reason` が `requirement` なのに、`req` が空、または `page-types.toml` に実在しない要件の ID を含む。`no-surface` なのに `req` がある |
+| `handwritten` | `reason` が `few-surfaces` でない |
+
+例外はない。`note` は人間が読むための補足であり、検査しない(Baseline の取得日や画面の実測値など、日付付きの事実を記述する)。空のツリーを読み込んで通過して
+しまわないよう、`tests/tree.rs` が、5 つの選択肢それぞれの行と、`dialog`・`toast` の行が読み込まれていることを検証する。
 
 ### 依存グラフ(`deps::check_tree`、#1446)
 
@@ -262,6 +284,8 @@ ADR-1529 の置き場 4)。例外を解消すると鮮度の検査が落ちる�
 - crates/repo-structure-check/src/web_variables.rs
 - crates/repo-structure-check/src/web_components.rs
 - crates/repo-structure-check/src/web_specimen.rs
+- crates/repo-structure-check/src/web_selection.rs
+- crates/repo-structure-check/src/web_assets.rs
 - crates/civil-time/src/lib.rs
 - crates/process-env/src/lib.rs
 - crates/repo-structure-check/tests/tree.rs
