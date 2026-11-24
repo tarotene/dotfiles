@@ -117,6 +117,7 @@ What runs automatically, when, and on which stack: see the [pipeline map](pipeli
 - [ADR-1677](adr/1677-web-design-baseline.md) — Pages のデザインは、DADS を土台にした自分用の基準に従い、正本は公開のこのリポジトリに置き、第三者からの書体・スタイルの読み込みを禁じる
 - [ADR-1685](adr/1685-web-design-distribution.md) — Pages のデザインの正本は `config/web/` に置き、各面は commit で固定した URL と sha256 で複写を pin し、CI が検査する
 - [ADR-1687](adr/1687-web-components.md) — 共有の部品は正本の役割だけを参照し、主な操作を先に書いて、PC では右端・スマートフォンでは上に置く
+- [ADR-1694](adr/1694-image-to-terminal-pane.md) — 本人にその場で見せる図・画像は、Web ページでなく herdr の隣のペインに出す
 - [ADR-1698](adr/1698-visual-before-after.md) — 見た目の変更は、基準の ref から取り出した Before と After を固定の行列で撮り、Diff つきの並べたページで本人に見せる
 - [ADR-1700](adr/1700-web-design-system-formalization.md) — デザインの正本は CSS の 1 つのまま、見て確かめる見本ページと、生成した機械可読の値と、1 枚だけの HTML が取り込む区間の pin を足す
 - [ADR-1701](adr/1701-web-page-type-requirements.md) — ページの型の要件は、検査の種別つきのデータに起こし、描画した HTML で測れるものだけを機械で検査し、測れないものを「通った」にしない

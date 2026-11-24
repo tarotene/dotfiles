@@ -1,6 +1,6 @@
 # show-image — 本人にその場で見せる図・画像を、herdr の隣のペインに描く
 
-`crates/show-image`(Rust、ADR-0024)の設計根拠と使い方。決定は `docs/adr/0000-image-to-terminal-pane.md`(ADR-0000-image-to-terminal-pane)。
+`crates/show-image`(Rust、ADR-0024)の設計根拠と使い方。決定は `docs/adr/1694-image-to-terminal-pane.md`(ADR-1694)。
 宣言は `home/modules/terminal-graphics.nix`、sandbox の除外と許可は `home/modules/claude.nix`。
 
 ## 使い方

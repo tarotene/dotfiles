@@ -1,4 +1,4 @@
-# 図・画像を端末のペインに出す入口(ADR-0000-image-to-terminal-pane、docs/agents/show-image.md)。
+# 図・画像を端末のペインに出す入口(ADR-1694、docs/agents/show-image.md)。
 #
 # `show-image <画像のパス>` は、herdr の隣のペインに chafa で画像を描く(Kitty graphics protocol)。
 # 外側の端末が画像に対応しているかは、herdr のペインの中からは検出できない(API に項目が無く、同じ

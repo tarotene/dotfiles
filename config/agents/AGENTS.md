@@ -1009,7 +1009,7 @@ gate に当たる前に自発的に通すこと — gate は漏れを拾うた�
 # 本人にその場で見せる図・画像は、Web ページでなく端末のペインに出す
 
 図・画像(図解・スクリーンショット・グラフ)を本人にその場で見せるときは、まず `show-image <画像のパス>`
-(単体で呼ぶ)で、herdr の隣のペインに描く(ADR-0000-image-to-terminal-pane、`docs/agents/show-image.md`)。
+(単体で呼ぶ)で、herdr の隣のペインに描く(ADR-1694、`docs/agents/show-image.md`)。
 Artifact などの Web ページは、次の面にだけ使う。
 
 - 入力を受ける面(件ごとの選択と自由メモを持つ裁定ページ)。
