@@ -310,7 +310,7 @@ fn the_components_check_reads_what_it_is_about() {
 }
 
 /// 選び方の対応表は、語彙が閉じていて、`platform` は Widely available だけ、`shared` は実在するファイル、
-/// `not-used` の `req` は実在する要件の ID を指す(ADR-0000)。
+/// `not-used` の `req` は実在する要件の ID を指す(ADR-1703)。
 #[test]
 fn the_selection_table_is_closed_and_consistent() {
     let violations = web_selection::check_tree(&repo_root()).expect("read the selection table");

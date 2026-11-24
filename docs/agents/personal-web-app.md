@@ -195,7 +195,7 @@ app の README に、段を宣言する。
 CSS を HTML の中に持つ 1 枚だけの面(Artifact の雛形)は、正本を HTML の中の印を付けた区間に複写し、`design-pin.toml` の `begin`・`end` でその区間を固定する(ADR-1700)。
 
 1. **CSP `style-src 'self'` の下の書き方。** インラインの `style` を使わない。位置と大きさは、CSS のクラスと SVG の属性で与える。MDN は、`element.style.<名前> =` は止められないが、`setAttribute("style", …)` と `cssText` は止められると書く(MDN, "Content-Security-Policy: style-src directive"、最終更新 2025-12-15。dotfiles#1664 の記載による)。この境目に頼らないよう、静的試験で `.style`・`setAttribute("style"`・`cssText` を禁じる。
-2. **書体とスクリプト。** 第三者の配信元からは読み込まない(ADR-1677 D6。スクリプトを含める方針は ADR-0000 D4 で明確にしており、`web_assets` が検査する)。`font-src` を開けず、機体の書体を使う(`--font-sans`・`--font-mono`。明朝は `serif` に落ちる)。外部スクリプトが必要なときは、同梱して自サイトから配信し、`sha256` を pin する。
+2. **書体とスクリプト。** 第三者の配信元からは読み込まない(ADR-1677 D6。スクリプトを含める方針は ADR-1703 D4 で明確にしており、`web_assets` が検査する)。`font-src` を開けず、機体の書体を使う(`--font-sans`・`--font-mono`。明朝は `serif` に落ちる)。外部スクリプトが必要なときは、同梱して自サイトから配信し、`sha256` を pin する。
 3. **色と尺度。** 役割(`--bg`・`--surface`・`--text`・`--text-muted`・`--border`・`--accent`・`--on-accent`・`--ok`・`--ng`・`--warn` など)だけを使い、16 進を直書きしない。面の主色は、`--accent`・`--on-accent`・`--accent-text`・`--focus` の値だけを上書きする。暗色は OS の設定に追従するだけで、切り替えを置かない。accent の上の文字は `--on-accent` を使い、固定の `#fff` を書かない(暗色で、淡い accent の上の白文字が 2.0〜2.5:1 になる型が、実機の審査で複数の面から見つかった)。正本のコントラストは、明暗の両方で `web_variables` が検査する。面の上書きの値は、この検査の外なので、同じ組(文字 4.5:1・図形 3:1)を自分で計算する。
 4. **狭い画面の表。** 表の要素のまま、CSS で 1 行 1 枚に組み替える。各欄の名前は `data-label` 属性から `::before` で出す。ARIA の role は足さない(Adrian Roselli, "Tables, CSS Display Properties, and ARIA"、更新 2024-01-29。dotfiles#1664 の記載による)。幅の狭い画面で、列を隠さない(隠した列の情報が、スマートフォンで消える)。
 5. **値の導出は build の 1 か所。** 状態語の意味づけ(要対応・済み・対象外など)、表の列の位置、時刻を分にした値は、build が `model.json` に載せる。ページは語や時刻の書式を知らない。CSS に語を複写しない。
@@ -212,7 +212,7 @@ CSS を HTML の中に持つ 1 枚だけの面(Artifact の雛形)は、正本�
    - 撮り方は、`pr-description` スキル §5b の固定の手順(`scripts/visual_diff.py`。Chromium で撮り、Before は基準の ref から取り出し、Before | After | Diff を本人に見せる)に従う。
    - 環境の制約(2026-11-24 に実測した、Playwright MCP の Firefox): `emulateMedia` の明指定が効かず(常に暗)、`setViewportSize` は要求した幅の 0.75 倍が `innerWidth` になる(要求 520 → 390。`await` せずに投げる)。`file://` は拒否され、sandbox の内側で立てたサーバーには届かない。`visual_diff.py` は Chromium を自前で起動し、`color_scheme` と `viewport` を指定して、`route` で配信するので、この制約に当たらない(同日、sandbox の中で、明暗の描き分け・幅の一致・2 回の撮影の画素の一致を確かめた)。
 8. **踏んだ落とし穴(dotfiles#1664)。** 節への移動を画面の上に留めると、狭い画面で横スクロールのバーが出た(余白を詰め、バーを隠した)。保存失敗の文が出ると、状態の欄が広がって品目名を押しつぶした(欄の幅に上限を付けた)。
-9. **部品・振る舞いは、手書きする前に対応表を参照する(ADR-0000)。** `config/web/selection.toml` が、作業の種類ごとに「ブラウザ標準 → 共有部品(`config/web/`) → 外部ライブラリ」のどれを選ぶかを管理している。ダイアログは `<dialog>`、折りたたみは `<details>`、選択肢はネイティブのラジオを使用する。保存の表示・ボタン・警告・空の状態・狭い画面の表は共有部品を使う。トースト・テーマ切替・確認ダイアログは使わない(要件 F3・C8・F4)。表にない作業は、行を追加して裁定を残す。`popover` 属性は Baseline が newly なので、標準の行にはできない(2026-11-24)。
+9. **部品・振る舞いは、手書きする前に対応表を参照する(ADR-1703)。** `config/web/selection.toml` が、作業の種類ごとに「ブラウザ標準 → 共有部品(`config/web/`) → 外部ライブラリ」のどれを選ぶかを管理している。ダイアログは `<dialog>`、折りたたみは `<details>`、選択肢はネイティブのラジオを使用する。保存の表示・ボタン・警告・空の状態・狭い画面の表は共有部品を使う。トースト・テーマ切替・確認ダイアログは使わない(要件 F3・C8・F4)。表にない作業は、行を追加して裁定を残す。`popover` 属性は Baseline が newly なので、標準の行にはできない(2026-11-24)。
 
 画面を作るときの進め方の選択肢: 対象の固定 → 色・文字・レイアウトの案 → 既定の見た目への寄りの自己批評 → 実装 → 撮って批評、の順(Anthropic の frontend-design の手順)。
 
