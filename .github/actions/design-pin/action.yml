@@ -17,6 +17,9 @@ description: >-
       sha256 = "<64 桁の小文字 16 進>"
       path   = "web/variables.css"
 
+  1 枚だけの HTML(Artifact の雛形)は、正本を別のファイルとして置けない。その複写は HTML の中の印を付けた区間に置き、
+  `begin`・`end`(その語を含む行が、それぞれ 1 行だけ)で区間を指す。区間の内容の sha256 を、`sha256` と照合する。
+
   検査は 3 つ。(1) `commit` が 40 桁の 16 進で、`name` が正本の `config/web/` の下の 1 つのファイル名であること
   (main などの浮動した参照を書けない)。(2) `path` の複写の sha256 が、pin の `sha256` と一致すること。
   (3) `check-upstream` が `true` のときは、その commit の正本の内容の sha256 も pin と一致すること(pin 自体が、

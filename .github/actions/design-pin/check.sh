@@ -12,9 +12,21 @@
 #   sha256 = "<64 桁の小文字 16 進>"
 #   path   = "web/variables.css"      # 呼び出し側のリポジトリにある複写
 #
+# 1 枚だけの HTML(Artifact の雛形)は、正本を別のファイルとして置けない。その複写は、HTML の中の印を付けた区間に置き、
+# `begin`・`end` で区間を指す(両方か、どちらも書かない)。区間は、`begin` を含む行の次の行から、`end` を含む行の前の行まで。
+# 区間の内容(行ごとに改行を付けたもの)の sha256 が、pin の sha256(= 正本のファイルの sha256)と一致しなければならない。
+#
+#   [[file]]
+#   commit = "<40 桁の小文字 16 進>"
+#   name   = "variables.css"
+#   sha256 = "<64 桁の小文字 16 進>"
+#   path   = "src/page.html"
+#   begin  = "design-pin:begin variables.css"   # この語を含む行が 1 行だけ
+#   end    = "design-pin:end variables.css"     # この語を含む行が 1 行だけ(begin より後)
+#
 # 検査は 3 つ。
 #   1. commit が 40 桁の 16 進で、name が config/web/ の下の 1 つのファイル名であること。
-#   2. path の複写の sha256 が、pin の sha256 と一致すること。
+#   2. path の複写(`begin`・`end` があれば、その区間)の sha256 が、pin の sha256 と一致すること。
 #   3. CHECK_UPSTREAM=true のときは、組み立てた URL の内容の sha256 も pin と一致すること(pin 自体が正本と
 #      別の内容を指していないこと)。取得できないとき(オフライン)は、警告を出して 3 だけを飛ばす。
 #
@@ -25,6 +37,15 @@
 #
 # 道具: bash + yq + jq + curl + sha256sum(GitHub の ubuntu runner に入っている)。
 set -euo pipefail
+
+# region <path> <begin> <end>: begin を含む行の次の行から、end を含む行の前の行までを、行ごとに改行を付けて出す。
+region() {
+  awk -v b="$2" -v e="$3" '
+    state == 0 && index($0, b) { state = 1; next }
+    state == 1 && index($0, e) { state = 2; next }
+    state == 1 { print }
+  ' "$1"
+}
 
 check() {
   local source_repo="$1" pin_file="$2" check_upstream="$3"
@@ -49,7 +70,7 @@ check() {
     echo "::error::$pin_file に [[file]] が 1 つも無い"
     return 1
   fi
-  local fail=0 tmp i commit name want path url got up
+  local fail=0 tmp i commit name want path url got up begin end nb ne
   tmp="$(mktemp)"
   for ((i = 0; i < count; i++)); do
     commit="$(jq -r ".file[$i].commit // empty" <<< "$pin")"
@@ -81,7 +102,30 @@ check() {
       fail=1
       continue
     fi
-    got="$(sha256sum "$path" | cut -d' ' -f1)"
+    begin="$(jq -r ".file[$i].begin // empty" <<< "$pin")"
+    end="$(jq -r ".file[$i].end // empty" <<< "$pin")"
+    if [[ -n "$begin" || -n "$end" ]]; then
+      if [[ -z "$begin" || -z "$end" ]]; then
+        echo "::error::$pin_file の [[file]] #$((i + 1)) の begin と end は、両方書くか、どちらも書かない"
+        fail=1
+        continue
+      fi
+      nb="$(grep -cF -- "$begin" "$path" || true)"
+      ne="$(grep -cF -- "$end" "$path" || true)"
+      if [[ "$nb" != 1 || "$ne" != 1 ]]; then
+        echo "::error::複写 $path に、begin($begin)を含む行が $nb 行、end($end)を含む行が $ne 行ある(どちらも 1 行だけ)"
+        fail=1
+        continue
+      fi
+      if (($(grep -nF -- "$begin" "$path" | cut -d: -f1) >= $(grep -nF -- "$end" "$path" | cut -d: -f1))); then
+        echo "::error::複写 $path の end($end)が begin($begin)より前にある"
+        fail=1
+        continue
+      fi
+      got="$(region "$path" "$begin" "$end" | sha256sum | cut -d' ' -f1)"
+    else
+      got="$(sha256sum "$path" | cut -d' ' -f1)"
+    fi
     if [[ "$got" != "$want" ]]; then
       echo "::error::複写 $path の sha256 が pin と違う(pin=$want 実際=$got)。正本から複写し直し、pin を上げる"
       fail=1
@@ -150,6 +194,30 @@ selftest() {
   expect "[[file]] が 1 つも無い" 1 "[[file]] が 1 つも無い"
   printf '[[file]]\ncommit = "%s"\nname = "variables.css"\n' "$c" > case.toml
   expect "欄が揃っていない" 1 "commit・name・sha256・path が揃っていない"
+  # 1 枚だけの HTML の中の区間(begin・end)
+  mkr() { printf '[[file]]\ncommit = "%s"\nname   = "variables.css"\nsha256 = "%s"\npath   = "%s"\nbegin  = "%s"\nend    = "%s"\n' "$c" "$h" "$1" "$2" "$3" > case.toml; }
+  b='design-pin:begin variables.css'
+  e='design-pin:end variables.css'
+  printf '<style>\n/* %s */\n:root { --bg: #ffffff; }\n/* %s */\n</style>\n' "$b" "$e" > web/page.html
+  mkr "web/page.html" "$b" "$e"
+  expect "区間が正本と一致する" 0 ""
+  printf '<style>\n/* %s */\n:root { --bg: #fffffe; }\n/* %s */\n</style>\n' "$b" "$e" > web/page-tampered.html
+  mkr "web/page-tampered.html" "$b" "$e"
+  expect "区間が手で直されている" 1 "sha256 が pin と違う"
+  printf '<style>\n/* %s */\n:root { --bg: #ffffff; }\n/* %s */\n:root { --x: 1; }\n</style>\n' "$b" "$e" > web/page-outside.html
+  mkr "web/page-outside.html" "$b" "$e"
+  expect "区間の外の変更は、区間の固定に触れない" 0 ""
+  printf '[[file]]\ncommit = "%s"\nname = "variables.css"\nsha256 = "%s"\npath = "web/page.html"\nbegin = "%s"\n' "$c" "$h" "$b" > case.toml
+  expect "begin だけで end が無い" 1 "両方書くか、どちらも書かない"
+  printf '<style>\n:root { --bg: #ffffff; }\n/* %s */\n</style>\n' "$e" > web/page-nobegin.html
+  mkr "web/page-nobegin.html" "$b" "$e"
+  expect "begin の印が無い" 1 "begin($b)を含む行が 0 行"
+  printf '<style>\n/* %s */\n:root { --bg: #ffffff; }\n/* %s */\n/* %s */\n</style>\n' "$b" "$e" "$e" > web/page-dup.html
+  mkr "web/page-dup.html" "$b" "$e"
+  expect "end の印が 2 行ある" 1 "end($e)を含む行が 2 行"
+  printf '<style>\n/* %s */\n/* %s */\n:root { --bg: #ffffff; }\n</style>\n' "$e" "$b" > web/page-order.html
+  mkr "web/page-order.html" "$b" "$e"
+  expect "end が begin より前にある" 1 "end($e)が begin($b)より前にある"
   rm -f case.toml
   expect "pin のファイルが無い" 1 "pin のファイル"
   total=$((total + 1))

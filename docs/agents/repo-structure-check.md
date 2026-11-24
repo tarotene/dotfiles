@@ -177,6 +177,22 @@ ADR-1677 の範囲外)。空のツリーを読んで通ってしまわないよ�
 
 例外はない。この検査が対象にするのは、部品の CSS 1 ファイルのみである。各面が部品を使う HTML の検査は、`未実装(意図あり)` である。
 
+### 見本ページと生成した値(`web_specimen::check_tree`・`web_variables::check_tokens_json_tree`、ADR-1700)
+
+見本ページ `config/web/specimen.html` は、正本を複写せず実際に読み込み、役割と部品のすべてを並べる。`variables.json` は、CSS から生成した派生物。
+
+| 検査 | 落ちる条件 |
+|---|---|
+| 読み込み | `variables.css`・`components.css`・`specimen.css` を相対パスで読み込まない |
+| 持たないもの | インラインの `style` 属性、`<style>`、`<script>`、第三者の URL(`http://`・`https://`) |
+| 役割の網羅 | 役割(`REQUIRED_ROLES`)に、`data-role` の見本か、`specimen.css` の `var(--役割)` で塗る規則が欠ける |
+| 部品の網羅 | `components.css` のセレクタが使うクラスを、見本の HTML が使わない(部品を足して見本に載せ忘れた) |
+| 値 | `specimen.css` に 16 進の直書きがある、または `var()` の名前が正本に宣言されていない |
+| 基本 | `lang="ja"`・viewport・`title`・`main`・`h1` が無い |
+| `variables.json` | 正本の CSS から生成した内容と違う(再生成: `cargo run -q -p repo-structure-check --example web_variables_json > config/web/variables.json`) |
+
+例外はない。見本は、面ごとのテーマの上書き(accent の 4 つ)を持たない。
+
 ### 依存グラフ(`deps::check_tree`、#1446)
 
 各 `crates/*/Cargo.toml` の `[dependencies]`・`[build-dependencies]`(`[target.<cfg>.…]` も)の `path` の依存を辺として読む。
@@ -245,6 +261,7 @@ ADR-1529 の置き場 4)。例外を解消すると鮮度の検査が落ちる�
 - crates/repo-structure-check/src/deps.rs
 - crates/repo-structure-check/src/web_variables.rs
 - crates/repo-structure-check/src/web_components.rs
+- crates/repo-structure-check/src/web_specimen.rs
 - crates/civil-time/src/lib.rs
 - crates/process-env/src/lib.rs
 - crates/repo-structure-check/tests/tree.rs
