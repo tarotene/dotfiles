@@ -40,6 +40,7 @@ import json
 import mimetypes
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tarfile
@@ -353,7 +354,10 @@ def diff_dirs(before: Path, after: Path, out: Path, tol: int = 8) -> dict:
         if name not in names_a:
             cells.append({"cell": name, "status": "removed"})
         elif name not in names_b:
-            cells.append({"cell": name, "status": "added"})
+            # 新規のセルは、After の画像をそのまま出す(Before が無いので、並べる相手が無い)
+            shutil.copyfile(after / f"{name}.png", out / f"{name}.png")
+            with Image.open(after / f"{name}.png") as ai:
+                cells.append({"cell": name, "status": "added", "after_size": list(ai.size)})
         else:
             with Image.open(before / f"{name}.png") as bi, Image.open(after / f"{name}.png") as ai:
                 res = compare(bi, ai, tol)
@@ -439,9 +443,17 @@ def build_page(report: dict, title: str, urls: dict[str, str] | None = None, ref
                 f'<p class="meta">{c["changed_px"]} px({c["ratio"] * 100:.2f}%)。範囲 {e(str(c["bbox"]))}。高さ {c["before_size"][1]}→{c["after_size"][1]}</p>'
                 f"{crops}{full}</section>"
             )
-    for label, group in (("新規のセル(Before なし)", added), ("削除されたセル(After なし)", removed)):
-        if group:
-            parts.append(f"<h2>{label}</h2><ul>" + "".join(f"<li>{e(c['cell'])}</li>" for c in group) + "</ul>")
+    if added:
+        parts.append("<h2>新規のセル(Before なし。After の画像)</h2>")
+        for n, c in enumerate(added):
+            fn = f"{c['cell']}.png"
+            size = c.get("after_size") or ["?", "?"]
+            parts.append(
+                f'<details{" open" if n < 2 else ""}><summary>{e(c["cell"])}({size[0]}×{size[1]})</summary>'
+                f'<img src="{e(urls.get(fn, fn))}" alt="{e(c["cell"])} の After の画像"></details>'
+            )
+    if removed:
+        parts.append("<h2>削除されたセル(After なし)</h2><ul>" + "".join(f"<li>{e(c['cell'])}</li>" for c in removed) + "</ul>")
     if same:
         parts.append("<h2>差なしのセル</h2><table><thead><tr><th>セル</th><th>大きさ</th></tr></thead><tbody>")
         parts.extend(f"<tr><td>{e(c['cell'])}</td><td>{c['after_size'][0]}×{c['after_size'][1]}</td></tr>" for c in same)
@@ -505,6 +517,7 @@ def selftest(browser: bool) -> int:
         )
         check((t / "d/p--s--dark--390.png").is_file() and not (t / "d/p--s--light--390.png").exists(), "差があるセルだけ並べた画像を出す")
         check((t / "d/report.json").is_file(), "report.json を出す")
+        check((t / "d/new--s--light--390.png").is_file(), "新規のセルは、After の画像をそのまま出す")
         check(not any(p.name.endswith(".crop1.png") for p in (t / "d").iterdir()), "低い画像には、変更箇所の切り出しを足さない")
         # 高い画像: 離れた 2 か所の変更を、2 つの切り出しにする
         tallb, tallb2 = solid(100, 3000), solid(100, 3000)

@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>デザインの見本(役割・尺度・部品)</title>
+<link rel="stylesheet" href="variables.css">
+<link rel="stylesheet" href="components.css">
+<link rel="stylesheet" href="specimen.css">
+</head>
+<body>
+<a class="skip-link" href="#main">本文へ</a>
+<main id="main">
+  <h1>デザインの見本</h1>
+  <p>Web の面が共有する、役割・尺度・部品を 1 枚に並べた見本。<code class="mono">variables.css</code> と <code class="mono">components.css</code> を実際に読み込んで描くので、正本を変えるとこの見た目が変わる。明暗は OS の設定に追従する。</p>
+  <p class="note">この見本は、正本の変更の Diff を撮る対象にもなる(<code class="mono">visual.toml</code>)。値そのものは、生成した <code class="mono">variables.json</code> が持つ。</p>
+
+  <h2>色の役割</h2>
+  <p class="note">面ごとのテーマが上書きしてよいのは、accent の 4 つ(accent・on-accent・accent-text・focus)だけ。</p>
+  <ul class="grid">
+    <li class="swatch" data-role="bg"><span class="chip"></span><span class="mono">--bg</span></li>
+    <li class="swatch" data-role="surface"><span class="chip"></span><span class="mono">--surface</span></li>
+    <li class="swatch" data-role="text"><span class="chip"></span><span class="mono">--text</span></li>
+    <li class="swatch" data-role="text-muted"><span class="chip"></span><span class="mono">--text-muted</span></li>
+    <li class="swatch" data-role="border"><span class="chip"></span><span class="mono">--border</span></li>
+    <li class="swatch" data-role="border-subtle"><span class="chip"></span><span class="mono">--border-subtle</span></li>
+    <li class="swatch" data-role="accent"><span class="chip"></span><span class="mono">--accent</span></li>
+    <li class="swatch" data-role="on-accent"><span class="chip"></span><span class="mono">--on-accent</span></li>
+    <li class="swatch" data-role="accent-text"><span class="chip"></span><span class="mono">--accent-text</span></li>
+    <li class="swatch" data-role="focus"><span class="chip"></span><span class="mono">--focus</span></li>
+    <li class="swatch" data-role="ok"><span class="chip"></span><span class="mono">--ok</span></li>
+    <li class="swatch" data-role="ok-bg"><span class="chip"></span><span class="mono">--ok-bg</span></li>
+    <li class="swatch" data-role="ng"><span class="chip"></span><span class="mono">--ng</span></li>
+    <li class="swatch" data-role="ng-bg"><span class="chip"></span><span class="mono">--ng-bg</span></li>
+    <li class="swatch" data-role="warn"><span class="chip"></span><span class="mono">--warn</span></li>
+    <li class="swatch" data-role="warn-bg"><span class="chip"></span><span class="mono">--warn-bg</span></li>
+  </ul>
+
+  <h2>文字の大きさ</h2>
+  <p class="t-small">小(--fs-small) 本文の補足・状態の表示</p>
+  <p class="t-body">本文(--fs-body) 1 行は和文で 40 字ほどに収める</p>
+  <p class="t-lead">リード(--fs-lead) 節の導入</p>
+  <p class="t-h3">見出し 3(--fs-h3)</p>
+  <p class="t-h2">見出し 2(--fs-h2)</p>
+  <p class="t-h1">見出し 1(--fs-h1)</p>
+
+  <h2>余白と角丸</h2>
+  <ul class="bars" aria-label="余白の尺度 1 から 6">
+    <li class="bar" data-space="1"></li>
+    <li class="bar" data-space="2"></li>
+    <li class="bar" data-space="3"></li>
+    <li class="bar" data-space="4"></li>
+    <li class="bar" data-space="5"></li>
+    <li class="bar" data-space="6"></li>
+  </ul>
+  <p class="note">左から --space-1 から --space-6。</p>
+  <ul class="bars" aria-label="角丸の尺度 小・中・大">
+    <li class="corner" data-radius="s"></li>
+    <li class="corner" data-radius="m"></li>
+    <li class="corner" data-radius="l"></li>
+  </ul>
+  <p class="note">左から --radius-s・--radius-m・--radius-l。</p>
+
+  <h2>部品</h2>
+
+  <div class="demo">
+    <p class="demo-title">ボタンと置き方(.btn・.actions)。HTML では主な操作を先に書く。PC は「戻る」を左端、「次へ」を右端。スマートフォンは縦に積み、「次へ」を上に置く。</p>
+    <div class="actions">
+      <button type="button" class="btn btn-main">次へ</button>
+      <button type="button" class="btn btn-sub">戻る</button>
+    </div>
+    <p><button type="button" class="btn-link">リンクの見た目のボタン</button></p>
+  </div>
+
+  <div class="demo">
+    <p class="demo-title">選択肢(.choices・.choice)。選んだ行は、太い枠と面の色で示す(下は、選ぶ前)。既定の選択を置かない。</p>
+    <fieldset class="choices">
+      <legend>どうしますか</legend>
+      <label class="choice"><input type="radio" name="demo-choice" value="a">自分でやる</label>
+      <label class="choice"><input type="radio" name="demo-choice" value="b">おまかせする</label>
+      <label class="choice"><input type="radio" name="demo-choice" value="c">あとで</label>
+    </fieldset>
+  </div>
+
+  <div class="demo">
+    <p class="demo-title">保存の表示(.status)。「保存済み」は、書き込みの成功を確かめてから出す。失敗は、再保存の操作と一緒に出す。</p>
+    <p><span class="status" role="status" data-state="saving">保存中…</span></p>
+    <p><span class="status" role="status" data-state="saved">保存済み 09:00</span></p>
+    <p><span class="status" role="status" data-state="failed">保存できませんでした</span> <button type="button" class="btn-link">もう一度保存</button></p>
+  </div>
+
+  <div class="demo">
+    <p class="demo-title">警告(.alert-ok・.alert-ng・.alert-warn)。色だけに頼らず、文で伝える。</p>
+    <p class="alert alert-ok">保存しました。</p>
+    <p class="alert alert-ng">読み込めませんでした。通信を確かめて、もう一度開いてください。</p>
+    <p class="alert alert-warn">期限が近い項目があります。</p>
+  </div>
+
+  <div class="demo">
+    <p class="demo-title">空の状態(.empty)。何が無いかと、次の一手を 1 つ書く。</p>
+    <p class="empty">まだ項目がありません。上の「次へ」から始めてください。</p>
+  </div>
+
+  <div class="demo">
+    <p class="demo-title">狭い画面で組み替わる表(.table-cards)。幅 40rem 以下で、1 行が 1 枚のカードになり、列を隠さない。</p>
+    <table class="table-cards">
+      <thead>
+        <tr><th>項目</th><th>状態</th><th>期限</th></tr>
+      </thead>
+      <tbody>
+        <tr><td data-label="項目">更新手続きの確認</td><td data-label="状態">要対応</td><td data-label="期限">11/30</td></tr>
+        <tr><td data-label="項目">フィルタの反映</td><td data-label="状態">済み</td><td data-label="期限">なし</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="demo">
+    <p class="demo-title">スキップリンク(.skip-link)。ふだんは画面の外にあり、フォーカスすると現れる(この見本では、見えるように置いている)。</p>
+    <a class="skip-link" href="#main">本文へ</a>
+  </div>
+</main>
+</body>
+</html>

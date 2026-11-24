@@ -1,0 +1,239 @@
+/*
+ * 見本ページ(specimen.html)の配置。variables.css の役割と尺度だけを参照する(16 進・原色を直書きしない)。
+ * 見本は、正本(variables.css・components.css)を実際に読み込んで描くので、正本を変えると見本の見た目も変わる。
+ * それを pr-description スキル §5b の手順で撮れば、正本の変更の Diff になる。`web_specimen` が検査する(ADR-0000)。
+ */
+
+main {
+  max-width: var(--measure);
+  margin: 0 auto;
+  padding: var(--space-5) var(--space-4) var(--space-6);
+}
+
+h1 {
+  font-size: var(--fs-h1);
+  line-height: var(--lh-tight);
+}
+
+h2 {
+  margin-top: var(--space-6);
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: var(--fs-h2);
+  line-height: var(--lh-tight);
+}
+
+h3 {
+  font-size: var(--fs-h3);
+  line-height: var(--lh-tight);
+}
+
+.note {
+  color: var(--text-muted);
+  font-size: var(--fs-small);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.swatch {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.chip {
+  flex: none;
+  width: var(--target);
+  height: var(--target);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-m);
+}
+
+.swatch[data-role="bg"] .chip {
+  background: var(--bg);
+}
+
+.swatch[data-role="surface"] .chip {
+  background: var(--surface);
+}
+
+.swatch[data-role="text"] .chip {
+  background: var(--text);
+}
+
+.swatch[data-role="text-muted"] .chip {
+  background: var(--text-muted);
+}
+
+.swatch[data-role="border"] .chip {
+  background: var(--border);
+}
+
+.swatch[data-role="border-subtle"] .chip {
+  background: var(--border-subtle);
+}
+
+.swatch[data-role="accent"] .chip {
+  background: var(--accent);
+}
+
+.swatch[data-role="on-accent"] .chip {
+  background: var(--on-accent);
+}
+
+.swatch[data-role="accent-text"] .chip {
+  background: var(--accent-text);
+}
+
+.swatch[data-role="focus"] .chip {
+  background: var(--focus);
+}
+
+.swatch[data-role="ok"] .chip {
+  background: var(--ok);
+}
+
+.swatch[data-role="ok-bg"] .chip {
+  background: var(--ok-bg);
+}
+
+.swatch[data-role="ng"] .chip {
+  background: var(--ng);
+}
+
+.swatch[data-role="ng-bg"] .chip {
+  background: var(--ng-bg);
+}
+
+.swatch[data-role="warn"] .chip {
+  background: var(--warn);
+}
+
+.swatch[data-role="warn-bg"] .chip {
+  background: var(--warn-bg);
+}
+
+.t-small {
+  font-size: var(--fs-small);
+}
+
+.t-body {
+  font-size: var(--fs-body);
+}
+
+.t-lead {
+  font-size: var(--fs-lead);
+}
+
+.t-h3 {
+  font-size: var(--fs-h3);
+}
+
+.t-h2 {
+  font-size: var(--fs-h2);
+}
+
+.t-h1 {
+  font-size: var(--fs-h1);
+}
+
+.mono {
+  font-family: var(--font-mono);
+}
+
+.bars {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.bar {
+  width: var(--space-6);
+  background: var(--accent);
+}
+
+.bar[data-space="1"] {
+  height: var(--space-1);
+}
+
+.bar[data-space="2"] {
+  height: var(--space-2);
+}
+
+.bar[data-space="3"] {
+  height: var(--space-3);
+}
+
+.bar[data-space="4"] {
+  height: var(--space-4);
+}
+
+.bar[data-space="5"] {
+  height: var(--space-5);
+}
+
+.bar[data-space="6"] {
+  height: var(--space-6);
+}
+
+.corner {
+  width: var(--space-6);
+  height: var(--space-6);
+  border: 2px solid var(--accent);
+  background: var(--surface);
+}
+
+.corner[data-radius="s"] {
+  border-radius: var(--radius-s);
+}
+
+.corner[data-radius="m"] {
+  border-radius: var(--radius-m);
+}
+
+.corner[data-radius="l"] {
+  border-radius: var(--radius-l);
+}
+
+.demo {
+  margin: var(--space-4) 0;
+  padding: var(--space-4);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-m);
+}
+
+.demo > * + * {
+  margin-top: var(--space-3);
+}
+
+.demo-title {
+  margin: 0 0 var(--space-3);
+  color: var(--text-muted);
+  font-size: var(--fs-small);
+}
+
+.demo .skip-link {
+  position: static;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th,
+td {
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--border-subtle);
+  text-align: left;
+}

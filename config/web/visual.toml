@@ -1,0 +1,18 @@
+# 見本ページの撮影定義(pr-description スキル §5b の `visual_diff.py`。ADR-0000)。
+# 正本(variables.css・components.css)を変えたら、変更の前の ref を Before、作業ツリーを After にして撮ると、見本の Diff が出る。
+
+[[page]]
+id = "specimen"
+root = "config/web"
+entry = "specimen.html"
+
+[[page.state]]
+name = "initial"
+
+[[page.state]]
+name = "skip-link-focused"
+steps = [ { press = "Tab" } ]
+
+[[page.state]]
+name = "choice-changed"
+steps = [ { click = "input[value='a']" } ]

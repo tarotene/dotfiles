@@ -13,6 +13,7 @@ use repo_structure_check::process_env::{self, HELPER_EXCEPTIONS, XDG_EXCEPTIONS}
 use repo_structure_check::side_symmetry;
 use repo_structure_check::web_assets;
 use repo_structure_check::web_components;
+use repo_structure_check::web_specimen;
 use repo_structure_check::web_variables;
 
 fn repo_root() -> PathBuf {
@@ -304,6 +305,55 @@ fn the_components_check_reads_what_it_is_about() {
         .expect("read the components");
     for needle in [".btn-main", ".actions", "var(--target)", "var(--accent)"] {
         assert!(css.contains(needle), "{needle} が読まれていない");
+    }
+}
+
+/// 生成した `variables.json` は、正本の CSS から作った内容と一致する(手で書かない。ADR-0000)。
+#[test]
+fn the_generated_tokens_json_matches_the_css() {
+    let violations =
+        web_variables::check_tokens_json_tree(&repo_root()).expect("read the generated tokens");
+    let report: Vec<String> = violations.iter().map(ToString::to_string).collect();
+    assert!(
+        violations.is_empty(),
+        "variables.json が正本とずれている:\n{}",
+        report.join("\n")
+    );
+}
+
+/// `variables.json` を読めずに通ってしまわないための番兵。役割が、明暗の 16 進で実際に載っている。
+#[test]
+fn the_generated_tokens_json_carries_resolved_colors() {
+    let json = std::fs::read_to_string(repo_root().join(web_variables::VARIABLES_JSON_PATH))
+        .expect("read the generated tokens");
+    for needle in ["\"light\": \"#", "\"dark\": \"#", "\"name\": \"accent\""] {
+        assert!(json.contains(needle), "{needle} が読まれていない");
+    }
+}
+
+/// 見本ページは、正本を実際に読み込み、役割と部品のすべてを並べ、値を複写しない(ADR-0000)。
+#[test]
+fn the_specimen_loads_the_canon_and_shows_every_role_and_component() {
+    let violations = web_specimen::check_tree(&repo_root()).expect("read the specimen");
+    let report: Vec<String> = violations.iter().map(ToString::to_string).collect();
+    assert!(
+        violations.is_empty(),
+        "見本ページが不変条件を満たさない:\n{}",
+        report.join("\n")
+    );
+}
+
+/// 見本を読めずに「違反なし」で通ってしまわないための番兵。
+#[test]
+fn the_specimen_check_reads_what_it_is_about() {
+    let html = std::fs::read_to_string(repo_root().join(web_specimen::HTML_PATH))
+        .expect("read the specimen");
+    for needle in [
+        "data-role=\"accent\"",
+        "class=\"btn btn-main\"",
+        "table-cards",
+    ] {
+        assert!(html.contains(needle), "{needle} が読まれていない");
     }
 }
 

@@ -191,6 +191,8 @@ app の README に、段を宣言する。
 ## 画面の作り方(ADR-1677・ADR-1685、dotfiles#1664)
 
 この標準で作る app の画面の既定。閲覧だけの静的サイトの面も、1〜5 は同じである。値(色・書体・尺度)の正本は `config/web/variables.css` で、各面が複写して pin する(ADR-1685)。
+役割と部品の見た目は、見本ページ `config/web/specimen.html` で確かめる。明暗を解いた値の一覧は、生成した `config/web/variables.json`(手で書かない)。
+CSS を HTML の中に持つ 1 枚だけの面(Artifact の雛形)は、正本を HTML の中の印を付けた区間に複写し、`design-pin.toml` の `begin`・`end` でその区間を固定する(ADR-0000)。
 
 1. **CSP `style-src 'self'` の下の書き方。** インラインの `style` を使わない。位置と大きさは、CSS のクラスと SVG の属性で与える。MDN は、`element.style.<名前> =` は止められないが、`setAttribute("style", …)` と `cssText` は止められると書く(MDN, "Content-Security-Policy: style-src directive"、最終更新 2025-12-15。dotfiles#1664 の記載による)。この境目に頼らないよう、静的試験で `.style`・`setAttribute("style"`・`cssText` を禁じる。
 2. **書体。** 第三者の配信元から読まない(ADR-1677 D6。`web_assets` が検査する)。`font-src` を開けず、機体の書体を使う(`--font-sans`・`--font-mono`。明朝は `serif` に落ちる)。

@@ -339,6 +339,110 @@ pub fn check_tree(root: &Path) -> Result<Vec<Violation>, String> {
     Ok(check_tokens(VARIABLES_PATH, &text))
 }
 
+/// 生成した機械可読の値のパス(リポジトリの根から)。手で書かず、`tokens_json` が作る。
+pub const VARIABLES_JSON_PATH: &str = "config/web/variables.json";
+
+/// 再生成のコマンド(ずれたときの案内)。
+pub const VARIABLES_JSON_REGENERATE: &str =
+    "cargo run -q -p repo-structure-check --example web_variables_json > config/web/variables.json";
+
+fn json_str(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() + 2);
+    out.push('"');
+    for c in s.chars() {
+        match c {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            c if (c as u32) < 0x20 => out.push_str(&format!("\\u{:04x}", c as u32)),
+            c => out.push(c),
+        }
+    }
+    out.push('"');
+    out
+}
+
+fn hex(c: Rgb) -> String {
+    format!("#{:02x}{:02x}{:02x}", c.0, c.1, c.2)
+}
+
+/// 正本の CSS から、機械可読の値(JSON)を作る。原色・役割(明暗を解いた 16 進)・尺度を、決まった順で出す。
+/// 印刷物(Typst)や、claude.ai の Design System 型の Artifact が読む。CSS が唯一の正本で、これは派生物。
+pub fn tokens_json(text: &str) -> Result<String, String> {
+    let stripped = strip_comments(text);
+    let mut seen = std::collections::BTreeSet::new();
+    let decls: Vec<(String, String)> = declarations(&stripped)
+        .into_iter()
+        .filter(|(name, _)| seen.insert(name.clone())) // `@media` の中の再宣言は、最初の値だけ
+        .collect();
+    let map: BTreeMap<String, String> = decls.iter().cloned().collect();
+
+    let mut refs = Vec::new();
+    for (name, value) in &decls {
+        if name.starts_with("--ref-") {
+            let rgb = parse_hex(value).map_err(|e| format!("原色 `{name}`: {e}"))?;
+            refs.push(format!(
+                "    {{ \"name\": {}, \"value\": {} }}",
+                json_str(name.trim_start_matches("--")),
+                json_str(&hex(rgb))
+            ));
+        }
+    }
+    let mut colors = Vec::new();
+    for role in REQUIRED_ROLES {
+        let value = map
+            .get(role)
+            .ok_or_else(|| format!("役割 `{role}` の宣言が無い"))?;
+        let light = resolve(&map, value, Scheme::Light, 0)
+            .map_err(|e| format!("役割 `{role}`(明): {e}"))?;
+        let dark =
+            resolve(&map, value, Scheme::Dark, 0).map_err(|e| format!("役割 `{role}`(暗): {e}"))?;
+        colors.push(format!(
+            "    {{ \"name\": {}, \"light\": {}, \"dark\": {} }}",
+            json_str(role.trim_start_matches("--")),
+            json_str(&hex(light)),
+            json_str(&hex(dark))
+        ));
+    }
+    let mut scale = Vec::new();
+    for (name, value) in &decls {
+        if name.starts_with("--ref-") || REQUIRED_ROLES.contains(&name.as_str()) {
+            continue;
+        }
+        scale.push(format!(
+            "    {{ \"name\": {}, \"value\": {} }}",
+            json_str(name.trim_start_matches("--")),
+            json_str(value)
+        ));
+    }
+    Ok(format!(
+        "{{\n  \"generated\": {},\n  \"source\": {},\n  \"themes\": [\"light\", \"dark\"],\n  \"refs\": [\n{}\n  ],\n  \"colors\": [\n{}\n  ],\n  \"scale\": [\n{}\n  ]\n}}\n",
+        json_str(&format!("手で書かない。`{VARIABLES_JSON_REGENERATE}` で作る")),
+        json_str(VARIABLES_PATH),
+        refs.join(",\n"),
+        colors.join(",\n"),
+        scale.join(",\n"),
+    ))
+}
+
+/// ツリーの `variables.json` が、正本の CSS から作ったものと一致するか。
+pub fn check_tokens_json_tree(root: &Path) -> Result<Vec<Violation>, String> {
+    let read = |rel: &str| {
+        let p = root.join(rel);
+        fs::read_to_string(&p).map_err(|e| format!("{} を読めない: {e}", p.display()))
+    };
+    let css = read(VARIABLES_PATH)?;
+    let have = read(VARIABLES_JSON_PATH)?;
+    let want = tokens_json(&css)?;
+    if have == want {
+        return Ok(Vec::new());
+    }
+    Ok(vec![violation(
+        VARIABLES_JSON_PATH,
+        format!("正本 `{VARIABLES_PATH}` から作った内容と違う(手で直した、または CSS を変えて作り直していない)。`{VARIABLES_JSON_REGENERATE}` で作り直す"),
+    )])
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -450,6 +554,43 @@ mod tests {
             *REAL
         );
         assert!(check_tokens(VARIABLES_PATH, &ok).is_empty());
+    }
+
+    #[test]
+    fn the_generated_tokens_carry_every_role_in_both_schemes() {
+        let json = tokens_json(&REAL).expect("generate");
+        for role in REQUIRED_ROLES {
+            assert!(
+                json.contains(&format!("\"name\": \"{}\"", role.trim_start_matches("--"))),
+                "{role} が生成物に無い"
+            );
+        }
+        // `--bg: light-dark(var(--ref-white), var(--ref-gray-900))` を、明暗の 16 進に解く。
+        assert!(
+            json.contains("{ \"name\": \"bg\", \"light\": \"#ffffff\", \"dark\": \"#1a1a1a\" }"),
+            "{json}"
+        );
+        // `@media (prefers-reduced-motion)` の中の再宣言(0ms)でなく、最初の宣言(100ms)を載せる。
+        assert!(
+            json.contains("{ \"name\": \"dur-fast\", \"value\": \"100ms\" }"),
+            "{json}"
+        );
+        // 引用符を含む書体の列は、JSON の文字列として正しく escape される。
+        assert!(json.contains("\\\"Noto Sans JP\\\""), "{json}");
+    }
+
+    #[test]
+    fn the_generated_tokens_are_deterministic() {
+        assert_eq!(tokens_json(&REAL).unwrap(), tokens_json(&REAL).unwrap());
+    }
+
+    #[test]
+    fn a_role_that_cannot_be_resolved_is_an_error_not_a_hole() {
+        let bad = REAL.replace(
+            "--ref-gray-900: #1a1a1a;",
+            "--ref-gray-900: oklch(0.2 0 0);",
+        );
+        assert!(tokens_json(&bad).is_err());
     }
 
     #[test]

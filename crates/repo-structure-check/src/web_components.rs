@@ -42,7 +42,7 @@ fn violation(path: &str, detail: String) -> Violation {
 }
 
 /// 16 進の色(`#rgb`・`#rgba`・`#rrggbb`・`#rrggbbaa`)の直書きがある行番号。
-fn hex_color_lines(stripped: &str) -> Vec<usize> {
+pub(crate) fn hex_color_lines(stripped: &str) -> Vec<usize> {
     let mut out = Vec::new();
     for (i, line) in stripped.lines().enumerate() {
         let chars: Vec<char> = line.chars().collect();
@@ -68,7 +68,7 @@ fn hex_color_lines(stripped: &str) -> Vec<usize> {
 }
 
 /// `var(--名前` の名前を、出てきた順に取る。
-fn var_references(stripped: &str) -> Vec<(usize, String)> {
+pub(crate) fn var_references(stripped: &str) -> Vec<(usize, String)> {
     let mut out = Vec::new();
     for (i, line) in stripped.lines().enumerate() {
         let mut rest = line;
