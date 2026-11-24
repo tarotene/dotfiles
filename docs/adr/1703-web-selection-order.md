@@ -85,3 +85,29 @@ ADR-1677 の本文は変更しない（ADR は追記のみ）。本 D4 によっ
 
 - `cargo test -p repo-structure-check`: 対応表の検査（すべての選択肢を持つ表が通る、実物の表が通る、語彙外の選択肢・Widely でない `platform`・実在しない共有ファイル・版と `sha256` のない `external`・実在しない要件 ID・重複した `id` などがそれぞれエラーになる）と、`web_assets` の拡張（外部 `<script src>` の 3 種類の記述、`modulepreload`、スクリプトの `import("…")`・`from "…"` を拒否し、自サイトのスクリプト・インラインスクリプトは通す）が成功する。
 - Baseline の値は web-platform-dx の公開 API（https://api.webstatus.dev/v1/features/dialog、`/details`、`/input-radio`、`/popover`。取得 2026-11-24）から取得した: `dialog` は widely（high_date 2024-09-14）、`details` は widely（2022-07-15）、`input-radio` は widely（2018-01-29）、`popover` は newly（low_date 2025-01-27、high_date は取得資料に記述なし）。
+
+## Amendment 1 — D2(振る舞いの共有部品)を実装した
+
+D2 は、決定だけを置き、実装を続く PR に残していた(未実装、意図あり)。実装した。D2 の決定は変えない。
+
+- `config/web/behavior.js`: 素の JavaScript、依存なし。`window.pageBehavior` に `saver`(保存の表示。書き込みの成功を確かめてから「保存済み」にし、失敗は再保存の操作つきで出す。続けて呼んだとき、古い結果は表示を書き換えない)・`keyguard`(ショートカットのキー。フォーカス中の要素が標準で使うキー、修飾キーつき、変換中のキーを奪わない)・`viewstate`(読み込み中・失敗・空・中身の出し分け。失敗の出し先は最初から DOM にある)を置く。モジュールの構文を持たないので、1 枚だけの HTML の区間 pin(ADR-1700)で、インラインの `<script>` に複写できる。
+- `config/web/components.css`: `[hidden] { display: none !important; }` を足した。`.status` などは `display` を持つので、`hidden` 属性が効かなくなるため。
+- `config/web/specimen.html`・`config/web/specimen.js`: 動く見本(3 つの部品)。見本の検査は、`<script>` を一律に禁じる形から、同一オリジンの `behavior.js`・`specimen.js` だけを、本体の空の `<script src>` で許す形にした。
+- `crates/repo-structure-check/src/web_behavior.rs`: 2 つのスクリプトの不変条件(外部の URL・style の注入・HTML の注入・モジュールの構文・失敗の握りつぶしを持たない。3 つの名前を公開し、見本が呼ぶ)。
+- `config/web/behavior_selftest.py`: 実際のブラウザで、見本ページを CSP(`script-src 'self'; style-src 'self'`)つきで開き、振る舞いを確かめる。
+- `config/web/selection.toml`: `save-status`・`shortcut-keys`・`load-states` の行が、`behavior.js` を指す。`config/web/page-types.toml` の F3・C11・C12 が、対応する部品を指す。
+
+設計の先行例は、山行の計画を管理する個人用リポジトリの `saver()`(保存中 → 成功を確かめて保存した、失敗は入力を残したまま再保存の操作を出す。取得 2026-11-24)。差分は、その面の中の関数を、状態(`saving|saved|failed`)・古い結果の無視・失敗のイベント・`false` を返す書き込みの失敗扱いを持つ共有の部品に一般化し、`pin` できる 1 ファイルにした点。
+
+### 執行点
+
+- `config/web/behavior.js`
+- `config/web/specimen.js`
+- `crates/repo-structure-check/src/web_behavior.rs`
+- `config/web/behavior_selftest.py`
+
+### Verification
+
+- `cargo test -p repo-structure-check`: `web_behavior` の検査（実物 2 ファイルが通り、外部 URL・style 注入の 5 パターン、HTML とコードの注入、モジュール構文、失敗の握りつぶし 9 パターンがそれぞれ落ちること。公開名の欠落や見本から呼ばれない場合も落ちること）と、見本の検査（同一オリジンの 2 スクリプトのみを許し、ほかの `src`・本体のあるスクリプト・片方の読み込み忘れが落ちること）が成功する。
+- `uv run --script config/web/behavior_selftest.py`(Chromium): 32 項目すべてが成功する。保存中の表示、成功確認後の「保存済み」、失敗と再保存、古い結果の無視、`false` や同期例外の失敗扱い、ボタンの Enter・Space を奪わないこと、修飾キー付きや文字入力欄内のキーを奪わないこと、失敗の表示先が最初から DOM に存在すること、読み込み中・中身あり・空・失敗が同時に表示されないこと、CSP 違反とページエラーが 0 件であること。`keyguard` の保護を外した版では、3 項目が落ちることも確認した（検査が実際に落ちる）。
+- `visual_diff.py audit --spec config/web/visual.toml`: 動く見本の 7 つの状態（保存済み・保存失敗・読み込み成功・読み込み失敗を含む）で違反 0 件。ショートカットが Enter・Space に割り当てられた状態でも C12 が通る。

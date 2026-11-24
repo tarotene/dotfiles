@@ -36,6 +36,11 @@ body {
   outline-offset: 2px;
 }
 
+/* `.status` などは display を持つので、`hidden` 属性が効かなくなる。共有の振る舞い(behavior.js)が出し入れに使う。 */
+[hidden] {
+  display: none !important;
+}
+
 .skip-link {
   position: absolute;
   top: -4rem;

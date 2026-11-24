@@ -2,7 +2,8 @@
 //! 役割のすべてと部品のすべてを 1 枚に並べる。見本は正本を複写せず、値を持たない(ADR-1700)。
 //!
 //! - 3 つの CSS(`variables.css`・`components.css`・`specimen.css`)を、相対パスで読み込む。
-//! - インラインの `style` 属性・`<style>`・`<script>` を持たない(位置と大きさは CSS のクラスで与える)。
+//! - インラインの `style` 属性・`<style>`・インラインの `<script>` を持たない(位置と大きさは CSS のクラスで与える)。
+//!   スクリプトは、同一オリジンの `behavior.js`・`specimen.js` だけを、本体の空の `<script src>` で読み込む(ADR-1703 D2)。
 //! - 第三者の URL(`http://`・`https://`)を持たない。
 //! - 役割の集合(`REQUIRED_ROLES`)のすべてを `data-role` の見本に並べ、`specimen.css` が `var(--役割)` で塗る。
 //! - `components.css` のセレクタが使うクラスのすべてを、見本の HTML が使う(部品を足して見本に載せ忘れない)。
@@ -80,6 +81,48 @@ fn html_classes(html: &str) -> BTreeSet<String> {
     out
 }
 
+/// 見本が読み込んでよいスクリプト(同一オリジンの 2 ファイル。ADR-1703 D2)。
+pub const ALLOWED_SCRIPTS: [&str; 2] = ["behavior.js", "specimen.js"];
+
+/// `<script>` は、`src` が `ALLOWED_SCRIPTS` のどれかで、本体が空のものだけ持てる(インラインのスクリプトは持たない)。
+/// `behavior.js` と `specimen.js` の両方を読み込むことも求める(動く見本を、共有の部品から外さない)。
+fn script_violations(html: &str) -> Vec<Violation> {
+    let mut out = Vec::new();
+    let lower = html.to_ascii_lowercase();
+    let mut seen: BTreeSet<String> = BTreeSet::new();
+    let mut from = 0;
+    while let Some(pos) = lower[from..].find("<script") {
+        let start = from + pos;
+        let Some(gt) = html[start..].find('>') else {
+            break;
+        };
+        let tag_end = start + gt + 1;
+        let src = crate::web_assets::attr(&html[start..tag_end], "src");
+        let body_empty = lower[tag_end..].starts_with("</script>");
+        match src {
+            Some(s) if ALLOWED_SCRIPTS.contains(&s.as_str()) && body_empty => {
+                seen.insert(s);
+            }
+            _ => out.push(violation(
+                HTML_PATH,
+                format!(
+                    "`<script>` が、インラインの本体を持つか、`src` が同一オリジンの {ALLOWED_SCRIPTS:?} のどれでもない(見本が持てるスクリプトは、この 2 つだけ)"
+                ),
+            )),
+        }
+        from = tag_end;
+    }
+    for name in ALLOWED_SCRIPTS {
+        if !seen.contains(name) {
+            out.push(violation(
+                HTML_PATH,
+                format!("`<script src=\"{name}\">` を読み込んでいない(動く見本は、共有の振る舞いを実際に呼ぶ)"),
+            ));
+        }
+    }
+    out
+}
+
 /// 見本の文字列を検査する。`variables`・`components` は、正本の文字列。
 pub fn check_specimen(html: &str, css: &str, variables: &str, components: &str) -> Vec<Violation> {
     let mut out = Vec::new();
@@ -95,7 +138,6 @@ pub fn check_specimen(html: &str, css: &str, variables: &str, components: &str) 
     for (needle, why) in [
         (" style=", "インラインの `style` 属性"),
         ("<style", "`<style>` 要素"),
-        ("<script", "`<script>` 要素"),
     ] {
         if html.contains(needle) {
             out.push(violation(
@@ -104,6 +146,7 @@ pub fn check_specimen(html: &str, css: &str, variables: &str, components: &str) 
             ));
         }
     }
+    out.extend(script_violations(html));
     for (path, text) in [(HTML_PATH, html), (CSS_PATH, css)] {
         if text.contains("http://") || text.contains("https://") {
             out.push(violation(
@@ -283,5 +326,41 @@ mod tests {
         let d = details(&check_specimen(&h, &bad, &v, &k));
         assert!(d.contains("16 進で直書き"), "{d}");
         assert!(d.contains("`--nope` は正本"), "{d}");
+    }
+
+    #[test]
+    fn only_the_two_same_origin_scripts_with_an_empty_body_are_allowed() {
+        let (h, c, v, k) = real();
+        // 別の名前のスクリプト、外部のスクリプト、インラインの本体は、どれも落ちる。
+        for bad_script in [
+            "<script src=\"other.js\" defer></script>",
+            "<script src=\"//cdn.example.com/a.js\" defer></script>",
+            "<script src=\"behavior.js\" defer>alert(1)</script>",
+            "<script defer>1</script>",
+        ] {
+            let bad = h.replace("</head>", &format!("{bad_script}</head>"));
+            let d = details(&check_specimen(&bad, &c, &v, &k));
+            assert!(
+                d.contains("`<script>` が、インラインの本体を持つか"),
+                "{bad_script}: {d}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_specimen_that_drops_a_script_is_reported() {
+        let (h, c, v, k) = real();
+        let bad = h.replace("<script src=\"specimen.js\" defer></script>\n", "");
+        let d = details(&check_specimen(&bad, &c, &v, &k));
+        assert!(
+            d.contains("`<script src=\"specimen.js\">` を読み込んでいない"),
+            "{d}"
+        );
+        let bad = h.replace("<script src=\"behavior.js\" defer></script>\n", "");
+        let d = details(&check_specimen(&bad, &c, &v, &k));
+        assert!(
+            d.contains("`<script src=\"behavior.js\">` を読み込んでいない"),
+            "{d}"
+        );
     }
 }

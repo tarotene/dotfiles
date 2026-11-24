@@ -7,6 +7,8 @@
 <link rel="stylesheet" href="variables.css">
 <link rel="stylesheet" href="components.css">
 <link rel="stylesheet" href="specimen.css">
+<script src="behavior.js" defer></script>
+<script src="specimen.js" defer></script>
 </head>
 <body>
 <a class="skip-link" href="#main">本文へ</a>
@@ -112,6 +114,37 @@
         <tr><td data-label="項目">フィルタの反映</td><td data-label="状態">済み</td><td data-label="期限">なし</td></tr>
       </tbody>
     </table>
+  </div>
+
+  <h2>振る舞い(behavior.js)</h2>
+  <p class="note">見た目だけでなく、保存の表示・ショートカットのキー・読み込み中/失敗/空の出し分けも、共有の部品として置く(ADR-1703 D2)。下は、<code class="mono">specimen.js</code> が <code class="mono">window.pageBehavior</code> を呼んで動かす見本。失敗は 1 回目だけ起こす。</p>
+
+  <div class="demo">
+    <p class="demo-title">保存の表示(saver)。「保存中…」から、書き込みの成功を確かめて「保存済み」にする。失敗は、項目の横に、再保存の操作と一緒に出す。</p>
+    <p><span class="status" id="demo-save-status" role="status">まだ保存していない</span></p>
+    <p>
+      <button type="button" class="btn btn-sub" id="demo-save-ok">保存する(成功)</button>
+      <button type="button" class="btn btn-sub" id="demo-save-fail">保存する(1 回目は失敗)</button>
+    </p>
+  </div>
+
+  <div class="demo">
+    <p class="demo-title">ショートカットのキー(keyguard)。1・Space・Enter はショートカット。ボタンにフォーカスしているときは、ショートカットでなく、ボタンが押される(標準のキー操作を奪わない)。</p>
+    <p class="note" id="demo-key-out" role="status">ショートカットは、まだ呼ばれていない</p>
+    <p>
+      <button type="button" class="btn btn-sub" id="demo-key-button">ボタン(Enter・Space で押す)</button>
+      <span class="note" id="demo-key-clicks">押された回数: 0</span>
+    </p>
+  </div>
+
+  <div class="demo">
+    <p class="demo-title">読み込み中・失敗・空の出し分け(viewstate)。失敗の出し先は、最初から DOM にある。失敗には、再読み込みの操作を出す。</p>
+    <p>
+      <button type="button" class="btn btn-sub" id="demo-load-ok">読み込む(中身あり)</button>
+      <button type="button" class="btn btn-sub" id="demo-load-empty">読み込む(空)</button>
+      <button type="button" class="btn btn-sub" id="demo-load-fail">読み込む(1 回目は失敗)</button>
+    </p>
+    <div id="demo-view"></div>
   </div>
 
   <div class="demo">

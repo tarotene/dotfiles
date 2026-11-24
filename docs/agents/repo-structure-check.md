@@ -187,7 +187,8 @@ ADR-1677 の範囲外)。空のツリーを読んで通ってしまわないよ�
 | 検査 | 落ちる条件 |
 |---|---|
 | 読み込み | `variables.css`・`components.css`・`specimen.css` を相対パスで読み込まない |
-| 持たないもの | インラインの `style` 属性、`<style>`、`<script>`、第三者の URL(`http://`・`https://`) |
+| 持たないもの | インラインの `style` 属性、`<style>`、インラインの `<script>`(本体のあるもの)、第三者の URL(`http://`・`https://`) |
+| スクリプト | `<script>` は、本体の空の `<script src>` で、同一オリジンの `behavior.js`・`specimen.js` だけを読み込める。ほかの `src`・本体のあるスクリプトは落ちる。2 つのどちらかを読み込まなくても落ちる(動く見本を、共有の部品から外さない。ADR-1703 D2) |
 | 役割の網羅 | 役割(`REQUIRED_ROLES`)に、`data-role` の見本か、`specimen.css` の `var(--役割)` で塗る規則が欠ける |
 | 部品の網羅 | `components.css` のセレクタが使うクラスを、見本の HTML が使わない(部品を足して見本に載せ忘れた) |
 | 値 | `specimen.css` に 16 進の直書きがある、または `var()` の名前が正本に宣言されていない |
@@ -195,6 +196,24 @@ ADR-1677 の範囲外)。空のツリーを読んで通ってしまわないよ�
 | `variables.json` | 正本の CSS から生成した内容と違う(再生成: `cargo run -q -p repo-structure-check --example web_variables_json > config/web/variables.json`) |
 
 例外はない。見本は、面ごとのテーマの上書き(accent の 4 つ)を持たない。
+
+### 振る舞いの共有部品(`web_behavior::check_tree`、ADR-1703 D2)
+
+`config/web/behavior.js`(共有の部品)と `config/web/specimen.js`(それを呼ぶ動く見本)を読む。コメントは読まず、文字列の中は読む。
+共有の部品は、CSP `style-src 'self'` の下で動き、1 枚だけの HTML の区間 pin(ADR-1700)でインラインの `<script>` に複写でき、失敗を握りつぶさない。
+
+| 検査 | 落ちる条件 |
+|---|---|
+| 外部の URL | `http://`・`https://` がある(第三者から読まない。ADR-1677 D6) |
+| style の注入 | `.style`(`.stylesheet` のような続きの名前は除く)・`cssText`・`setAttribute("style", …)`。出し入れは、クラスと `hidden` 属性で行う |
+| HTML・コードの注入 | `innerHTML`・`outerHTML`・`insertAdjacentHTML`・`document.write`・`eval(`・`new Function` |
+| モジュールの構文 | 行頭の `import`・`export`(インラインの `<script>` に複写できなくなる) |
+| 失敗の握りつぶし | 本体の空の `catch`(`catch {}`・`catch (e) {}`)、本体の空の関数を渡した `.catch(...)`(`() => {}`・`e => {}`・`function (e) {}`) |
+| 公開する名前 | `behavior.js` が、`"use strict"`、`window.pageBehavior`、関数 `saver`・`keyguard`・`viewstate` と、その公開を持たない。`specimen.js` が、この 3 つを呼ばない |
+
+限界: 正規表現リテラルの中の引用符・`//` は、文字列やコメントと取り違える(2 つのファイルは、正規表現リテラルを書かない)。実際の振る舞い
+(保存中 → 保存済み、失敗と再保存、古い結果が新しい結果を上書きしない、ボタンの Enter・Space を奪わない、読み込み中・失敗・空の出し分け、CSP 違反 0 件)は、
+`uv run --script config/web/behavior_selftest.py`(Chromium が要る。CI では走らない)が、見本ページを CSP つきで開いて確かめる。
 
 ### 選び方の対応表(`web_selection::check_tree`、ADR-1703)
 
@@ -285,6 +304,7 @@ ADR-1529 の置き場 4)。例外を解消すると鮮度の検査が落ちる�
 - crates/repo-structure-check/src/web_components.rs
 - crates/repo-structure-check/src/web_specimen.rs
 - crates/repo-structure-check/src/web_selection.rs
+- crates/repo-structure-check/src/web_behavior.rs
 - crates/repo-structure-check/src/web_assets.rs
 - crates/civil-time/src/lib.rs
 - crates/process-env/src/lib.rs

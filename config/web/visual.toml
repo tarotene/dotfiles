@@ -1,5 +1,6 @@
 # 見本ページの撮影定義(pr-description スキル §5b の `visual_diff.py`。ADR-1700)。
 # 正本(variables.css・components.css)を変えたら、変更の前の ref を Before、作業ツリーを After にして撮ると、見本の Diff が出る。
+# 動く見本(behavior.js。ADR-1703 D2)の状態も撮る。保存・読み込みは 300〜400ms 後に結果が出るので、wait で待つ。
 
 [[page]]
 id = "specimen"
@@ -16,3 +17,19 @@ steps = [ { press = "Tab" } ]
 [[page.state]]
 name = "choice-changed"
 steps = [ { click = "input[value='a']" } ]
+
+[[page.state]]
+name = "saved"
+steps = [ { click = "#demo-save-ok" }, { wait = 700 } ]
+
+[[page.state]]
+name = "save-failed"
+steps = [ { click = "#demo-save-fail" }, { wait = 700 } ]
+
+[[page.state]]
+name = "view-loaded"
+steps = [ { click = "#demo-load-ok" }, { wait = 700 } ]
+
+[[page.state]]
+name = "view-failed"
+steps = [ { click = "#demo-load-fail" }, { wait = 700 } ]
