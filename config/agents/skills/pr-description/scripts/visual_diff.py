@@ -8,6 +8,7 @@
   capture  撮影定義(visual.toml)の全セル(面 × 状態 × 明暗 × 幅)を撮る。画面のファイルは --ref から取り出す
   diff     2 つの撮影ディレクトリを比べ、セルごとに Before | After | Diff の 1 枚と report.json を出す
   page     report.json から、本人に見せる並べたページ(index.html)を作る
+  audit    面が宣言した型(types)の要件のうち、描画した HTML で測れるものを検査する(page-types.toml。ADR-1701)
 
 固定の手順は pr-description スキル §5b。要点:
   - Before は **基準の ref から取り出した**ファイルで撮る。作業ツリーからは撮れない(変更後に Before を撮れない形)。
@@ -26,6 +27,7 @@
   stub = "visual/stub.js"          # 任意。撮影定義からの相対。ページのスクリプトより前に差し込む(window.claude の疑似など)
   host = "artifact"                # "artifact" = ホストが付ける data-theme を再現 / "site"(既定) = 付けない
   clock = "2026-11-24T09:00:00+09:00"   # 任意。Date を固定する
+  types = ["common", "form"]       # 任意。当てはまるページの型(page-types.toml の id)。省略は ["common"]
   [[page.state]]
   name = "failed"                  # 状態の名前([a-z0-9-]+)
   globals = { mode = "fail" }      # 任意。window.__VISUAL__ に入る(疑似が読む)
@@ -55,7 +57,14 @@ HOST = "http://visual.test"
 DEFAULT_CLOCK = "2026-01-01T09:00:00+09:00"
 PAD_FILL = (255, 0, 255)  # 高さが違うとき、短い側を埋める色(ページの内容と取り違えない色)
 NAME_RE = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
-PAGE_KEYS = {"id", "root", "entry", "prepare", "stub", "host", "clock", "state"}
+PAGE_KEYS = {"id", "root", "entry", "prepare", "stub", "host", "clock", "state", "types"}
+CHECKS = ("audit", "walkthrough", "visual")
+# 描画した HTML への検査(閉じた語彙)。page-types.toml の要件の `audit` は、この中から選ぶ。
+AUDITS = (
+    "document", "contrast", "targets", "overflow", "third-party",
+    "keyboard", "main-button", "default-choice", "confirm", "links",
+)
+REQ_ID_RE = re.compile(r"^[CLFD][0-9]+$")
 STATE_KEYS = {"name", "globals", "steps"}
 STEP_KEYS = {"click", "press", "fill", "value", "wait"}
 
@@ -92,6 +101,9 @@ def load_spec(path: Path) -> list[dict]:
         seen.add(p["id"])
         if p.get("host", "site") not in ("site", "artifact"):
             raise SpecError(f"{path}: host は site か artifact です: {p['host']!r}")
+        types = p.get("types", ["common"])
+        if not isinstance(types, list) or not types or not all(isinstance(t, str) and NAME_RE.match(t) for t in types):
+            raise SpecError(f"{path}: types は、型の id([a-z0-9-]+)の配列です: {types!r}")
         root = Path(p["root"])
         if root.is_absolute() or ".." in root.parts or p["root"] in (".", ""):
             raise SpecError(f"{path}: root は、リポジトリの中の下位のディレクトリです: {p['root']!r}")
@@ -195,14 +207,13 @@ def _run_steps(page, steps: list[dict]) -> None:
             page.wait_for_timeout(min(int(st["wait"]), 2000))
 
 
-def capture(spec_path: Path, ref: str, out: Path, only: str | None = None) -> dict:
+def _walk(spec_path: Path, ref: str, only: str | None):
+    """撮影定義の面 × 状態を、ブラウザと配信ツリーつきで順に出す。"""
     from playwright.sync_api import sync_playwright
 
     spec_path = spec_path.resolve()
     pages = load_spec(spec_path)
     repo = repo_root(spec_path.parent)
-    out.mkdir(parents=True, exist_ok=True)
-    manifest: dict = {"ref": ref, "spec": str(spec_path), "cells": []}
     with tempfile.TemporaryDirectory(prefix="visual-diff-") as tmp, sync_playwright() as pw:
         browser = pw.chromium.launch(chromium_sandbox=False)
         try:
@@ -219,17 +230,24 @@ def capture(spec_path: Path, ref: str, out: Path, only: str | None = None) -> di
                 for s in p["state"]:
                     if only and ":" in only and only.split(":", 1)[1] != s["name"]:
                         continue
-                    for theme in THEMES:
-                        for width in WIDTHS:
-                            manifest["cells"].append(_shoot(browser, site, p, s, theme, width, stub, out))
+                    yield browser, site, p, s, stub
         finally:
             browser.close()
+
+
+def capture(spec_path: Path, ref: str, out: Path, only: str | None = None, measure: bool = False) -> dict:
+    out.mkdir(parents=True, exist_ok=True)
+    manifest: dict = {"ref": ref, "spec": str(spec_path.resolve()), "cells": []}
+    for browser, site, p, s, stub in _walk(spec_path, ref, only):
+        for theme in THEMES:
+            for width in WIDTHS:
+                manifest["cells"].append(_shoot(browser, site, p, s, theme, width, stub, out, measure))
     (out / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
     return manifest
 
 
-def _shoot(browser, site: Path, p: dict, s: dict, theme: str, width: int, stub: str, out: Path) -> dict:
-    name = cell_name(p["id"], s["name"], theme, width)
+def _open(browser, site: Path, p: dict, s: dict, theme: str, width: int, stub: str):
+    """面の状態を開いた(状態の操作を終えた)ページを返す。呼び出し側が ctx.close() する。"""
     ctx = browser.new_context(
         viewport={"width": width, "height": 800},
         color_scheme=theme,
@@ -240,30 +258,273 @@ def _shoot(browser, site: Path, p: dict, s: dict, theme: str, width: int, stub: 
     )
     blocked: list[str] = []
     errors: list[str] = []
+    dialogs: list[str] = []
+    ctx.route("**/*", _router(site, blocked))
+    page = ctx.new_page()
+    page.on("pageerror", lambda e: errors.append(str(e)[:200]))
+    page.on("dialog", lambda d: (dialogs.append(d.type), d.dismiss()))
+    page.clock.set_fixed_time(p.get("clock", DEFAULT_CLOCK))
+    if p.get("host") == "artifact":
+        page.add_init_script(THEME_SCRIPT % json.dumps(theme))
+    page.add_init_script("window.__VISUAL__ = %s;" % json.dumps(s.get("globals", {})))
+    if stub:
+        page.add_init_script(stub)
+    page.goto(f"{HOST}/{p['entry']}", wait_until="load")
+    page.evaluate("document.fonts ? document.fonts.ready.then(() => true) : true")
+    _run_steps(page, s.get("steps", []))
+    page.wait_for_timeout(200)
+    return ctx, page, blocked, errors, dialogs
+
+
+def _shoot(browser, site: Path, p: dict, s: dict, theme: str, width: int, stub: str, out: Path, measure: bool = False) -> dict:
+    name = cell_name(p["id"], s["name"], theme, width)
+    ctx, page, blocked, errors, dialogs = _open(browser, site, p, s, theme, width, stub)
     try:
-        ctx.route("**/*", _router(site, blocked))
-        page = ctx.new_page()
-        page.on("pageerror", lambda e: errors.append(str(e)[:200]))
-        page.clock.set_fixed_time(p.get("clock", DEFAULT_CLOCK))
-        if p.get("host") == "artifact":
-            page.add_init_script(THEME_SCRIPT % json.dumps(theme))
-        page.add_init_script("window.__VISUAL__ = %s;" % json.dumps(s.get("globals", {})))
-        if stub:
-            page.add_init_script(stub)
-        page.goto(f"{HOST}/{p['entry']}", wait_until="load")
-        page.evaluate("document.fonts ? document.fonts.ready.then(() => true) : true")
-        _run_steps(page, s.get("steps", []))
-        page.wait_for_timeout(200)
         overflow = page.evaluate("document.documentElement.scrollWidth > window.innerWidth + 1")
+        measures = page.evaluate(AUDIT_JS) if measure else None
         page.screenshot(path=str(out / f"{name}.png"), full_page=True, animations="disabled", caret="hide")
         height = page.evaluate("document.documentElement.scrollHeight")
     finally:
         ctx.close()
-    return {
+    cell = {
         "cell": name, "page": p["id"], "state": s["name"], "theme": theme, "width": width,
         "overflow_x": bool(overflow), "height": int(height),
-        "blocked": sorted(set(blocked)), "page_errors": errors,
+        "blocked": sorted(set(blocked)), "page_errors": errors, "dialogs": dialogs,
     }
+    if measures is not None:
+        cell["measures"] = measures
+    return cell
+
+
+# ── 型の要件の検査(audit) ───────────────────────────────────────────────────
+
+# 描画したページの中で動かす測定。コントラストは、文字を持つ要素ごとに、文字色と背景色(祖先をたどって重ねる)から WCAG 2.2 の式で出す。
+AUDIT_JS = """() => {
+  const cv = document.createElement('canvas'); cv.width = cv.height = 1;
+  const cx = cv.getContext('2d', { willReadFrequently: true });
+  const rgba = (css) => { cx.clearRect(0,0,1,1); cx.fillStyle = '#000'; cx.fillStyle = css; cx.fillRect(0,0,1,1); const d = cx.getImageData(0,0,1,1).data; return [d[0], d[1], d[2], d[3]/255]; };
+  const lin = (c) => { c /= 255; return c <= 0.03928 ? c/12.92 : Math.pow((c+0.055)/1.055, 2.4); };
+  const lum = (c) => 0.2126*lin(c[0]) + 0.7152*lin(c[1]) + 0.0722*lin(c[2]);
+  const ratio = (a, b) => { const x = lum(a), y = lum(b); return (Math.max(x,y)+0.05)/(Math.min(x,y)+0.05); };
+  const over = (top, bot) => { const a = top[3] + bot[3]*(1-top[3]); if (a === 0) return [0,0,0,0]; const f = (i) => (top[i]*top[3] + bot[i]*bot[3]*(1-top[3]))/a; return [f(0), f(1), f(2), a]; };
+  const probe = document.createElement('div'); probe.style.cssText = 'position:fixed;left:-9999px;background-color:Canvas'; document.body.appendChild(probe);
+  const canvasColor = rgba(getComputedStyle(probe).backgroundColor); probe.remove();
+  const visible = (el) => { const r = el.getBoundingClientRect(); if (!r.width || !r.height) return false; const s = getComputedStyle(el); return s.visibility !== 'hidden' && s.display !== 'none'; };
+  const bgOf = (el) => { const chain = []; for (let e = el; e; e = e.parentElement) { const c = rgba(getComputedStyle(e).backgroundColor); chain.push(c); if (c[3] >= 0.99) break; } let acc = canvasColor; for (let i = chain.length-1; i >= 0; i--) acc = over(chain[i], acc); return acc; };
+  const label = (el) => el.tagName.toLowerCase() + (el.id ? '#' + el.id : '') + (typeof el.className === 'string' && el.className.trim() ? '.' + el.className.trim().split(/\\s+/)[0] : '');
+  const texts = [], seen = new Set(), walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+  while (walker.nextNode()) { const n = walker.currentNode; if (!n.nodeValue.trim()) continue; const el = n.parentElement;
+    if (!el || seen.has(el) || ['SCRIPT','STYLE','NOSCRIPT','OPTION'].includes(el.tagName) || !visible(el)) continue; seen.add(el); texts.push(el); }
+  const fails = []; let failCount = 0;
+  for (const el of texts) { const s = getComputedStyle(el); if (el.closest('[disabled]')) continue;
+    const fg0 = rgba(s.color), bg = bgOf(el); let op = 1; for (let e = el; e; e = e.parentElement) op *= parseFloat(getComputedStyle(e).opacity);
+    const r = ratio(over([fg0[0], fg0[1], fg0[2], fg0[3]*op], bg), bg);
+    const px = parseFloat(s.fontSize), large = px >= 24 || (px >= 18.66 && parseInt(s.fontWeight, 10) >= 700);
+    if (r < (large ? 3 : 4.5)) { failCount++; if (fails.length < 8) fails.push({ el: label(el), text: el.textContent.trim().slice(0, 24), ratio: Math.round(r*100)/100, px: px }); } }
+  const small = [], smallLinks = [];
+  for (const el of document.querySelectorAll('button, a[href], input:not([type=hidden]), select, textarea, summary, [role=button], [role=tab], [role=radio], [role=checkbox]')) {
+    if (!visible(el) || el.disabled) continue; const s = getComputedStyle(el);
+    if (el.tagName === 'A' && s.display === 'inline' && el.parentElement && el.parentElement.textContent.trim().length > el.textContent.trim().length + 8) continue;
+    // ラベルで囲まれた(ラベルに結びついた)ラジオ・チェックボックスは、押せる範囲がラベルの行全体になる(WCAG 2.5.8 の「対象」)
+    const r = (el.tagName === 'INPUT' && el.labels && el.labels.length) ? el.labels[0].getBoundingClientRect() : el.getBoundingClientRect(), m = Math.min(r.width, r.height);
+    if (m < 24) (el.tagName === 'A' ? smallLinks : small).push({ el: label(el), w: Math.round(r.width), h: Math.round(r.height) }); }
+  return {
+    lang: document.documentElement.lang || '', title: (document.title || '').trim(), viewport: !!document.querySelector('meta[name=viewport]'),
+    mains: document.querySelectorAll('main, [role=main]').length, h1s: document.querySelectorAll('h1').length,
+    contrastFailCount: failCount, contrastFails: fails,
+    smallControlCount: small.length, smallControls: small.slice(0, 6), smallLinkCount: smallLinks.length, smallLinks: smallLinks.slice(0, 6),
+    mainButtons: Array.from(document.querySelectorAll('.btn-main')).filter(visible).length,
+    checkedRadios: document.querySelectorAll('input[type=radio]:checked').length,
+  };
+}"""
+
+KEYBOARD_FOCUS_JS = """(i) => {
+  const bs = Array.from(document.querySelectorAll('button:not([disabled])')).filter((b) => { const r = b.getBoundingClientRect(); return r.width > 0 && r.height > 0 && getComputedStyle(b).visibility !== 'hidden'; });
+  const b = bs[i]; if (!b) return null;
+  b.scrollIntoView({ block: 'center' }); b.focus(); window.__kb = 0; b.addEventListener('click', () => { window.__kb++; });
+  return { label: (b.id ? '#' + b.id : (b.textContent || '').trim().slice(0, 16)), focused: document.activeElement === b };
+}"""
+
+KEYBOARD_COUNT_JS = """() => Array.from(document.querySelectorAll('button:not([disabled])')).filter((b) => { const r = b.getBoundingClientRect(); return r.width > 0 && r.height > 0 && getComputedStyle(b).visibility !== 'hidden'; }).length"""
+
+KEYBOARD_BUTTONS_PER_STATE = 4
+CONFIRM_RE = re.compile(r"\bconfirm\s*\(")
+
+
+def load_types(path: Path) -> dict[str, dict]:
+    """page-types.toml を読む。キーは閉じていて、検査の種別と名前は閉語彙。型の id → {title, requirements} を返す。"""
+    try:
+        data = tomllib.loads(path.read_text(encoding="utf-8"))
+    except (OSError, tomllib.TOMLDecodeError) as e:
+        raise SpecError(f"{path}: 読めません({e})") from e
+    extra = set(data) - {"type"}
+    if extra:
+        raise SpecError(f"{path}: 知らないキー {sorted(extra)}")
+    out: dict[str, dict] = {}
+    seen_reqs: set[str] = set()
+    for t in data.get("type") or []:
+        extra = set(t) - {"id", "title", "requirement"}
+        if extra:
+            raise SpecError(f"{path}: type に知らないキー {sorted(extra)}")
+        if not NAME_RE.match(str(t.get("id", ""))) or not isinstance(t.get("title"), str) or not t["title"]:
+            raise SpecError(f"{path}: type には id([a-z0-9-]+)と title が要ります: {t.get('id')!r}")
+        if t["id"] in out:
+            raise SpecError(f"{path}: type.id が重複しています: {t['id']}")
+        reqs = []
+        for r in t.get("requirement") or []:
+            extra = set(r) - {"id", "text", "check", "audit"}
+            if extra:
+                raise SpecError(f"{path}: requirement に知らないキー {sorted(extra)}")
+            if not REQ_ID_RE.match(str(r.get("id", ""))):
+                raise SpecError(f"{path}: requirement.id の形が違います: {r.get('id')!r}")
+            if r["id"] in seen_reqs:
+                raise SpecError(f"{path}: requirement.id が重複しています: {r['id']}")
+            seen_reqs.add(r["id"])
+            if not isinstance(r.get("text"), str) or not r["text"]:
+                raise SpecError(f"{path}: {r['id']} に text がありません")
+            if r.get("check") not in CHECKS:
+                raise SpecError(f"{path}: {r['id']} の check は {CHECKS} のどれか: {r.get('check')!r}")
+            if (r["check"] == "audit") != ("audit" in r):
+                raise SpecError(f"{path}: {r['id']}: audit の名前は、check = \"audit\" の要件だけが持ちます")
+            if "audit" in r and r["audit"] not in AUDITS:
+                raise SpecError(f"{path}: {r['id']} の audit は {AUDITS} のどれか: {r['audit']!r}")
+            reqs.append(r)
+        out[t["id"]] = {"title": t["title"], "requirements": reqs}
+    if "common" not in out:
+        raise SpecError(f"{path}: 型 common がありません")
+    audited = {r["audit"] for t in out.values() for r in t["requirements"] if "audit" in r}
+    unused = set(AUDITS) - audited
+    if unused:
+        raise SpecError(f"{path}: どの要件にも結びついていない検査があります: {sorted(unused)}")
+    return out
+
+
+def cell_findings(cell: dict, host: str, audits: set[str]) -> list[tuple[str, str]]:
+    """撮った 1 セルの測定から、(検査の名前, 違反の説明) を作る。測定だけを見る純粋関数(ブラウザ無しで試験できる)。"""
+    m = cell.get("measures") or {}
+    out: list[tuple[str, str]] = []
+
+    def add(audit: str, detail: str) -> None:
+        if audit in audits:
+            out.append((audit, detail))
+
+    if host != "artifact":  # Artifact の断片は、ホストの殻が lang と viewport を与える
+        if not m.get("lang"):
+            add("document", "`<html lang>` が空")
+        if not m.get("viewport"):
+            add("document", "viewport の `<meta>` が無い")
+    if not m.get("title"):
+        add("document", "`<title>` が空")
+    if m.get("mains") != 1:
+        add("document", f"`<main>` が {m.get('mains')} 個(1 個だけ)")
+    if not m.get("h1s"):
+        add("document", "`<h1>` が無い")
+    if m.get("contrastFailCount"):
+        worst = min(m["contrastFails"], key=lambda f: f["ratio"])
+        add("contrast", f"基準に届かない文字が {m['contrastFailCount']} 件。最悪は {worst['el']}「{worst['text']}」の {worst['ratio']}:1({worst['px']:g}px)")
+    n_small = m.get("smallControlCount", 0) + m.get("smallLinkCount", 0)
+    if n_small:
+        first = (m.get("smallControls") or m.get("smallLinks") or [{}])[0]
+        add("targets", f"24px 未満の操作部が {n_small} 件(例: {first.get('el')} {first.get('w')}×{first.get('h')})")
+    if m.get("smallLinkCount"):
+        first = m["smallLinks"][0]
+        add("links", f"24px 未満のリンクが {m['smallLinkCount']} 件(例: {first['el']} {first['w']}×{first['h']})")
+    if cell.get("width") == 390 and cell.get("overflow_x"):
+        add("overflow", "幅 390px で横スクロールが出る")
+    if cell.get("blocked"):
+        add("third-party", f"第三者への要求 {len(cell['blocked'])} 件(例: {cell['blocked'][0]})")
+    if m.get("mainButtons", 0) > 1:
+        add("main-button", f"主操作(`.btn-main`)が {m['mainButtons']} 個")
+    if cell.get("state") == "initial" and m.get("checkedRadios"):
+        add("default-choice", f"初期状態で選択済みのラジオが {m['checkedRadios']} 個")
+    if "confirm" in (cell.get("dialogs") or []):
+        add("confirm", "確認ダイアログ(`confirm`)が開いた")
+    return out
+
+
+def _keyboard_findings(browser, site: Path, p: dict, s: dict, stub: str) -> list[str]:
+    """ボタンにフォーカスして Enter・Space を押し、ボタンが押されるかを見る(ショートカットが標準のキー操作を奪わないか)。
+    違反の説明は状態を含まない(状態は、違反を出した場所として別に持つ)。"""
+    out: list[str] = []
+    ctx, page, *_ = _open(browser, site, p, s, "light", 1280, stub)
+    try:
+        n = min(int(page.evaluate(KEYBOARD_COUNT_JS)), KEYBOARD_BUTTONS_PER_STATE)
+    finally:
+        ctx.close()
+    for i in range(n):
+        for key in ("Enter", "Space"):
+            ctx, page, *_ = _open(browser, site, p, s, "light", 1280, stub)
+            try:
+                info = page.evaluate(KEYBOARD_FOCUS_JS, i)
+                if not info or not info["focused"]:
+                    continue
+                page.keyboard.press(key)
+                page.wait_for_timeout(100)
+                if page.evaluate("window.__kb") == 0:
+                    out.append(f"ボタン「{info['label']}」にフォーカスして {key} を押しても、押されない")
+            finally:
+                ctx.close()
+    return out
+
+
+def run_audit(spec_path: Path, types_path: Path, ref: str, only: str | None = None) -> dict:
+    types = load_types(types_path)
+    pages = {p["id"]: p for p in load_spec(spec_path)}
+    for p in pages.values():
+        unknown = [t for t in p.get("types", ["common"]) if t not in types]
+        if unknown:
+            raise SpecError(f"{p['id']}: types に、{types_path.name} に無い型 {unknown}")
+    report: dict = {"ref": ref, "pages": []}
+    cur: dict | None = None
+    cells_by_page: dict[str, list] = {}
+    keyboard_by_page: dict[str, list[tuple[str, str]]] = {}
+    texts_by_page: dict[str, str] = {}
+    for browser, site, p, s, stub in _walk(spec_path, ref, only):
+        reqs = [r for t in p.get("types", ["common"]) for r in types[t]["requirements"]]
+        audits = {r["audit"] for r in reqs if r["check"] == "audit"}
+        texts_by_page[p["id"]] = (site / p["entry"]).read_text(encoding="utf-8", errors="replace")
+        with tempfile.TemporaryDirectory(prefix="visual-audit-") as shots:
+            for theme in THEMES:
+                for width in WIDTHS:
+                    cell = _shoot(browser, site, p, s, theme, width, stub, Path(shots), measure=True)
+                    cells_by_page.setdefault(p["id"], []).append((cell, audits))
+        if "keyboard" in audits:
+            keyboard_by_page.setdefault(p["id"], []).extend(
+                (detail, s["name"]) for detail in _keyboard_findings(browser, site, p, s, stub)
+            )
+    for pid, cells in cells_by_page.items():
+        p = pages[pid]
+        reqs = [r for t in p.get("types", ["common"]) for r in types[t]["requirements"]]
+        by_audit = {r["audit"]: r for r in reqs if r["check"] == "audit"}
+        found: dict[str, dict[str, list[str]]] = {}
+        for cell, audits in cells:
+            for audit, detail in cell_findings(cell, p.get("host", "site"), audits):
+                found.setdefault(audit, {}).setdefault(detail, []).append(cell["cell"])
+        if "confirm" in by_audit and CONFIRM_RE.search(texts_by_page[pid]):
+            found.setdefault("confirm", {}).setdefault("ページのスクリプトが `confirm(` を呼ぶ", []).append("(静的)")
+        for detail, state in keyboard_by_page.get(pid, []):
+            found.setdefault("keyboard", {}).setdefault(detail, []).append(f"状態 {state}")
+        violations = [
+            {"req": by_audit[a]["id"], "text": by_audit[a]["text"], "detail": d, "cells": c}
+            for a, details in found.items() for d, c in details.items()
+        ]
+        violations.sort(key=lambda v: (v["req"], v["detail"]))
+        passed = sorted(r["id"] for r in by_audit.values() if r["audit"] not in found)
+        manual = [{"req": r["id"], "check": r["check"], "text": r["text"]} for r in reqs if r["check"] != "audit"]
+        report["pages"].append({"page": pid, "types": p.get("types", ["common"]), "violations": violations, "passed": passed, "manual": manual})
+    return report
+
+
+def summarize_audit(report: dict) -> str:
+    lines: list[str] = []
+    for pg in report["pages"]:
+        lines.append(f"[{pg['page']}] 型 {', '.join(pg['types'])}: 違反 {len(pg['violations'])} 件 / 通った検査 {len(pg['passed'])} 件({' '.join(pg['passed'])}) / 人が見る {len(pg['manual'])} 件")
+        for v in pg["violations"]:
+            where = "、".join(v["cells"][:3]) + (f" ほか {len(v['cells']) - 3} セル" if len(v["cells"]) > 3 else "")
+            lines.append(f"  違反 {v['req']}: {v['detail']}  [{where}]")
+        manual = " ".join(f"{m['req']}({'WT' if m['check'] == 'walkthrough' else '目視'})" for m in pg["manual"])
+        lines.append(f"  未検査(機械では測れない。人が見る): {manual}")
+    return "\n".join(lines)
 
 
 # ── 差分 ──────────────────────────────────────────────────────────────────────
@@ -560,6 +821,59 @@ def selftest(browser: bool) -> int:
             except SpecError:
                 check(True, f"撮影定義の誤りを落とす: {label}")
 
+        # ページの型の要件(page-types.toml)
+        real_types = Path(__file__).resolve().parents[5] / "config/web/page-types.toml"
+        if real_types.is_file():
+            ty = load_types(real_types)
+            reqs = [r for v in ty.values() for r in v["requirements"]]
+            check(set(ty) == {"common", "study", "form", "dashboard"} and len(reqs) == 38, "実物の page-types.toml を読める(4 つの型・38 の要件)")
+            check({r["audit"] for r in reqs if "audit" in r} == set(AUDITS), "すべての検査が、どれかの要件に結びついている")
+            check(all(r["check"] == "audit" for r in reqs if r["id"] in ("C1", "C2", "C3", "C4", "C9", "C12", "F1", "F2", "F4", "D7")), "機械で測れると宣言した要件は、audit")
+        for label, body in (
+            ("知らないキー", '[[type]]\nid = "common"\ntitle = "c"\nbogus = 1\n'),
+            ("check が語彙の外", '[[type]]\nid = "common"\ntitle = "c"\n[[type.requirement]]\nid = "C1"\ntext = "x"\ncheck = "maybe"\n'),
+            ("walkthrough に audit の名前", '[[type]]\nid = "common"\ntitle = "c"\n[[type.requirement]]\nid = "C1"\ntext = "x"\ncheck = "walkthrough"\naudit = "document"\n'),
+            ("audit の名前が語彙の外", '[[type]]\nid = "common"\ntitle = "c"\n[[type.requirement]]\nid = "C1"\ntext = "x"\ncheck = "audit"\naudit = "magic"\n'),
+            ("audit に名前が無い", '[[type]]\nid = "common"\ntitle = "c"\n[[type.requirement]]\nid = "C1"\ntext = "x"\ncheck = "audit"\n'),
+            ("要件の id が重複", '[[type]]\nid = "common"\ntitle = "c"\n[[type.requirement]]\nid = "C1"\ntext = "x"\ncheck = "visual"\n[[type.requirement]]\nid = "C1"\ntext = "y"\ncheck = "visual"\n'),
+            ("要件の id の形", '[[type]]\nid = "common"\ntitle = "c"\n[[type.requirement]]\nid = "X1"\ntext = "x"\ncheck = "visual"\n'),
+            ("型 common が無い", '[[type]]\nid = "form"\ntitle = "f"\n'),
+            ("どの要件にも結びつかない検査がある", '[[type]]\nid = "common"\ntitle = "c"\n[[type.requirement]]\nid = "C1"\ntext = "x"\ncheck = "visual"\n'),
+        ):
+            bad = t / "bad-types.toml"
+            bad.write_text(body, encoding="utf-8")
+            try:
+                load_types(bad)
+                check(False, f"型の要件の誤りを落とす: {label}")
+            except SpecError:
+                check(True, f"型の要件の誤りを落とす: {label}")
+        good_cell = {
+            "cell": "p--initial--light--390", "state": "initial", "width": 390, "overflow_x": False, "blocked": [], "dialogs": [],
+            "measures": {"lang": "ja", "title": "t", "viewport": True, "mains": 1, "h1s": 1, "contrastFailCount": 0, "contrastFails": [],
+                         "smallControlCount": 0, "smallControls": [], "smallLinkCount": 0, "smallLinks": [], "mainButtons": 1, "checkedRadios": 0},
+        }
+        every = set(AUDITS)
+        check(cell_findings(good_cell, "site", every) == [], "測定が基準を満たすセルは、違反なし")
+        bad_cell = {
+            **good_cell, "overflow_x": True, "blocked": ["https://x.example/a.css"], "dialogs": ["confirm"],
+            "measures": {**good_cell["measures"], "lang": "", "title": "", "viewport": False, "mains": 0, "h1s": 0, "contrastFailCount": 2,
+                         "contrastFails": [{"el": "p", "text": "薄い", "ratio": 2.1, "px": 16}], "smallControlCount": 1,
+                         "smallControls": [{"el": "button#x", "w": 10, "h": 10}], "smallLinkCount": 1, "smallLinks": [{"el": "a", "w": 40, "h": 12}],
+                         "mainButtons": 2, "checkedRadios": 1},
+        }
+        got = {a for a, _ in cell_findings(bad_cell, "site", every)}
+        check(got == every - {"keyboard"}, f"基準を外れた測定は、keyboard 以外のすべての検査が違反を出す({sorted(every - {'keyboard'} - got)} が漏れ)")
+        check(cell_findings(bad_cell, "site", {"contrast"}) == [("contrast", cell_findings(bad_cell, "site", {"contrast"})[0][1])] and len(cell_findings(bad_cell, "site", {"contrast"})) == 1, "面の型が持たない検査は、違反に数えない")
+        art = {a for a, _ in cell_findings({**bad_cell, "width": 1280}, "artifact", {"document", "overflow"})}
+        check("overflow" not in art, "横スクロールは、幅 390px のセルだけで見る")
+        doc = [d for a, d in cell_findings(bad_cell, "artifact", {"document"})]
+        check(not any("lang" in d or "viewport" in d for d in doc), "Artifact の断片は、lang と viewport を求めない(ホストの殻が与える)")
+        check(any("<main>" in d for d in doc) and any("<h1>" in d for d in doc), "Artifact でも、main と h1 は求める")
+        rc = {**good_cell, "state": "after-pick"}
+        rc["measures"] = {**good_cell["measures"], "checkedRadios": 1}
+        check(cell_findings(rc, "site", {"default-choice"}) == [], "選択済みのラジオは、初期状態だけで違反にする")
+        check(CONFIRM_RE.search("if (confirm('x')) go()") is not None and CONFIRM_RE.search("function confirmAll() {}") is None, "`confirm(` の静的な検出は、confirmAll などを拾わない")
+
         # Before は ref から取り、作業ツリーからは取れない
         repo = t / "repo"
         (repo / "site").mkdir(parents=True)
@@ -600,6 +914,35 @@ def selftest(browser: bool) -> int:
             check(compare(light, dark)["status"] == "changed", "明と暗が実際に描き分けられる")
             check(light.width == 390 and Image.open(t / "c1/t--initial--light--1280.png").width == 1280, "幅は要求どおり(Firefox の 0.75 倍にならない)")
 
+            # 型の要件の検査: わざと悪いページ(番兵)が、すべての検査で落ち、良いページが通る
+            ids = {"C1": "document", "C2": "contrast", "C3": "targets", "C4": "overflow", "C9": "third-party",
+                   "C12": "keyboard", "F1": "main-button", "F2": "default-choice", "F4": "confirm", "D7": "links"}
+            toml_types = '[[type]]\nid = "common"\ntitle = "c"\n' + "".join(
+                f'[[type.requirement]]\nid = "{i}"\ntext = "{a}"\ncheck = "audit"\naudit = "{a}"\n' for i, a in ids.items())
+            (t / "types.toml").write_text(toml_types, encoding="utf-8")
+            (repo / "site/bad.html").write_text(
+                '<!doctype html><title></title><style>body{margin:0;background:#fff;color:#bbb}.wide{width:900px;height:10px;background:#000}</style>'
+                '<p>薄い文字</p><button id="tiny" style="width:10px;height:10px">x</button>'
+                '<button class="btn-main">a</button><button class="btn-main">b</button><input type="radio" name="r" checked>'
+                '<a href="#" style="display:block;height:10px">l</a><div class="wide"></div><img src="https://example.invalid/x.png">'
+                '<button id="steal">steal</button>'
+                "<script>document.addEventListener('keydown',function(e){if(e.target.id==='steal'&&(e.key==='Enter'||e.key===' '))e.preventDefault();});"
+                "if(false){confirm('x');}</script>", encoding="utf-8")
+            (repo / "site/good.html").write_text(
+                '<!doctype html><html lang="ja"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>t</title>'
+                '<main><h1>見出し</h1><p>本文</p><button style="min-height:44px;min-width:44px">ok</button>'
+                '<label style="display:block;min-height:44px"><input type="radio" name="q">ラベルで囲まれた小さいラジオ(行全体が押せる)</label></main>', encoding="utf-8")
+            (repo / "visual.toml").write_text(
+                '[[page]]\nid = "bad"\nroot = "site"\nentry = "bad.html"\n[[page]]\nid = "good"\nroot = "site"\nentry = "good.html"\n', encoding="utf-8")
+            rep = run_audit(repo / "visual.toml", t / "types.toml", "WORKTREE")
+            by = {pg["page"]: pg for pg in rep["pages"]}
+            got = {v["req"] for v in by["bad"]["violations"]}
+            check(got == set(ids), f"悪いページは、10 の検査のすべてで落ちる(漏れ: {sorted(set(ids) - got)})")
+            check(by["good"]["violations"] == [] and sorted(by["good"]["passed"]) == sorted(ids), "良いページは、10 の検査のすべてを通る")
+            kb = [v for v in by["bad"]["violations"] if v["req"] == "C12"]
+            keys = sorted(k for v in kb for k in ("Enter", "Space") if k in v["detail"])
+            check(kb and all("steal" in v["detail"] for v in kb) and keys == ["Enter", "Space"], f"キーを奪うボタンだけを、キーの名前つきで拾う(他のボタンは拾わない): {[v['detail'] for v in kb]}")
+
     print("OK" if not fails else f"NG: {len(fails)} 件")
     return 1 if fails else 0
 
@@ -621,6 +964,12 @@ def main(argv: list[str]) -> int:
     d.add_argument("--after", required=True, type=Path)
     d.add_argument("--out", required=True, type=Path)
     d.add_argument("--tolerance", type=int, default=8, help="画素の違いとして数える閾値(0〜255)。既定 8")
+    a = sub.add_parser("audit", help="面が宣言した型の要件のうち、描画した HTML で測れるものを検査する")
+    a.add_argument("--spec", required=True, type=Path)
+    a.add_argument("--types", type=Path, help="page-types.toml(既定: このスクリプトのあるリポジトリの config/web/page-types.toml)")
+    a.add_argument("--ref", default="WORKTREE", help="画面のファイルを取り出す git の ref。既定は作業ツリー")
+    a.add_argument("--only", help="面[:状態] に絞る")
+    a.add_argument("--json", type=Path, help="結果を JSON で書く先")
     g = sub.add_parser("page")
     g.add_argument("--report", required=True, type=Path)
     g.add_argument("--title", required=True)
@@ -647,6 +996,13 @@ def main(argv: list[str]) -> int:
                     print(f"  {cell['cell']}: " + "、".join(notes))
         elif args.cmd == "diff":
             print(summarize(diff_dirs(args.before, args.after, args.out, args.tolerance)))
+        elif args.cmd == "audit":
+            types_path = args.types or Path(__file__).resolve().parents[5] / "config/web/page-types.toml"
+            report = run_audit(args.spec, types_path, args.ref, args.only)
+            print(summarize_audit(report))
+            if args.json:
+                args.json.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+            return 1 if any(pg["violations"] for pg in report["pages"]) else 0
         elif args.cmd == "page":
             report = json.loads(args.report.read_text(encoding="utf-8"))
             urls = json.loads(args.urls.read_text(encoding="utf-8")) if args.urls else None
