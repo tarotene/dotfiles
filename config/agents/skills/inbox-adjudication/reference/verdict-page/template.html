@@ -89,6 +89,8 @@ label.note.must textarea { border-color: var(--accent); border-width: 2px; }
 label.note .warn { color: var(--warn); font-size: 0.8rem; }
 .guidance { background: var(--panel); border: 1px solid var(--rule); border-radius: 6px; padding: 14px 16px; display: grid; gap: 8px; }
 .saved { font-size: 0.78rem; color: var(--muted); font-family: var(--font-mono); }
+.saved[data-s="failed"] { color: var(--warn); font-weight: 700; }
+button.retry { min-height: 44px; padding: 0 12px; font-size: 0.85rem; }
 .draft { background: var(--panel); border: 1px solid var(--rule); border-radius: 6px; padding: 14px 16px; display: grid; gap: 10px; min-width: 0; }
 .draft .asks { margin: 0; padding-left: 1.2em; font-size: 0.85rem; display: grid; gap: 4px; overflow-wrap: anywhere; }
 .draft pre { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font-family: var(--font-body); font-size: 0.9rem; background: var(--ground); border-radius: 4px; padding: 12px; }
@@ -182,6 +184,8 @@ const ITEM = {};           // id -> item
 for (const it of ITEMS) ITEM[it.id] = it;
 let col = null;            // db collection, null when unavailable
 const chain = {};          // id -> Promise, 1 doc 1 write at a time
+const saveSt = {};         // id -> "saving" | "saved" | "failed"。書き込みの結果が返るまで「保存済み」を出さない
+const saveSeq = {};        // id -> 書き込みの連番。後の書き込みが出ているとき、先の結果で表示を変えない
 
 /* 文書 id: 鍵の `:` と `/` を `.` に、`=`(GitHub の鍵の escape。gh-key.jq)を `+` に換える。db の文書 id が許す文字は
    英数字と _ - . ~ : @ + だけで、`=` を残すと GitHub の鍵のカードの答えが 1 件も保存されない(2026-11-18・19 に実測)。
@@ -353,10 +357,11 @@ function paint(id) {
     dl.append(el("dt", null, "あなた"), el("dd", null, o.you), el("dt", null, "私"), el("dd", null, o.agent));
     const row = el("div", "row"); row.append(dl);
     const right = el("div", "bar");
-    right.append(Object.assign(el("span", "saved"), { id: "s-" + id, textContent: s && s.at ? (col ? "保存済み " : "") + hhmm(s.at) : "" }));
+    right.append(Object.assign(el("span", "saved"), { id: "s-" + id }));
     const clr = el("button", "link", "選択を外す"); clr.type = "button"; clr.addEventListener("click", () => clearChoice(it));
     right.append(clr); row.append(right);
     after.append(row);
+    paintSave(id);
   } else {
     after.className = "after hint";
     after.textContent = "選ぶと、あなたと私の分担がここに出ます。";
@@ -490,14 +495,39 @@ document.addEventListener("keydown", e => {
   });
 })();
 
+/* 項目ごとの保存の表示。「保存済み」は書き込みの成功を確かめてから出す。失敗は、その項目の横に、再保存の操作と一緒に出す(UX の型 P1)。
+   db から読み込んだ答えは、保存済みとして扱う(saveSt が未設定のとき)。 */
+function paintSave(id) {
+  const box = document.getElementById("s-" + id), s = state[id]; if (!box) return;
+  box.textContent = ""; box.removeAttribute("data-s");
+  if (!s || !s.at) return;
+  if (!col) { box.textContent = hhmm(s.at); return; }
+  const v = saveSt[id] || "saved";
+  box.dataset.s = v;
+  if (v === "saving") box.textContent = "保存中…";
+  else if (v === "failed") {
+    box.append("保存できませんでした ");
+    const b = el("button", "retry", "もう一度保存"); b.type = "button"; b.addEventListener("click", () => persist(ITEM[id]));
+    box.append(b);
+  } else box.textContent = "保存済み " + hhmm(s.at);
+}
 function persist(it) {
   if (!col) return;
   const s = state[it.id]; if (!s) return;
   const body = { key: it.key, verdict: s.verdict || "", owner: s.owner || "", option: s.option || "", note: s.note || "", at: s.at };
   const ref = col.doc(docId(it.key));
-  const run = () => ref.set(body).catch(e => {
-    const st = document.getElementById("dbstatus"); st.className = "status bad";
-    st.textContent = "保存できませんでした(" + (e && e.code ? e.code : "エラー") + ")。「回答をまとめる」で貼り付けてください。";
+  const seq = saveSeq[it.id] = (saveSeq[it.id] || 0) + 1;
+  saveSt[it.id] = "saving"; paintSave(it.id);
+  const stale = () => saveSeq[it.id] !== seq; /* 後の書き込みが出ているなら、その結果に任せる */
+  const run = () => ref.set(body).then(() => {
+    if (stale()) return;
+    saveSt[it.id] = "saved"; paintSave(it.id);
+    if (!Object.values(saveSt).includes("failed")) { const st = document.getElementById("dbstatus"); if (st.dataset.fail) { st.className = "status"; st.textContent = "保存先に接続しています。選ぶと、次の机か次のセッションが読みます。"; delete st.dataset.fail; } }
+  }).catch(e => {
+    if (stale()) return;
+    saveSt[it.id] = "failed"; paintSave(it.id);
+    const st = document.getElementById("dbstatus"); st.className = "status bad"; st.dataset.fail = "1";
+    st.textContent = "保存できませんでした(" + (e && e.code ? e.code : "エラー") + ")。該当の項目の「もう一度保存」を押すか、「回答をまとめる」で貼り付けてください。";
   });
   chain[it.id] = (chain[it.id] || Promise.resolve()).then(run);
 }
