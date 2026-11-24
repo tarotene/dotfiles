@@ -121,6 +121,7 @@ What runs automatically, when, and on which stack: see the [pipeline map](pipeli
 - [ADR-1700](adr/1700-web-design-system-formalization.md) — デザインの正本は CSS の 1 つのまま、見て確かめる見本ページと、生成した機械可読の値と、1 枚だけの HTML が取り込む区間の pin を足す
 - [ADR-1701](adr/1701-web-page-type-requirements.md) — ページの型の要件は、検査の種別つきのデータに起こし、描画した HTML で測れるものだけを機械で検査し、測れないものを「通った」にしない
 - [ADR-1703](adr/1703-web-selection-order.md) — 部品と振る舞いは、ブラウザ標準 → 共有の部品 → 外部ライブラリの順に選び、対応表を閉じた語彙のデータにして検査する
+- [ADR-0000](adr/0000-web-mobile-and-worst-case-requirements.md) — ページの型の要件に、最悪のデータでの描画・ホバーの囲い・入力欄の文字の大きさ・拡大の禁止を足す
 <!-- END GENERATED -->
 
 ## 運用・調査・設計(`docs/` 直下)

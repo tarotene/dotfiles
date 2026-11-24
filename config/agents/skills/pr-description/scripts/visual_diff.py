@@ -63,6 +63,7 @@ CHECKS = ("audit", "walkthrough", "visual")
 AUDITS = (
     "document", "contrast", "targets", "overflow", "third-party",
     "keyboard", "main-button", "default-choice", "confirm", "links",
+    "hover", "input-size",
 )
 REQ_ID_RE = re.compile(r"^[CLFD][0-9]+$")
 STATE_KEYS = {"name", "globals", "steps"}
@@ -328,7 +329,23 @@ AUDIT_JS = """() => {
     // ラベルで囲まれた(ラベルに結びついた)ラジオ・チェックボックスは、押せる範囲がラベルの行全体になる(WCAG 2.5.8 の「対象」)
     const r = (el.tagName === 'INPUT' && el.labels && el.labels.length) ? el.labels[0].getBoundingClientRect() : el.getBoundingClientRect(), m = Math.min(r.width, r.height);
     if (m < 24) (el.tagName === 'A' ? smallLinks : small).push({ el: label(el), w: Math.round(r.width), h: Math.round(r.height) }); }
+  // `:hover` の規則が、`@media (hover: hover)` の外にあるか(スマートフォンで、タップした要素のホバー表示が残る)。読めないシートは数えない。
+  const hoverRules = [];
+  const walkRules = (rules, gated) => { for (const r of rules) {
+      const g = gated || !!(r.media && /\\(\\s*hover\\s*:\\s*hover\\s*\\)/.test(r.media.mediaText));
+      if (r.selectorText && r.selectorText.indexOf(':hover') >= 0 && !g) hoverRules.push(r.selectorText.slice(0, 40));
+      if (r.cssRules) walkRules(r.cssRules, g); } };
+  for (const sheet of document.styleSheets) { try { walkRules(sheet.cssRules, false); } catch (e) { /* 読めないシートは数えない */ } }
+  // 入力欄の文字が 16px 未満か(iOS Safari は、フォーカスでページを拡大して戻さない)。チェックボックス・ラジオ・ボタン類は文字入力でないので除く。
+  const smallInputs = [];
+  const textual = 'input:not([type=hidden]):not([type=checkbox]):not([type=radio]):not([type=range]):not([type=button]):not([type=submit]):not([type=reset]):not([type=color]):not([type=file]):not([type=image]), select, textarea';
+  for (const el of document.querySelectorAll(textual)) { if (!visible(el)) continue;
+    const px = parseFloat(getComputedStyle(el).fontSize); if (px < 16) smallInputs.push({ el: label(el), px: Math.round(px*10)/10 }); }
+  const vp = document.querySelector('meta[name=viewport]');
   return {
+    viewportContent: vp ? (vp.getAttribute('content') || '') : '',
+    hoverUngatedCount: hoverRules.length, hoverUngated: hoverRules.slice(0, 4),
+    smallInputCount: smallInputs.length, smallInputs: smallInputs.slice(0, 4),
     lang: document.documentElement.lang || '', title: (document.title || '').trim(), viewport: !!document.querySelector('meta[name=viewport]'),
     mains: document.querySelectorAll('main, [role=main]').length, h1s: document.querySelectorAll('h1').length,
     contrastFailCount: failCount, contrastFails: fails,
@@ -349,6 +366,18 @@ KEYBOARD_COUNT_JS = """() => Array.from(document.querySelectorAll('button:not([d
 
 KEYBOARD_BUTTONS_PER_STATE = 4
 CONFIRM_RE = re.compile(r"\bconfirm\s*\(")
+# viewport が拡大を禁じる書き方。`user-scalable=no`(`0` も同じ)と、2 未満の `maximum-scale`。閾値の 2 は、200% の拡大を妨げないことを
+# 基準にした、この検査の判断(mobile-native skill は `user-scalable=no`・`maximum-scale=1` を禁じる。WCAG の条文は、この検査を書いた時点で未参照)。
+ZOOM_BLOCK_RE = re.compile(r"user-scalable\s*=\s*(no|0)\b", re.IGNORECASE)
+MAX_SCALE_RE = re.compile(r"maximum-scale\s*=\s*([0-9.]+)", re.IGNORECASE)
+
+
+def _max_scale_below_two(content: str) -> bool:
+    m = MAX_SCALE_RE.search(content)
+    try:
+        return bool(m) and float(m.group(1)) < 2
+    except ValueError:
+        return False
 
 
 def load_types(path: Path) -> dict[str, dict]:
@@ -413,6 +442,8 @@ def cell_findings(cell: dict, host: str, audits: set[str]) -> list[tuple[str, st
             add("document", "`<html lang>` が空")
         if not m.get("viewport"):
             add("document", "viewport の `<meta>` が無い")
+    if ZOOM_BLOCK_RE.search(m.get("viewportContent") or "") or _max_scale_below_two(m.get("viewportContent") or ""):
+        add("document", "viewport が拡大を禁じている(`user-scalable=no`、または 2 未満の `maximum-scale`)")
     if not m.get("title"):
         add("document", "`<title>` が空")
     if m.get("mains") != 1:
@@ -439,6 +470,12 @@ def cell_findings(cell: dict, host: str, audits: set[str]) -> list[tuple[str, st
         add("default-choice", f"初期状態で選択済みのラジオが {m['checkedRadios']} 個")
     if "confirm" in (cell.get("dialogs") or []):
         add("confirm", "確認ダイアログ(`confirm`)が開いた")
+    if m.get("hoverUngatedCount"):
+        first = (m.get("hoverUngated") or ["?"])[0]
+        add("hover", f"`@media (hover: hover)` に囲まれていない `:hover` の規則が {m['hoverUngatedCount']} 件(例: {first})")
+    if cell.get("width") == 390 and m.get("smallInputCount"):
+        first = (m.get("smallInputs") or [{}])[0]
+        add("input-size", f"文字が 16px 未満の入力欄が {m['smallInputCount']} 件(例: {first.get('el')} {first.get('px')}px)")
     return out
 
 
@@ -826,9 +863,10 @@ def selftest(browser: bool) -> int:
         if real_types.is_file():
             ty = load_types(real_types)
             reqs = [r for v in ty.values() for r in v["requirements"]]
-            check(set(ty) == {"common", "study", "form", "dashboard"} and len(reqs) == 38, "実物の page-types.toml を読める(4 つの型・38 の要件)")
+            check(set(ty) == {"common", "study", "form", "dashboard"} and len(reqs) == 41, "実物の page-types.toml を読める(4 つの型・41 の要件)")
             check({r["audit"] for r in reqs if "audit" in r} == set(AUDITS), "すべての検査が、どれかの要件に結びついている")
-            check(all(r["check"] == "audit" for r in reqs if r["id"] in ("C1", "C2", "C3", "C4", "C9", "C12", "F1", "F2", "F4", "D7")), "機械で測れると宣言した要件は、audit")
+            check(all(r["check"] == "audit" for r in reqs if r["id"] in ("C1", "C2", "C3", "C4", "C9", "C12", "C16", "C17", "F1", "F2", "F4", "D7")), "機械で測れると宣言した要件は、audit")
+            check(any(r["id"] == "C15" and r["check"] == "visual" for r in reqs), "最悪のデータでの描画(C15)は、人が見る要件")
         for label, body in (
             ("知らないキー", '[[type]]\nid = "common"\ntitle = "c"\nbogus = 1\n'),
             ("check が語彙の外", '[[type]]\nid = "common"\ntitle = "c"\n[[type.requirement]]\nid = "C1"\ntext = "x"\ncheck = "maybe"\n'),
@@ -859,7 +897,10 @@ def selftest(browser: bool) -> int:
             "measures": {**good_cell["measures"], "lang": "", "title": "", "viewport": False, "mains": 0, "h1s": 0, "contrastFailCount": 2,
                          "contrastFails": [{"el": "p", "text": "薄い", "ratio": 2.1, "px": 16}], "smallControlCount": 1,
                          "smallControls": [{"el": "button#x", "w": 10, "h": 10}], "smallLinkCount": 1, "smallLinks": [{"el": "a", "w": 40, "h": 12}],
-                         "mainButtons": 2, "checkedRadios": 1},
+                         "mainButtons": 2, "checkedRadios": 1,
+                         "viewportContent": "width=device-width, initial-scale=1, user-scalable=no",
+                         "hoverUngatedCount": 2, "hoverUngated": ["button:hover", ".card:hover"],
+                         "smallInputCount": 1, "smallInputs": [{"el": "textarea", "px": 14}]},
         }
         got = {a for a, _ in cell_findings(bad_cell, "site", every)}
         check(got == every - {"keyboard"}, f"基準を外れた測定は、keyboard 以外のすべての検査が違反を出す({sorted(every - {'keyboard'} - got)} が漏れ)")
@@ -867,12 +908,31 @@ def selftest(browser: bool) -> int:
         art = {a for a, _ in cell_findings({**bad_cell, "width": 1280}, "artifact", {"document", "overflow"})}
         check("overflow" not in art, "横スクロールは、幅 390px のセルだけで見る")
         doc = [d for a, d in cell_findings(bad_cell, "artifact", {"document"})]
-        check(not any("lang" in d or "viewport" in d for d in doc), "Artifact の断片は、lang と viewport を求めない(ホストの殻が与える)")
+        check(not any("`<html lang>` が空" in d or "viewport の `<meta>` が無い" in d for d in doc), "Artifact の断片は、lang と viewport を求めない(ホストの殻が与える)")
+        check(any("拡大を禁じ" in d for d in doc), "Artifact でも、viewport を自分で書いて拡大を禁じるなら違反")
         check(any("<main>" in d for d in doc) and any("<h1>" in d for d in doc), "Artifact でも、main と h1 は求める")
         rc = {**good_cell, "state": "after-pick"}
         rc["measures"] = {**good_cell["measures"], "checkedRadios": 1}
         check(cell_findings(rc, "site", {"default-choice"}) == [], "選択済みのラジオは、初期状態だけで違反にする")
         check(CONFIRM_RE.search("if (confirm('x')) go()") is not None and CONFIRM_RE.search("function confirmAll() {}") is None, "`confirm(` の静的な検出は、confirmAll などを拾わない")
+
+        # viewport の拡大の禁止・ホバー・入力欄の文字の大きさ
+        def doc_findings(viewport: str) -> list[str]:
+            cell = {**good_cell, "measures": {**good_cell["measures"], "viewportContent": viewport}}
+            return [d for a, d in cell_findings(cell, "site", {"document"})]
+
+        check(doc_findings("width=device-width, initial-scale=1") == [], "拡大を禁じない viewport は、違反なし")
+        check(doc_findings("width=device-width, maximum-scale=5") == [], "maximum-scale が 2 以上なら違反にしない")
+        check(any("拡大を禁じ" in d for d in doc_findings("width=device-width, user-scalable=no")), "`user-scalable=no` は違反")
+        check(any("拡大を禁じ" in d for d in doc_findings("width=device-width, user-scalable=0")), "`user-scalable=0` も違反")
+        check(any("拡大を禁じ" in d for d in doc_findings("width=device-width, maximum-scale=1.0")), "2 未満の `maximum-scale` は違反")
+        check(not any("拡大を禁じ" in d for d in doc_findings("width=device-width, user-scalable=yes")), "`user-scalable=yes` は違反にしない")
+        hov = {**good_cell, "measures": {**good_cell["measures"], "hoverUngatedCount": 1, "hoverUngated": ["a:hover"]}}
+        check([a for a, _ in cell_findings(hov, "site", {"hover"})] == ["hover"], "囲いの無い `:hover` は、hover の検査が拾う(幅によらない)")
+        check(cell_findings({**hov, "measures": good_cell["measures"]}, "site", {"hover"}) == [], "`:hover` が無ければ、hover は違反なし")
+        inp = {**good_cell, "measures": {**good_cell["measures"], "smallInputCount": 1, "smallInputs": [{"el": "textarea", "px": 14}]}}
+        check([a for a, _ in cell_findings(inp, "site", {"input-size"})] == ["input-size"], "16px 未満の入力欄は、幅 390px のセルで拾う")
+        check(cell_findings({**inp, "width": 1280}, "site", {"input-size"}) == [], "入力欄の文字の大きさは、幅 390px のセルだけで見る(拡大は小さい画面の挙動)")
 
         # Before は ref から取り、作業ツリーからは取れない
         repo = t / "repo"
@@ -916,7 +976,8 @@ def selftest(browser: bool) -> int:
 
             # 型の要件の検査: わざと悪いページ(番兵)が、すべての検査で落ち、良いページが通る
             ids = {"C1": "document", "C2": "contrast", "C3": "targets", "C4": "overflow", "C9": "third-party",
-                   "C12": "keyboard", "F1": "main-button", "F2": "default-choice", "F4": "confirm", "D7": "links"}
+                   "C12": "keyboard", "C16": "hover", "C17": "input-size", "F1": "main-button", "F2": "default-choice",
+                   "F4": "confirm", "D7": "links"}
             toml_types = '[[type]]\nid = "common"\ntitle = "c"\n' + "".join(
                 f'[[type.requirement]]\nid = "{i}"\ntext = "{a}"\ncheck = "audit"\naudit = "{a}"\n' for i, a in ids.items())
             (t / "types.toml").write_text(toml_types, encoding="utf-8")
@@ -925,7 +986,8 @@ def selftest(browser: bool) -> int:
                 '<p>薄い文字</p><button id="tiny" style="width:10px;height:10px">x</button>'
                 '<button class="btn-main">a</button><button class="btn-main">b</button><input type="radio" name="r" checked>'
                 '<a href="#" style="display:block;height:10px">l</a><div class="wide"></div><img src="https://example.invalid/x.png">'
-                '<button id="steal">steal</button>'
+                '<button id="steal">steal</button><style>button:hover{outline:1px solid red}</style>'
+                '<textarea style="font-size:12px"></textarea>'
                 "<script>document.addEventListener('keydown',function(e){if(e.target.id==='steal'&&(e.key==='Enter'||e.key===' '))e.preventDefault();});"
                 "if(false){confirm('x');}</script>", encoding="utf-8")
             (repo / "site/good.html").write_text(
@@ -937,8 +999,8 @@ def selftest(browser: bool) -> int:
             rep = run_audit(repo / "visual.toml", t / "types.toml", "WORKTREE")
             by = {pg["page"]: pg for pg in rep["pages"]}
             got = {v["req"] for v in by["bad"]["violations"]}
-            check(got == set(ids), f"悪いページは、10 の検査のすべてで落ちる(漏れ: {sorted(set(ids) - got)})")
-            check(by["good"]["violations"] == [] and sorted(by["good"]["passed"]) == sorted(ids), "良いページは、10 の検査のすべてを通る")
+            check(got == set(ids), f"悪いページは、12 の検査のすべてで落ちる(漏れ: {sorted(set(ids) - got)})")
+            check(by["good"]["violations"] == [] and sorted(by["good"]["passed"]) == sorted(ids), "良いページは、12 の検査のすべてを通る")
             kb = [v for v in by["bad"]["violations"] if v["req"] == "C12"]
             keys = sorted(k for v in kb for k in ("Enter", "Space") if k in v["detail"])
             check(kb and all("steal" in v["detail"] for v in kb) and keys == ["Enter", "Space"], f"キーを奪うボタンだけを、キーの名前つきで拾う(他のボタンは拾わない): {[v['detail'] for v in kb]}")
