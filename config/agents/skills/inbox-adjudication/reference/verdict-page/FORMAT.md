@@ -215,17 +215,15 @@ contract 0.2.92、取得 2026-10-30)の冒頭「omitting `capabilities` on a red
 declaration forward unchanged」と、`db` の節「keeps data outside the page」。再公開のあと、`ArtifactData`
 の `list` でコレクション `verdicts` を読み、過去の文書が残っていることを確かめる。
 
-(e) **明暗 2 テーマと幅 400px の目視は、手元で Playwright から行う(CI の対象外。ブラウザが要るため)。**
-`--selftest` は構文とデータの往復までを見る。見た目は次で見る。
+(e) **明暗 2 テーマと幅 390px・1280px の目視は、手元で `visual_diff.py` から行う(CI の対象外。ブラウザが要るため)。**
+`--selftest` は構文とデータの往復までを見る。見た目は、`pr-description` スキル §5b の固定の手順で見る。撮影定義は
+`visual/visual.toml`(合成の `fixtures/valid.items.json` を `build.sh` で組み、`visual/stub.js` が `window.claude` の保存先を疑似する)。
+状態は、初期・選択して保存が成功・選択して保存が失敗の 3 つ。
 
-1. `bash build.sh --data fixtures/valid.items.json --out <絶対パス>/page.html` で組む。
-2. Playwright MCP の `browser_navigate` で `file://<絶対パス>/page.html` を開く。
-3. `browser_resize` で幅 400、高さ 900 にする。
-4. `browser_emulate_media` で `colorScheme` を `light`、続いて `dark` にして、それぞれ `browser_take_screenshot` を撮る。
-5. `browser_evaluate` で `document.documentElement.scrollWidth <= window.innerWidth` が `true`(横スクロールが無い)
-   であることを確かめる。
-6. 確かめるのは、文字がテーマの背景の上で読めること、ボタンと入力欄が幅 400px に収まること、`至急`・`早めに`
-   の項目の色が付くこと。`file://` では `window.claude` が無いので、「保存先に接続できません」と出るのが正しい。
+1. 変更の前に、基準の ref の Before を撮る: `uv run --script <pr-description>/scripts/visual_diff.py capture --spec <この版の visual/visual.toml> --ref <基準の ref> --out <dir>/before`。
+2. 変更の後に、`--ref WORKTREE --out <dir>/after` で撮り、`diff` で Before | After | Diff を出して、本人に見せる。
+3. 確かめるのは、文字がテーマの背景の上で読めること、ボタンと入力欄が幅 390px に収まること(横スクロールは、撮影の出力が「横スクロールあり」と報せる)、
+   `至急`・`早めに` の項目の色が付くこと、保存が失敗する状態で「保存できませんでした」と「もう一度保存」が出ること。
 
 ## 検査の範囲
 

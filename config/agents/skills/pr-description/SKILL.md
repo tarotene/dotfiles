@@ -123,9 +123,9 @@ Before は変更を当てる**前**に撮る。変更後に「そういえば」
 
 | 見た目の面 | 手段 |
 |---|---|
-| Web / HTML(ブラウザで見る画面) | Playwright でスクリーンショット |
-| Web / HTML(Playwright が `file:` を拒否する環境。`Access to "file:" protocol is blocked`) | スクラッチのディレクトリに HTML を置き、`python3 -m http.server <port> --bind 127.0.0.1` を別の呼び出しでバックグラウンドに立て、`http://127.0.0.1:<port>/<ファイル>` を `browser_navigate` で開く。db などを呼ぶページは、スクラッチ側のコピーの先頭に疑似の差し込み(例: `window.claude` の疑似)を足し、リポジトリの本物のファイルは変えない。スクリーンショットの保存先は、許可された範囲(作業ツリーと `.playwright-mcp/`)に限られ、スクラッチの絶対パスは拒否されるので、作業ツリー内の相対パスで撮る。`gh --attach` でアップロードしたら、サーバーを止め、撮った画像と `.playwright-mcp/` の中身(ページの本文や電話番号などの本人情報を含みうる)を消し、`git status` に未追跡のファイルが無いことを確かめる。**sandbox の中で立てたサーバーに、Playwright のブラウザが届かないことがある**(2026-11-19、`NS_ERROR_CONNECTION_REFUSED` で、`file:` も拒否された。3 回試して node での実行に替えた)。サーバーを sandbox の外で立てれば届くかは未確認。届かないときは、立てた手順と拒否を記録して、別の手段(下の Chrome の行、または後続 Issue への払い出し)へ進む |
-| Web / HTML(Playwright が使えない環境) | headless Chrome 直叩きにフォールバックする。Chrome は sandbox の中では Unix ソケットを作れず落ちるので、`google-chrome --headless=new *` は sandbox の除外コマンドで、外で動く(`home/modules/claude.nix`、#1334)。外では全権限で動くので、毎回 ask の確認が出る。承認を待つ前提で呼ぶ。除外は呼び出し全体の一致で決まるので、`google-chrome` は単体で呼ぶ(`mktemp` や `rm` を連結しない)。プロファイルの置き場は先に別の Bash 呼び出しで `mktemp -d` して、出力されたパスを次の呼び出しへ文字で渡す: `google-chrome --headless=new --screenshot=out.png --window-size=W,H --hide-scrollbars --user-data-dir=<mktemp の出力> file:///path/to/page.html`。`--hide-scrollbars` を忘れるとビューポートより大きい要素でスクロールバーが写り込む。`--user-data-dir` は毎回 `mktemp -d` で使い捨てにする — 固定プロファイルを使い回すと、ファイル更新後に撮り直しても古い内容がキャッシュされたまま再レンダリングされることがある。`$(mktemp -d)` をコマンド行に直接埋め込まない: シェルを介さない呼び出し(Python の `subprocess` に渡す引数リスト、Node の `spawn` の引数配列、Playwright の `launch` の `args` など)では展開されず、`$(mktemp -d)` という名前のディレクトリがカレントに作られて、Cookie や履歴を含むプロファイルごとコミットされる事故になる。撮影後は `rm -rf <プロファイルのパス>` で消し、`git status` に未追跡のディレクトリが出ていないことを確かめる |
+| Web / HTML(ブラウザで見る画面) | **§5b の固定の手順**(`scripts/visual_diff.py`)で撮る。Before | After | Diff を並べ、本人に見せる。下の 2 行は、このスクリプトが使えない環境の代替 |
+| (§5b が使えないとき)Web / HTML(Playwright が `file:` を拒否する環境。`Access to "file:" protocol is blocked`) | スクラッチのディレクトリに HTML を置き、`python3 -m http.server <port> --bind 127.0.0.1` を別の呼び出しでバックグラウンドに立て、`http://127.0.0.1:<port>/<ファイル>` を `browser_navigate` で開く。db などを呼ぶページは、スクラッチ側のコピーの先頭に疑似の差し込み(例: `window.claude` の疑似)を足し、リポジトリの本物のファイルは変えない。スクリーンショットの保存先は、許可された範囲(作業ツリーと `.playwright-mcp/`)に限られ、スクラッチの絶対パスは拒否されるので、作業ツリー内の相対パスで撮る。`gh --attach` でアップロードしたら、サーバーを止め、撮った画像と `.playwright-mcp/` の中身(ページの本文や電話番号などの本人情報を含みうる)を消し、`git status` に未追跡のファイルが無いことを確かめる。**sandbox の中で立てたサーバーに、Playwright のブラウザが届かないことがある**(2026-11-19、`NS_ERROR_CONNECTION_REFUSED` で、`file:` も拒否された。3 回試して node での実行に替えた)。サーバーを sandbox の外で立てれば届くかは未確認。届かないときは、立てた手順と拒否を記録して、別の手段(下の Chrome の行、または後続 Issue への払い出し)へ進む |
+| (§5b が使えないとき)Web / HTML(Playwright が使えない環境) | headless Chrome 直叩きにフォールバックする。Chrome は sandbox の中では Unix ソケットを作れず落ちるので、`google-chrome --headless=new *` は sandbox の除外コマンドで、外で動く(`home/modules/claude.nix`、#1334)。外では全権限で動くので、毎回 ask の確認が出る。承認を待つ前提で呼ぶ。除外は呼び出し全体の一致で決まるので、`google-chrome` は単体で呼ぶ(`mktemp` や `rm` を連結しない)。プロファイルの置き場は先に別の Bash 呼び出しで `mktemp -d` して、出力されたパスを次の呼び出しへ文字で渡す: `google-chrome --headless=new --screenshot=out.png --window-size=W,H --hide-scrollbars --user-data-dir=<mktemp の出力> file:///path/to/page.html`。`--hide-scrollbars` を忘れるとビューポートより大きい要素でスクロールバーが写り込む。`--user-data-dir` は毎回 `mktemp -d` で使い捨てにする — 固定プロファイルを使い回すと、ファイル更新後に撮り直しても古い内容がキャッシュされたまま再レンダリングされることがある。`$(mktemp -d)` をコマンド行に直接埋め込まない: シェルを介さない呼び出し(Python の `subprocess` に渡す引数リスト、Node の `spawn` の引数配列、Playwright の `launch` の `args` など)では展開されず、`$(mktemp -d)` という名前のディレクトリがカレントに作られて、Cookie や履歴を含むプロファイルごとコミットされる事故になる。撮影後は `rm -rf <プロファイルのパス>` で消し、`git status` に未追跡のディレクトリが出ていないことを確かめる |
 | 図(SVG)を PNG にして添付したい | `rsvg-convert -o out.png in.svg`(librsvg。`home/modules/packages.nix`、#1334)。ブラウザを使わないので sandbox の中で動き、承認も要らない。幅を指定するなら `-w <px>`、背景を白にするなら `-b white`。`rsvg-convert` が無い機体(darwin、`hms` 前)は、下の SVG の行のとおり SVG のまま添付するか、上の Chrome の行を使う |
 | ローカルの画像/SVG ファイル(実描画範囲がキャンバス全体より小さい場合を含む) | ファイルが最終成果物ならそのまま添付する。SVG で余白が大きい場合は `viewBox`/`width`/`height` から実寸を読み取って撮影ウィンドウを合わせるか、実描画内容のバウンディングボックスを計算して Pillow 等で最終クロップする(bbox 計算手段がリポジトリ側にあればそれを流用する) |
 | ターミナル出力の見た目(プロンプト、statusline、コマンド出力の色/レイアウト) | ANSI 出力を画像化するツール(`cmd \| freeze -l txt -o out.svg` のように、パイプで受けた出力を画像化できるものを選ぶ — 変更前に保存しておいた出力から後で画像化できるのが利点。出力形式は SVG か WebP を使う。charm-freeze はホストによっては PNG エンコーダがクラッシュすることがある) |
@@ -147,6 +147,32 @@ LLM で撮り切れる範囲は極力撮り切り、「要確認」は人間に�
   渡すと、受け取った人が「意味が取れない」と指摘する事例があった。本人が見るべき確認
   (内容が伝わるか、言い過ぎが無いか)を後続 Issue に払い出してよいが、作成者の確認の
   代わりにしない。
+
+### 5b. 見た目の変更は、固定の手順で撮り、Before | After | Diff を本人に見せる(ADR-1698)
+
+画面(HTML・Artifact の雛形)の見た目を変える変更は、散文の手順でなく、次の固定の手順で撮る。撮影・差分・並べたページの生成は
+`scripts/visual_diff.py`(`uv run --script`。PEP 723 で依存を宣言する。使い方は冒頭の docstring)が担う。理由は、手で撮ると
+(1) 変更の後に Before を撮り損ねる、(2) 明が効かない・幅が 0.75 倍になる Firefox の制約(`docs/agents/personal-web-app.md` §7)に
+当たる、(3) 初期状態だけを撮って失敗・押下の状態の問題を拾えない、(4) 差が小さくて本人が読めない、からである。
+
+1. **着手前に Before を撮る。** 面のデータの隣に撮影定義 `visual.toml` を置き(無ければ、先に書く。例は裁定ページの
+   `reference/verdict-page/visual/visual.toml`)、`visual_diff.py capture --spec <visual.toml> --ref <基準の ref> --out <dir>/before`。
+   画面のファイルは**基準の ref から取り出す**ので、変更後に Before を撮れない。stacked PR では、基準 = 直前の段のブランチ。
+2. 実装する。
+3. **After を撮り、Diff を出す。** `capture --ref WORKTREE --out <dir>/after`、続けて `diff --before <dir>/before --after <dir>/after --out <dir>/diff`。
+   撮る行列は固定: 明・暗 × 幅 390px・1280px × 撮影定義の状態(初期・データあり・押下・失敗・空)。**初期状態だけで撮り終えない。**
+   画面に差し込むデータは合成データだけ(実データを撮影定義に置かない)。出力: セルごとの Before | After | Diff(赤が変わった画素)と、
+   高い画像には変更箇所の切り出し、`report.json`。差の無いセルは「差なし」と出る(見た目を変えない整理の証跡にもなる)。
+4. **本人に見せる。** `page --report <dir>/diff/report.json --title <題> --out <公開用の置き場>/index.html` で並べたページを作り、
+   画像(`*.png`)と一緒に `publish_files` で非公開の Artifact として公開し、**リンクをチャットに出す**。公開用の置き場は、パスに
+   ユーザー名を含まない場所(`$TMPDIR` の直下など。`publish_files` は非公開名を含むパスを拒否する)。リンクを出したあとは、本人の
+   返事を待たずに次へ進む(NG は PR 上で受ける)。リポジトリ外の Artifact の描画確認(§5a)は、この手順で本人が許可している。
+5. **PR に添付する。** `## Before / After` に、差があるセルの画像(切り出し)を `gh --attach` で貼り、Artifact のリンクと、差なしのセルの
+   一覧を書く。基準が無い新規の面は「Before: なし(理由)」。
+6. 撮影中に出た注意(遮断した第三者への要求・ページのエラー・横スクロール)は、報告に載せる。
+
+撮影は Chromium で行い、sandbox の中で動く(2026-11-24、`--selftest --browser` で、決定的な再現・明暗の描き分け・幅を確かめた)。
+`visual_diff.py --selftest`(ブラウザ無し)は CI が走らせる。設計の根拠と限界は `docs/agents/visual-diff.md`。
 
 ## 6. 要確認の粒度と後続 Issue への払い出し
 
@@ -292,7 +318,7 @@ composite action の入力)を列挙して、検証に書く。リポジトリ�
 - **意味的完成**(この本文の完成条件): ビジュアルが絡む変更では、Before と After の**両方**の証跡を載せる。コードブロック対比でも同様に両方を含める。Before が存在しない正当ケースのみ、After単独 + 「Before: なし(<理由>)」の明記で足りるとする。
 - **機械的下限**(`G_visual` が実際に検査する条件、3択のOR): (a) アップロード済み画像(ローカルパスのままの画像記法は数えない)、(b) `## Before / After` 見出し配下の fenced code block、(c) `No-Visual: <理由>`。この3つのいずれかを満たせば `G_visual` は通る。
 
-`G_visual` を通ることは必要条件であって、完成の定義そのものではない。ペア性(Before/Afterが揃っているか)はゲートが検査しないので、上の意味的完成の基準を自分で満たす。
+`G_visual` を通ることは必要条件であって、完成の定義そのものではない。ペア性(Before/Afterが揃っているか)はゲートが検査しないので、上の意味的完成の基準を自分で満たす。画面の変更では、§5b の固定の手順が「揃っている」の定義になる(Before は基準の ref から取り出したもの、After は作業ツリー、Diff と差なしの一覧、本人に見せた Artifact のリンク)。
 
 事例は `cases.md` を参照。追記時のサニタイズ規則は `agent-tooling-authoring` を参照。
 

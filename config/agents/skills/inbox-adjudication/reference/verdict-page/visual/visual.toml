@@ -1,0 +1,25 @@
+# 裁定ページの撮影定義(visual_diff.py。手順は pr-description スキル §5b)。
+# 画面のファイル(template.html・build.sh・fixtures/)は --ref から取り出し、疑似(stub.js)は作業ツリーのものを使う。
+# データは、合成の fixtures/valid.items.json だけ。
+
+[[page]]
+id = "verdict"
+root = "config/agents/skills/inbox-adjudication/reference/verdict-page"
+# 合成データの下書きは、reply-coverage の検査に合格していない。検査は実際の会話の全文を要るので、撮影では常に成功する `true` に差し替える。
+prepare = "REPLY_COVERAGE_BIN=true bash build.sh --data fixtures/valid.items.json --out built.html"
+entry = "built.html"
+stub = "stub.js"
+host = "artifact"
+clock = "2026-01-01T09:00:00+09:00"
+
+[[page.state]]
+name = "initial"
+
+[[page.state]]
+name = "chosen-saved"
+steps = [ { click = "[id^='b-a1-']" }, { wait = 300 } ]
+
+[[page.state]]
+name = "chosen-failed"
+globals = { mode = "fail" }
+steps = [ { click = "[id^='b-a1-']" }, { wait = 300 } ]

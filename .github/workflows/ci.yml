@@ -342,6 +342,11 @@ jobs:
       - name: ci-consumers --selftest
         run: scripts/ci-consumers --selftest
 
+      # visual_diff: 見た目の Before | After | Diff を撮って並べる固定の手順(pr-description スキル §5b、docs/agents/visual-diff.md)。
+      # ブラウザ無しの自己検査だけを走らせる(撮影を伴う `--selftest --browser` は手元)。uv は pipx で版を固定して取る。
+      - name: visual_diff --selftest
+        run: pipx run --spec uv==0.11.21 uv run --script config/agents/skills/pr-description/scripts/visual_diff.py --selftest
+
       # design-pin: 各面が持つ、デザイン正本(config/web/)の複写の固定を検査する共通部品(ADR-1685)。
       - name: design-pin --selftest
         run: bash .github/actions/design-pin/check.sh --selftest
