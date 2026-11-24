@@ -158,6 +158,9 @@ reconcile が次の switch で `~/.claude.json` 側の該当エントリ(認証�
     `--idle-timeout` の既定は、headless では 1 時間(headed は無期限、0.0.83 の `--help`)。
     1 時間呼び出しが無いとブラウザが閉じ、次の呼び出しで起動し直す。起動し直しても、
     同期は走らず、複製のログイン状態は前回のまま。
+- **screenshot を本人に見せるときは、`show-image <screenshot の絶対パス>`(単体で呼ぶ)で手元の別窓に出す。** headless の画面は本人に見えない。
+  `~/.cache/playwright-mcp/` の PNG をそのまま渡せる。終了コード 3(画面が無いセッション、ブラウザが無いホスト)のときは、確認用のページに載せる
+  (`config/agents/reference/browser-operations.md`、`docs/agents/show-image.md`)。
 - **版は pin する。** `@playwright/mcp@latest` のままだと、npx のキャッシュが更新される
   たびに別のサーバーが動く。2026-10-21 の npm の `latest`(0.0.83)に pin し、pin は
   ラッパーの `PLAYWRIGHT_MCP`(`crates/playwright-mcp-launcher/src/lib.rs`)が持つ。上げる
