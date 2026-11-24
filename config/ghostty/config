@@ -1,0 +1,30 @@
+# Ghostty — literal config (ADR-0002, 図・画像を端末のペインに出す: ADR-1694).
+#
+# Ghostty is the outer terminal because it implements the Kitty graphics protocol, which
+# is the only image protocol herdr renders (docs/agents/show-image.md). The values mirror
+# config/alacritty/alacritty.toml so the two look alike while both are declared.
+
+# Catppuccin Mocha (the palette alacritty.toml spells out by hand; Ghostty bundles it).
+theme = Catppuccin Mocha
+
+font-family = FiraCode Nerd Font
+font-size = 13
+# alacritty.toml: offset = { x = 0, y = 1 }
+adjust-cell-height = 1
+
+# alacritty.toml: dimensions 100 x 30, padding 10, dynamic_padding = true.
+window-width = 100
+window-height = 30
+window-padding-x = 10
+window-padding-y = 10
+window-padding-balance = true
+
+# alacritty.toml: opacity = 0.95 and blur = true.
+background-opacity = 0.95
+background-blur = true
+
+cursor-style = underline
+cursor-style-blink = true
+
+# alacritty.toml: Shift+Return sends ESC then carriage return.
+keybind = shift+enter=text:\x1b\r
