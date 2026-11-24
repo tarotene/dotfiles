@@ -174,7 +174,7 @@ LLM で撮り切れる範囲は極力撮り切り、「要確認」は人間に�
    `config/web/page-types.toml`)、`visual_diff.py audit --spec <visual.toml>` を走らせる。描画した HTML で測れる要件(文書の基本・コントラスト・
    操作部の大きさ・横スクロール・第三者への要求・ボタンのキー操作・主操作の数・初期の選択・`confirm`)を、撮影と同じ行列で検査し、違反を
    要件の ID と出たセルつきで出す(違反があれば終了コード 1)。**機械で測れない要件は「未検査(人が見る)」として並ぶ。通ったことにしない。**
-   見た目の変更では、違反が増えていないことを、Before(基準の ref)と After(作業ツリー)の `audit` の出力で比べ、PR の「検証」に書く(ADR-0000)。
+   見た目の変更では、違反が増えていないことを、Before(基準の ref)と After(作業ツリー)の `audit` の出力で比べ、PR の「検証」に書く(ADR-1701)。
 
 撮影は Chromium で行い、sandbox の中で動く(2026-11-24、`--selftest --browser` で、決定的な再現・明暗の描き分け・幅を確かめた)。
 `visual_diff.py --selftest`(ブラウザ無し)は CI が走らせる。設計の根拠と限界は `docs/agents/visual-diff.md`。

@@ -8,7 +8,7 @@
   capture  撮影定義(visual.toml)の全セル(面 × 状態 × 明暗 × 幅)を撮る。画面のファイルは --ref から取り出す
   diff     2 つの撮影ディレクトリを比べ、セルごとに Before | After | Diff の 1 枚と report.json を出す
   page     report.json から、本人に見せる並べたページ(index.html)を作る
-  audit    面が宣言した型(types)の要件のうち、描画した HTML で測れるものを検査する(page-types.toml。ADR-0000)
+  audit    面が宣言した型(types)の要件のうち、描画した HTML で測れるものを検査する(page-types.toml。ADR-1701)
 
 固定の手順は pr-description スキル §5b。要点:
   - Before は **基準の ref から取り出した**ファイルで撮る。作業ツリーからは撮れない(変更後に Before を撮れない形)。
