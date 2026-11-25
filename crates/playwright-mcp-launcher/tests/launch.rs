@@ -125,6 +125,44 @@ fn syncs_default_profile_then_launches_npx_on_clone() {
     assert_eq!(mode, 0o700, "複製は本人だけが読める");
 }
 
+/// `--chrome`: 複製も rsync も使わず、使い捨て(`--isolated`)の Chrome で npx を起動する。
+/// headless は付けない(画面に出す)。Firefox の複製を作らない・触らない。
+#[test]
+fn chrome_form_launches_isolated_chrome_without_clone_or_rsync() {
+    let t = T::new();
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_playwright-mcp-launcher"));
+    let o = cmd
+        .args(["--chrome", "--", "--output-dir", "/o"])
+        .env("PATH", format!("{}:/usr/bin:/bin", t.p("bin").display()))
+        .env("HOME", t.p("home"))
+        .env("RSYNC_LOG", t.p("rsync.log"))
+        .output()
+        .unwrap();
+    assert_eq!(o.status.code(), Some(0), "{}", text(&o.stderr));
+    assert_eq!(
+        text(&o.stdout),
+        "|@playwright/mcp@0.0.83|--browser|chrome|--isolated|--output-dir|/o"
+    );
+    assert!(t.rsync_log().is_empty(), "rsync は呼ばない");
+    assert!(!t.clone_dir().exists(), "複製は作らない");
+}
+
+/// `--chrome` と Firefox の複製の引数は併用できない(複製を持つ Chrome を作らせない)。
+#[test]
+fn chrome_form_refuses_firefox_arguments() {
+    let t = T::new();
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_playwright-mcp-launcher"));
+    let o = cmd
+        .args(["--chrome", "--clone"])
+        .arg(t.clone_dir())
+        .env("PATH", format!("{}:/usr/bin:/bin", t.p("bin").display()))
+        .output()
+        .unwrap();
+    assert_eq!(o.status.code(), Some(2));
+    assert!(text(&o.stdout).is_empty(), "npx は起動しない");
+    assert!(!t.clone_dir().exists(), "複製は作らない");
+}
+
 /// Linux: PATH の firefox を実体まで解決して `--executable-path` に渡す。
 #[cfg(target_os = "linux")]
 #[test]

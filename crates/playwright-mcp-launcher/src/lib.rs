@@ -34,7 +34,18 @@ pub const EXCLUDES: &[&str] = &[
     "/startupCache/",
 ];
 
-/// コマンドライン。`--` より後ろは npx(Playwright MCP)へ素通しする。
+/// コマンドラインの 2 つの形。`--` より後ろは、どちらも npx(Playwright MCP)へ素通しする。
+///
+/// - `Firefox`: 普段のプロファイルの複製で、ログイン済みの素の Firefox を操作する(既存)。
+/// - `Chrome`(`--chrome`): 複製もログイン状態も持たない、使い捨ての Chrome を画面に出して操作する。
+///   Firefox 用の引数(`--rsync` など)と併用できない型にして、複製を持つ Chrome を表現できなくする。
+#[derive(Debug, PartialEq, Eq)]
+pub enum Cli {
+    Firefox(Args),
+    Chrome { passthrough: Vec<OsString> },
+}
+
+/// Firefox の複製を使う形のコマンドライン。
 #[derive(Debug, PartialEq, Eq)]
 pub struct Args {
     pub rsync: PathBuf,
@@ -45,7 +56,8 @@ pub struct Args {
     pub passthrough: Vec<OsString>,
 }
 
-pub fn parse_args(args: impl IntoIterator<Item = OsString>) -> Result<Args, String> {
+pub fn parse_args(args: impl IntoIterator<Item = OsString>) -> Result<Cli, String> {
+    let mut chrome = false;
     let mut rsync = None;
     let mut clone = None;
     let mut source_profile = None;
@@ -66,6 +78,7 @@ pub fn parse_args(args: impl IntoIterator<Item = OsString>) -> Result<Args, Stri
             Some("--source-profile") => source_profile = Some(value("--source-profile")?),
             Some("--firefox-dir") => firefox_dir = Some(value("--firefox-dir")?),
             Some("--sync-only") => sync_only = true,
+            Some("--chrome") => chrome = true,
             Some("--") => {
                 passthrough.extend(it.by_ref());
                 break;
@@ -73,14 +86,27 @@ pub fn parse_args(args: impl IntoIterator<Item = OsString>) -> Result<Args, Stri
             _ => return Err(format!("知らない引数: {}", a.to_string_lossy())),
         }
     }
-    Ok(Args {
+    if chrome {
+        if rsync.is_some()
+            || clone.is_some()
+            || source_profile.is_some()
+            || firefox_dir.is_some()
+            || sync_only
+        {
+            return Err(
+                "--chrome は Firefox の複製の引数(--rsync・--clone など)と併用できない".into(),
+            );
+        }
+        return Ok(Cli::Chrome { passthrough });
+    }
+    Ok(Cli::Firefox(Args {
         rsync: rsync.ok_or("--rsync が必要(Nix が store パスを渡す)")?,
         clone: clone.ok_or("--clone が必要(複製の置き場)")?,
         source_profile,
         firefox_dir,
         sync_only,
         passthrough,
-    })
+    }))
 }
 
 /// `installs.ini` から、普段使いのプロファイル(`Default=`)を 1 つに決める。
@@ -252,6 +278,20 @@ pub fn npx_args(
     }
     v.push("--user-data-dir".into());
     v.push(clone.as_os_str().to_owned());
+    v.extend(passthrough.iter().cloned());
+    v
+}
+
+/// `--chrome` のときの `npx` の引数。`--isolated` でプロファイルをメモリだけに置く(ディスクに残さず、
+/// ログイン状態も持ち込まない)。`--headless` は付けない(画面に出すのがこの形の目的)。実行ファイルは
+/// Playwright の `chrome` チャンネルの探索に任せる(Linux は `/opt/google/chrome/chrome`)。
+pub fn chrome_npx_args(passthrough: &[OsString]) -> Vec<OsString> {
+    let mut v: Vec<OsString> = vec![
+        PLAYWRIGHT_MCP.into(),
+        "--browser".into(),
+        "chrome".into(),
+        "--isolated".into(),
+    ];
     v.extend(passthrough.iter().cloned());
     v
 }
@@ -460,6 +500,9 @@ mod tests {
             "/o",
         ]))
         .unwrap();
+        let Cli::Firefox(a) = a else {
+            panic!("--chrome 無しは Firefox の形");
+        };
         assert_eq!(a.rsync, PathBuf::from("/r"));
         assert_eq!(a.clone, PathBuf::from("/c"));
         assert_eq!(a.source_profile, Some(PathBuf::from("/s")));
@@ -474,6 +517,42 @@ mod tests {
         assert!(parse_args(os(&["--rsync", "/r"])).is_err());
         assert!(parse_args(os(&["--rsync"])).is_err());
         assert!(parse_args(os(&["--rsync", "/r", "--clone", "/c", "--bogus"])).is_err());
+    }
+
+    #[test]
+    fn parse_args_chrome_form() {
+        let c = parse_args(os(&["--chrome", "--", "--output-dir", "/o"])).unwrap();
+        assert_eq!(
+            c,
+            Cli::Chrome {
+                passthrough: os(&["--output-dir", "/o"])
+            }
+        );
+        // 複製を持つ Chrome は表現できない: Firefox の引数との併用は拒否する。
+        assert!(parse_args(os(&["--chrome", "--rsync", "/r"])).is_err());
+        assert!(parse_args(os(&["--chrome", "--clone", "/c"])).is_err());
+        assert!(parse_args(os(&["--chrome", "--sync-only"])).is_err());
+        assert!(parse_args(os(&["--chrome", "--source-profile", "/s"])).is_err());
+        assert!(parse_args(os(&["--chrome", "--firefox-dir", "/f"])).is_err());
+    }
+
+    #[test]
+    fn chrome_npx_args_shape() {
+        let v = chrome_npx_args(&os(&["--output-dir", "/o"]));
+        assert_eq!(
+            v,
+            os(&[
+                PLAYWRIGHT_MCP,
+                "--browser",
+                "chrome",
+                "--isolated",
+                "--output-dir",
+                "/o",
+            ])
+        );
+        // 画面に出すのが目的なので headless は付けない。使い捨てなので、プロファイルの置き場も渡さない。
+        assert!(!v.contains(&OsString::from("--headless")));
+        assert!(!v.contains(&OsString::from("--user-data-dir")));
     }
 
     #[test]

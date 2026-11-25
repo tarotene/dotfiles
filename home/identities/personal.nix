@@ -112,6 +112,26 @@ in
         "${config.xdg.cacheHome}/playwright-mcp"
       ];
     };
+
+    # 画面に出る、使い捨ての Chrome。デザインの目視(localhost・file://・公開ページ)のために、本人が
+    # 同じ画面で見られるようにする。ログイン状態も複製も持たない(上の `playwright` と役割を分ける。
+    # ログインが要る作業は、上の headless の Firefox を使う)。同じ起動ラッパーの `--chrome` の形で、
+    # @playwright/mcp の版の pin は PLAYWRIGHT_MCP の 1 か所に保つ。`--chrome` は Firefox の複製の
+    # 引数(--rsync・--clone)と併用できない(ラッパー側で拒否する)。
+    #
+    # Chrome は、Firefox の BiDi 版と違い、persistent context の起動時のウィンドウをそのまま使うので、
+    # 窓は 1 つしか出ない(2026-11-26 実測、docs/claude/claude-mcp-servers.md)。--output-dir は
+    # `playwright` と同じ理由(worktree を汚さない)で作業ツリーの外へ逃がす。
+    playwright-chrome = {
+      type = "stdio";
+      command = "${config.home.homeDirectory}/.local/libexec/playwright-mcp-launcher";
+      args = [
+        "--chrome"
+        "--"
+        "--output-dir"
+        "${config.xdg.cacheHome}/playwright-mcp-chrome"
+      ];
+    };
   };
 
   # Git identity — personal (non-secret).
