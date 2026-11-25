@@ -129,7 +129,7 @@ What runs automatically, when, and on which stack: see the [pipeline map](pipeli
 - [ADR-1712](adr/1712-plan-structure-field.md) — 画面の面に触れる計画に、`構造:` の行を要求する(設計の時点の検査)
 - [ADR-1719](adr/1719-impeccable-pinned-skill.md) — 画面のデザインの手順と検出器として、第三者のスキル impeccable を、版を固定して配る
 - [ADR-1722](adr/1722-playwright-chrome-visible.md) — デザインの目視のために、画面に出る使い捨ての Chrome の Playwright を、ログイン用の Firefox と分けて足す
-- [ADR-0000](adr/0000-web-design-world-aircraft-markings.md) — Web の面の全体に通す見た目の世界を「機体のマーキング」に決め、色の役割に `--marker` を足す
+- [ADR-1723](adr/1723-web-design-world-aircraft-markings.md) — Web の面の全体に通す見た目の世界を「機体のマーキング」に決め、色の役割に `--marker` を足す
 <!-- END GENERATED -->
 
 ## 運用・調査・設計(`docs/` 直下)
