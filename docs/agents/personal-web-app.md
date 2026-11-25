@@ -221,7 +221,9 @@ CSS を HTML の中に持つ 1 枚だけの面(Artifact の雛形)は、正本�
     4. **構造の候補が複数あるときは、同じ架空のデータで並べた練習用の画面を、本人が触って選ぶ。** 選んだ結果と理由を、決定文書に残す。
     5. **検査する。** 宣言は `<meta name="page-structure">`・`<meta name="page-axes">`(HTML の `<head>`)に書く。リポジトリ内のすべての HTML に、`web_structures`(`repo-structure-check`)が宣言を要求する。`visual_diff.py audit` の F10 が、描画したページを宣言に突き合わせる(`step` はページ全体が縦にスクロールしない)。画面を作る・変える計画は、`## 先行例との対比` の中に `構造:` の行を書く(ADR-1711 の続きの規則。`plan-precedent-gate`)。
 
-画面を作るときの進め方の選択肢: 対象の固定 → 色・文字・レイアウトの案 → 既定の見た目への寄りの自己批評 → 実装 → 撮って批評、の順(Anthropic の frontend-design の手順)。
+画面を作る・直すときの、見た目の進め方は、第三者のスキル impeccable(https://github.com/pbakaus/impeccable 、Apache-2.0。配備と使い方: [`impeccable.md`](impeccable.md)、決定: ADR-1719)の手順に従う: `shape`(計画のみ。上の構造の選択が先) → 実装 → `critique`(読み取りだけの評価) → `polish`(磨き上げ) → 撮って比べる(`visual_diff.py`)。次の 4 つは、impeccable の助言より優先する: 基準(ADR-1677)、複写して固定した区間(`design-pin`)、第三者の書体・スクリプトの禁止、構造の宣言。
+
+`audit` の検査は、impeccable に置き換えない。最小の違反例と旧版の裁定ページを、`audit` と impeccable の検出器の両方にかけた(2026-11-25)。`keyboard`・`hover`・`input-size`・`targets`・`third-party`・`document` は、impeccable が同じ違反を落とさなかった。`overflow` は、旧版の裁定ページでは当たったが、最小の違反例では当たらなかった。`contrast` は、暗い配色の違反例を impeccable が落とさず、placeholder と `:hover` の状態は impeccable だけが測るので、併用する。`structure` ほかは、上流の 62 ルールに該当するものが見つかっていない(読んだ範囲)。逆に、impeccable の「AI の癖」の 31 ルール(`side-tab`・`nested-cards`・`gradient-text` など)には、手元に該当する検査が無いので、手元の検査との重なりでなく、足りない検査として使う。
 
 未確認: 明るい配色の実際の画面と、スマートフォンの実機での見え方(dotfiles#1664 の記載)。上の 6 の操作の規則を、出力した HTML の検査にするかは、後続の裁定(未実装、意図あり)。
 
