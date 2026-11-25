@@ -564,6 +564,7 @@
   repoConfig,
   bleep,
   frontend-slides,
+  impeccable,
   ...
 }:
 let
@@ -2075,9 +2076,71 @@ let
       ]
   );
 
+  # impeccable: a third-party design skill, deployed outside the `skillRoot`
+  # distribution above (docs/agents/impeccable.md). It is not rewritten to
+  # `user-invocable: false`: its `/impeccable <command>` entry is the point, and
+  # a third-party skill keeps its upstream name and frontmatter
+  # (docs/agents/tooling-conventions.md). Only the skill directory is placed; the
+  # upstream hook, plugin, sub-agents and sign-in are not installed.
+  #
+  # The detector engine is a static binary, pinned at fetch time by the sha256 in
+  # upstream's engine-checksums.txt (pinned by the `impeccable` flake input) instead
+  # of the launcher's first-run download. The launcher finds it on PATH after its
+  # sibling and home-directory candidates (scripts/impeccable, "then `impeccable`
+  # on PATH"), so the wrapper below is the engine. The wrapper also turns off
+  # telemetry, the update check and the Pro engine.
+  impeccableEngineVersion = "0.1.30";
+  impeccableEngineAssets = {
+    x86_64-linux = {
+      asset = "impeccable-linux-x64";
+      sha256 = "7f597329318c8758d05abc9d1bc690123653ee9a78bddeddeeca332cd31abc24";
+    };
+    aarch64-linux = {
+      asset = "impeccable-linux-arm64";
+      sha256 = "c7412ea15dff8c73b4af13ddddb7da3990a9c4f6c7999f24766372257c24734b";
+    };
+    x86_64-darwin = {
+      asset = "impeccable-darwin-x64";
+      sha256 = "7c6a555aad9672408790c767f9ea8ff662aaf3a0662bacc53499a9fccac568a4";
+    };
+    aarch64-darwin = {
+      asset = "impeccable-darwin-arm64";
+      sha256 = "c6728c2859e36c05f952d0fbce96a40b51c7f5d9996c408daae4e9dc0d4cea29";
+    };
+  };
+  impeccableEngineAsset = impeccableEngineAssets.${pkgs.stdenv.hostPlatform.system};
+  # A flat fetch: `executable = true` would switch the fixed-output hash to the NAR
+  # hash, which no longer equals upstream's file sha256. The mode bit is set in a
+  # second derivation.
+  impeccableEngineFile = pkgs.fetchurl {
+    url = "https://github.com/pbakaus/impeccable/releases/download/engine-v${impeccableEngineVersion}/${impeccableEngineAsset.asset}";
+    inherit (impeccableEngineAsset) sha256;
+  };
+  impeccableEngine = pkgs.runCommand "impeccable-engine-${impeccableEngineVersion}" { } ''
+    install -Dm755 ${impeccableEngineFile} "$out/bin/impeccable-engine"
+  '';
+  impeccableCli = pkgs.writeShellScriptBin "impeccable" ''
+    export DO_NOT_TRACK=1 IMPECCABLE_NO_UPDATE_CHECK=1 IMPECCABLE_PRO=off
+    exec ${impeccableEngine}/bin/impeccable-engine "$@"
+  '';
+  # The engine pins above must stay equal to what the pinned skill says: the
+  # version in scripts/VERSION, and every asset's digest in engine-checksums.txt.
+  # Bumping the `impeccable` input without re-pinning these fails at evaluation.
+  impeccableSkillVersion = lib.removeSuffix "\n" (
+    builtins.readFile "${impeccable}/.claude/skills/impeccable/scripts/VERSION"
+  );
+  impeccableChecksums = builtins.readFile "${impeccable}/.claude/skills/impeccable/scripts/engine-checksums.txt";
+
 in
 assert lib.assertMsg (lib.all skillNameMatches skillNames)
   "Agent skill names must match their source directory";
+assert lib.assertMsg (impeccableSkillVersion == impeccableEngineVersion)
+  "impeccable engine pin (${impeccableEngineVersion}) differs from the pinned skill's scripts/VERSION (${impeccableSkillVersion}); re-pin home/modules/agents.nix";
+assert lib.assertMsg
+  (lib.all (
+    pin: lib.hasInfix "${impeccableEngineVersion} ${pin.asset} ${pin.sha256}" impeccableChecksums
+  ) (builtins.attrValues impeccableEngineAssets))
+  "impeccable engine digests differ from engine-checksums.txt of the pinned skill; re-pin home/modules/agents.nix";
 {
   # Merge generated skill entries with the explicit hook/config declarations.
   imports = [
@@ -2539,6 +2602,13 @@ assert lib.assertMsg (lib.all skillNameMatches skillNames)
   # outside the skill discovery roots (presentation-authoring invokes it).
   home.file.".local/share/frontend-slides".source =
     "${frontend-slides}/plugins/frontend-slides/skills/frontend-slides";
+
+  # impeccable: the skill directory (Claude Code, and the shared `.agents` root that
+  # Codex and Copilot read) and the pinned engine on PATH. See the let-binding above
+  # and docs/agents/impeccable.md; hook, plugin and sign-in are not installed.
+  home.file.".claude/skills/impeccable".source = "${impeccable}/.claude/skills/impeccable";
+  home.file.".agents/skills/impeccable".source = "${impeccable}/.agents/skills/impeccable";
+  home.packages = [ impeccableCli ];
 
   # グローバル AGENTS.md(正本): agent 非依存の調査・先行例確認・PR 運用・
   # 生成元明示の方針。Codex CLI(~/.codex/AGENTS.md)・Copilot CLI

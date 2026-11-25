@@ -127,6 +127,7 @@ What runs automatically, when, and on which stack: see the [pipeline map](pipeli
 - [ADR-1710](adr/1710-verdict-page-step-layout.md) — メール裁定ページの構造を、ステップ型(画面の枠・固定の格子・止まったときだけ理由を出す状態行)にし、デザインの正本に従わせる
 - [ADR-1711](adr/1711-page-structure-rules.md) — ページの構造を、課題の性質の軸から選ぶ規則にし、すべての HTML に構造の宣言を要求する
 - [ADR-1712](adr/1712-plan-structure-field.md) — 画面の面に触れる計画に、`構造:` の行を要求する(設計の時点の検査)
+- [ADR-1719](adr/1719-impeccable-pinned-skill.md) — 画面のデザインの手順と検出器として、第三者のスキル impeccable を、版を固定して配る
 <!-- END GENERATED -->
 
 ## 運用・調査・設計(`docs/` 直下)
@@ -207,6 +208,7 @@ What runs automatically, when, and on which stack: see the [pipeline map](pipeli
 - [`agents/herdr-tab-bar-local.md`](agents/herdr-tab-bar-local.md) — herdr-tab-bar-local — タブバー右側に、ホストごとの 1 行を出すスロット
 - [`agents/hook-router.md`](agents/hook-router.md) — hook-router — ツール呼び出しの検査を、1 つの登録にまとめる
 - [`agents/human-task-scheduling.md`](agents/human-task-scheduling.md) — human-task-scheduling — 電話等ハンドオフ作業をカレンダーに反映する判断知識
+- [`agents/impeccable.md`](agents/impeccable.md) — impeccable — 画面のデザインの手順と検出器を、版を固定して配る第三者スキル
 - [`agents/inbox-adjudication.md`](agents/inbox-adjudication.md) — inbox-adjudication — 溜まった受信箱を、返信の裁定から処理する判断知識
 - [`agents/issue-create-guard.md`](agents/issue-create-guard.md) — issue-create-guard — `gh issue create` を、ボールのラベルと本文の先頭行を持たせて作らせる
 - [`agents/issue-index.md`](agents/issue-index.md) — issue-index — 自分に関係する open Issue の索引だけを注入する hook
