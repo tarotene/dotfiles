@@ -26,9 +26,9 @@
 //! 設計と根拠: docs/claude/claude-mcp-servers.md
 
 use playwright_mcp_launcher::{
-    default_profile_from_installs, find_in_path, generation_path, live_owner, lock_owner, npx_args,
-    overlaps, parse_args, parse_generation_pid, plan_generations, process_alive, rsync_args,
-    write_owner, Args, Generation, InstallsError, MAX_GENERATIONS,
+    chrome_npx_args, default_profile_from_installs, find_in_path, generation_path, live_owner,
+    lock_owner, npx_args, overlaps, parse_args, parse_generation_pid, plan_generations,
+    process_alive, rsync_args, write_owner, Args, Cli, Generation, InstallsError, MAX_GENERATIONS,
 };
 use process_control::command_exists;
 use std::fs::{self, DirBuilder, OpenOptions};
@@ -51,15 +51,20 @@ fn fail(msg: impl Into<String>, hint: Option<&str>) -> Failure {
 }
 
 fn main() -> ExitCode {
-    let args = match parse_args(std::env::args_os().skip(1)) {
-        Ok(a) => a,
+    let cli = match parse_args(std::env::args_os().skip(1)) {
+        Ok(c) => c,
         Err(m) => {
             eprintln!("playwright-mcp-launcher: {m}");
             eprintln!("  使い方: --rsync <path> --clone <dir> [--source-profile <dir>] [--firefox-dir <dir>] [--sync-only] [-- <Playwright MCP への引数>]");
+            eprintln!("          --chrome [-- <Playwright MCP への引数>]  (画面に出す使い捨ての Chrome。上の引数とは併用できない)");
             return ExitCode::from(2);
         }
     };
-    match run(args) {
+    let result = match cli {
+        Cli::Firefox(args) => run(args),
+        Cli::Chrome { passthrough } => run_chrome(&passthrough),
+    };
+    match result {
         Ok(code) => code,
         Err(f) => {
             eprintln!("playwright-mcp-launcher: {}", f.msg);
@@ -69,6 +74,21 @@ fn main() -> ExitCode {
             ExitCode::FAILURE
         }
     }
+}
+
+/// 使い捨ての Chrome(`--isolated`、画面に出す)で Playwright MCP を起動する。複製も rsync も使わない。
+fn run_chrome(passthrough: &[std::ffi::OsString]) -> Result<ExitCode, Failure> {
+    if !command_exists("npx") {
+        return Err(fail(
+            "npx が見つからない(mise の node runtime を確認)",
+            None,
+        ));
+    }
+    let err = Command::new("npx")
+        .args(chrome_npx_args(passthrough))
+        .exec();
+    eprintln!("playwright-mcp-launcher: npx の起動に失敗した: {err}");
+    Ok(ExitCode::from(127))
 }
 
 fn run(args: Args) -> Result<ExitCode, Failure> {

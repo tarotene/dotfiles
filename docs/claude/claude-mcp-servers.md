@@ -190,6 +190,25 @@ reconcile が次の switch で `~/.claude.json` 側の該当エントリ(認証�
   先行例も無いので採らない。帯は表示だけで動作に影響しない。上流への Issue は出さない
   (本人の裁定、2026-10-21)。
 
+## 画面に出す Chrome: `playwright-chrome`(2026-11-26)
+
+デザインの目視(localhost・`file://`・公開ページ)は、本人が同じ画面で見られる必要がある。上の `playwright` は、ログイン状態を引き継ぐ
+Firefox の複製を headless で動かすので、本人には見えない(`show-image` で PNG を別窓に出せるが、見るだけで、往復して操作はできない)。
+そこで、ログインを持たない用途だけを、別のサーバー `playwright-chrome` に分けた(`home/identities/personal.nix`)。
+
+- **形**: 同じ起動ラッパーの `--chrome`。`npx @playwright/mcp@0.0.83 --browser chrome --isolated`(`chrome_npx_args`)。`--isolated` はプロファイルを
+  メモリだけに置く(ディスクに残さず、ログインも持ち込まない)。`--headless` は付けない(画面に出すのが目的)。版の pin は `PLAYWRIGHT_MCP` の 1 か所のまま。
+  `--chrome` と `--rsync`・`--clone` などの併用は、引数の解釈が拒否する(複製を持つ Chrome を作れない型。`Cli::Chrome`)。
+- **窓は 1 つ**(実測、vega、2026-11-26): `@playwright/mcp` 0.0.83 と同じ `playwright-core`(1.64.0-alpha)で、Chrome 152 を headed の persistent
+  context で起動し、CDP で数えた。ページ 1、`Browser.getWindowForTarget` の windowId は 1 種類(`about:blank`)。Firefox の BiDi 版が、
+  起動時のウィンドウを拾えず 2 枚目を作る(上の「headless で動かす」)のと違い、Chrome は起動時のウィンドウをそのまま使う。
+  Chrome の実体は、Playwright の `chrome` チャンネルの探索先 `/opt/google/chrome/chrome`(この機体では Nix の `google-chrome` への symlink)。
+- **使い分け**: ログインが要る作業(LinkedIn・Gmail の画面など)は `playwright`(Firefox の複製、headless)。ログイン不要の目視(デザインの見本・
+  `localhost`・公開ページ)は `playwright-chrome`。`playwright-chrome` で、ログインが要るページを開かない。
+- **出力先**: `--output-dir ~/.cache/playwright-mcp-chrome`(`playwright` の `~/.cache/playwright-mcp` と分ける)。`filename` を渡すときは、この配下の絶対パスにする。
+- **未確認**: GUI の Chrome を、エージェントのセッションのサンドボックスの中から起動できるか(`show-image` は、GUI の Chrome が sandbox の中では窓を出せないので
+  除外コマンドにしている。MCP サーバーは、Claude Code が sandbox の外で起動する想定だが、この機体の実セッションでは未確認。反映後に確かめる)。
+
 ## 使い方(populate する側)
 
 ```nix
