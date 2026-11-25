@@ -12,7 +12,9 @@ Codex の Plan mode で応答に `<proposed_plan>` ブロックを含めると�
 ごとに `## 先行例との対比` 節を置き、判断ごとに `Dn:` 行(採った判断 / 出典と
 取得日 / 先行例との差分 / `軸:`)を書く。設計判断を含まない Plan は代わりに
 1 行の免除(`先行例: 該当なし — <理由>`)でよい。書式は precedent-grounding /
-technology-selection スキル(`~/.agents/skills/`)に従う。
+technology-selection スキル(`~/.agents/skills/`)に従う。画面の面(`.html`・
+`.css`・`config/web/` など)に触れる Plan は `構造:` の行も書く(precedent-grounding
+スキル §3)。
 
 複数項目を含む依頼には `## 要求インベントリ` 節を置き、逐語で `Rn` の ID を
 振って処分(実装する段、または閉じたタグ)を書く(requirements-inventory スキル)。

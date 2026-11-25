@@ -25,6 +25,12 @@
 //!     等、閉じた語彙)が Dn ブロックにあれば deny(新 ADR sunk-cost-exclusion、
 //!     バッククォートで囲んだ語は数えない)。コストを理由にしてよいのは
 //!     `戻せない:(データ|外部契約|人手) — <内容>` の行だけ。
+//!   - 計画が画面の面(`.html`・`.css`・`.svelte`・`.astro`・`.tsx`・`.jsx`、`config/web/`、
+//!     `page-types.toml`)に触れるように見えるとき、`構造:` の行を要求する(ADR-0000)。
+//!     形は `構造: <パターン id> — 軸: <軸=値, …> — 退けた: <パターン id>(<理由>)`、画面を変えない
+//!     計画は `構造: 該当なし — <理由>`。`## 先行例との対比` 節があればその中、無ければ計画全体から探す。
+//!     **形だけを見る**(パターン id の語彙は `config/web/structures.toml` にあり、この hook は
+//!     リポジトリを読まない。内容の妥当性は copilot-plan-review の lens A に残す)。
 //!   - allow は決して返さない。問題が無ければ何も決定しない(exit 0)。
 //!
 //! メッセージ文面はスキル文書(precedent-grounding / technology-selection)と
@@ -76,6 +82,17 @@ static COST_WORD_RE: LazyLock<Regex> = LazyLock::new(|| {
     .unwrap()
 });
 static BACKTICK_SPAN_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"`[^`\n]*`").unwrap());
+// 画面の面に触れる計画の目印(ADR-0000)。ファイルの拡張子と、デザインの正本のパスだけ。意味を
+// 機械で確定できないので、誤検知は `構造: 該当なし — <理由>` の 1 行で抜ける。
+static SURFACE_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"\.(?:html|css|svelte|astro|tsx|jsx)\b|config/web/|page-types\.toml").unwrap()
+});
+static STRUCT_LABEL_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new("構造:").unwrap());
+static STRUCT_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"構造:\s*[a-z][a-z0-9-]*\s*[—–-]\s*軸:\s*\S.*退けた:\s*\S").unwrap()
+});
+static STRUCT_NA_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"構造:\s*該当なし\s*[—–-]\s*\S").unwrap());
 // 節名は 3 軸で同点のため据え置く(ADR-0035 D4。2026-10-08 に白紙から裁定し直した、#750)。
 static SECTION_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^#+\s*先行例との対比").unwrap());
 static HEADING_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^#+\s").unwrap());
@@ -234,8 +251,36 @@ fn check_dn_block(id: &str, block: &str, out: &mut Vec<String>) {
     }
 }
 
+/// 画面の面に触れる計画は、`構造:` の行を持つこと(ADR-0000)。形だけを見る。
+fn check_structure(plan: &str, out: &mut Vec<String>) {
+    if !SURFACE_RE.is_match(plan) {
+        return;
+    }
+    let section = extract_precedent_section(plan);
+    let scope = if section.is_empty() {
+        plan.to_string()
+    } else {
+        section.join("\n")
+    };
+    if grep(&STRUCT_RE, &scope) || grep(&STRUCT_NA_RE, &scope) {
+        return;
+    }
+    if grep(&STRUCT_LABEL_RE, &scope) {
+        out.push("「構造:」の行の形が違います。`構造: <パターン id> — 軸: <軸=値, …> — 退けた: <パターン id>(<理由>)` の 1 行で書くか、画面を変えない計画なら `構造: 該当なし — <理由>` の 1 行にしてください(precedent-grounding スキル §3)".to_string());
+    } else {
+        out.push("画面の面(HTML・CSS・config/web/ など)に触れる計画に見えますが、「構造:」の行がありません。`## 先行例との対比` の中に、`構造: <パターン id> — 軸: <軸=値, …> — 退けた: <パターン id>(<理由>)`(パターン id と軸の語彙は config/web/structures.toml。ADR-0000)を 1 行で書くか、画面を変えない計画なら `構造: 該当なし — <理由>` の 1 行を書いてください(precedent-grounding スキル §3)".to_string());
+    }
+}
+
 /// プラン本文を検査し、見つかった問題を 1 行 1 件で返す(無ければ空)。
 pub fn judge_precedent(plan: &str) -> Vec<String> {
+    let mut out = judge_sections(plan);
+    check_structure(plan, &mut out);
+    out
+}
+
+/// `## 先行例との対比` 節(または免除行)と、各 Dn の形式の検査。
+fn judge_sections(plan: &str) -> Vec<String> {
     let section = extract_precedent_section(plan);
     let mut out = Vec::new();
     if section.is_empty() {
@@ -449,6 +494,115 @@ mod tests {
             "{:?}",
             judge_precedent(&ok)
         );
+    }
+
+    fn screen_plan(structure_line: &str) -> String {
+        format!(
+            "## 先行例との対比\n- D1: x\n  先行例なし: 探した範囲\n  {structure_line}\n  軸: 還元 — 1句\n\n## 変更\n- `config/web/structures.toml` を足す\n"
+        )
+    }
+
+    #[test]
+    fn a_plan_touching_a_screen_needs_a_structure_line() {
+        let m = judge_precedent(&screen_plan("説明: 画面の話"));
+        assert!(
+            m.iter().any(|x| x.contains("「構造:」の行がありません")),
+            "{m:?}"
+        );
+        // 書けば通る。
+        let ok = screen_plan("構造: step — 軸: 独立性=独立, 反復=毎日 — 退けた: single-column(1 件あたりの情報が多い)");
+        assert!(
+            judge_precedent(&ok).is_empty(),
+            "{:?}",
+            judge_precedent(&ok)
+        );
+        // 画面を変えない計画は、免除の 1 行で抜ける(ダッシュ種は 3 つとも)。
+        for dash in ["—", "–", "-"] {
+            let na = screen_plan(&format!("構造: 該当なし {dash} ドキュメントだけを直す"));
+            assert!(
+                judge_precedent(&na).is_empty(),
+                "{dash}: {:?}",
+                judge_precedent(&na)
+            );
+        }
+    }
+
+    #[test]
+    fn a_malformed_structure_line_is_reported_as_such() {
+        for bad in [
+            "構造: step",
+            "構造: step — 軸: 独立性=独立",
+            "構造: Step — 軸: x — 退けた: y",
+            "構造: 該当なし",
+        ] {
+            let m = judge_precedent(&screen_plan(bad));
+            assert!(
+                m.iter().any(|x| x.contains("「構造:」の行の形が違います")),
+                "{bad}: {m:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn surfaces_are_recognised_by_extension_and_the_web_directory() {
+        for hit in [
+            "template.html",
+            "page.css",
+            "App.svelte",
+            "x.astro",
+            "view.tsx",
+            "view.jsx",
+            "config/web/",
+            "config/web/page-types.toml",
+            "page-types.toml",
+        ] {
+            let plan = format!("先行例: 該当なし — 修正\n- {hit} を直す\n");
+            assert!(
+                judge_precedent(&plan)
+                    .iter()
+                    .any(|x| x.contains("「構造:」の行がありません")),
+                "{hit}"
+            );
+        }
+        for miss in [
+            "README.md",
+            "crates/x/src/lib.rs",
+            "docs/adr/1.md",
+            "csshelper",
+            "https://example.com/doc.htmlx",
+        ] {
+            let plan = format!("先行例: 該当なし — 修正\n- {miss} を直す\n");
+            assert!(
+                judge_precedent(&plan).is_empty(),
+                "{miss}: {:?}",
+                judge_precedent(&plan)
+            );
+        }
+    }
+
+    #[test]
+    fn without_a_section_the_whole_plan_is_searched_for_the_line() {
+        let plan = "先行例: 該当なし — 修正\n構造: 該当なし — 画面を変えない\n- template.html のコメントだけ直す\n";
+        assert!(
+            judge_precedent(plan).is_empty(),
+            "{:?}",
+            judge_precedent(plan)
+        );
+        // 節があるのに、節の外にだけ書いても通らない。
+        let outside = "## 先行例との対比\n- D1: x\n  先行例なし: y\n  軸: 還元 — 1句\n\n## 他\n構造: 該当なし — 理由\n- template.html を直す\n";
+        assert!(
+            judge_precedent(outside)
+                .iter()
+                .any(|x| x.contains("「構造:」の行がありません")),
+            "{:?}",
+            judge_precedent(outside)
+        );
+    }
+
+    #[test]
+    fn a_plan_that_does_not_touch_a_screen_is_not_asked_for_a_structure() {
+        let plan = "## 先行例との対比\n- D1: x\n  先行例なし: y\n  軸: 還元 — 1句\n";
+        assert!(judge_precedent(plan).is_empty());
     }
 
     #[test]

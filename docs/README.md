@@ -126,6 +126,7 @@ What runs automatically, when, and on which stack: see the [pipeline map](pipeli
 - [ADR-1708](adr/1708-web-principles-layer.md) — ページの型の要件を、原則の表に結びつける。要件が原則に結びつかなければ、検査が落とす
 - [ADR-1710](adr/1710-verdict-page-step-layout.md) — メール裁定ページの構造を、ステップ型(画面の枠・固定の格子・止まったときだけ理由を出す状態行)にし、デザインの正本に従わせる
 - [ADR-1711](adr/1711-page-structure-rules.md) — ページの構造を、課題の性質の軸から選ぶ規則にし、すべての HTML に構造の宣言を要求する
+- [ADR-0000](adr/0000-plan-structure-field.md) — 画面の面に触れる計画に、`構造:` の行を要求する(設計の時点の検査)
 <!-- END GENERATED -->
 
 ## 運用・調査・設計(`docs/` 直下)
