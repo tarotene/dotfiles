@@ -1,4 +1,4 @@
-# --check: 画面の面に触れる計画が、`構造:` の行を持てば OK(ADR-0000)
+# --check: 画面の面に触れる計画が、`構造:` の行を持てば OK(ADR-1712)
 bin.name = "plan-precedent-gate"
 args = ["--check", "plan.md"]
 status.code = 0

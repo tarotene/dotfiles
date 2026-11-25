@@ -26,7 +26,7 @@
 //!     バッククォートで囲んだ語は数えない)。コストを理由にしてよいのは
 //!     `戻せない:(データ|外部契約|人手) — <内容>` の行だけ。
 //!   - 計画が画面の面(`.html`・`.css`・`.svelte`・`.astro`・`.tsx`・`.jsx`、`config/web/`、
-//!     `page-types.toml`)に触れるように見えるとき、`構造:` の行を要求する(ADR-0000)。
+//!     `page-types.toml`)に触れるように見えるとき、`構造:` の行を要求する(ADR-1712)。
 //!     形は `構造: <パターン id> — 軸: <軸=値, …> — 退けた: <パターン id>(<理由>)`、画面を変えない
 //!     計画は `構造: 該当なし — <理由>`。`## 先行例との対比` 節があればその中、無ければ計画全体から探す。
 //!     **形だけを見る**(パターン id の語彙は `config/web/structures.toml` にあり、この hook は
@@ -82,7 +82,7 @@ static COST_WORD_RE: LazyLock<Regex> = LazyLock::new(|| {
     .unwrap()
 });
 static BACKTICK_SPAN_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"`[^`\n]*`").unwrap());
-// 画面の面に触れる計画の目印(ADR-0000)。ファイルの拡張子と、デザインの正本のパスだけ。意味を
+// 画面の面に触れる計画の目印(ADR-1712)。ファイルの拡張子と、デザインの正本のパスだけ。意味を
 // 機械で確定できないので、誤検知は `構造: 該当なし — <理由>` の 1 行で抜ける。
 static SURFACE_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"\.(?:html|css|svelte|astro|tsx|jsx)\b|config/web/|page-types\.toml").unwrap()
@@ -251,7 +251,7 @@ fn check_dn_block(id: &str, block: &str, out: &mut Vec<String>) {
     }
 }
 
-/// 画面の面に触れる計画は、`構造:` の行を持つこと(ADR-0000)。形だけを見る。
+/// 画面の面に触れる計画は、`構造:` の行を持つこと(ADR-1712)。形だけを見る。
 fn check_structure(plan: &str, out: &mut Vec<String>) {
     if !SURFACE_RE.is_match(plan) {
         return;
@@ -268,7 +268,7 @@ fn check_structure(plan: &str, out: &mut Vec<String>) {
     if grep(&STRUCT_LABEL_RE, &scope) {
         out.push("「構造:」の行の形が違います。`構造: <パターン id> — 軸: <軸=値, …> — 退けた: <パターン id>(<理由>)` の 1 行で書くか、画面を変えない計画なら `構造: 該当なし — <理由>` の 1 行にしてください(precedent-grounding スキル §3)".to_string());
     } else {
-        out.push("画面の面(HTML・CSS・config/web/ など)に触れる計画に見えますが、「構造:」の行がありません。`## 先行例との対比` の中に、`構造: <パターン id> — 軸: <軸=値, …> — 退けた: <パターン id>(<理由>)`(パターン id と軸の語彙は config/web/structures.toml。ADR-0000)を 1 行で書くか、画面を変えない計画なら `構造: 該当なし — <理由>` の 1 行を書いてください(precedent-grounding スキル §3)".to_string());
+        out.push("画面の面(HTML・CSS・config/web/ など)に触れる計画に見えますが、「構造:」の行がありません。`## 先行例との対比` の中に、`構造: <パターン id> — 軸: <軸=値, …> — 退けた: <パターン id>(<理由>)`(パターン id と軸の語彙は config/web/structures.toml。ADR-1712)を 1 行で書くか、画面を変えない計画なら `構造: 該当なし — <理由>` の 1 行を書いてください(precedent-grounding スキル §3)".to_string());
     }
 }
 

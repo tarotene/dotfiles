@@ -1,9 +1,9 @@
-# --check: 画面の面に触れる計画に `構造:` の行が無ければ、指摘 + 例文ブロックで exit 1(ADR-0000)
+# --check: 画面の面に触れる計画に `構造:` の行が無ければ、指摘 + 例文ブロックで exit 1(ADR-1712)
 bin.name = "plan-precedent-gate"
 args = ["--check", "plan.md"]
 status.code = 1
 stdout = """
-deny: 画面の面(HTML・CSS・config/web/ など)に触れる計画に見えますが、「構造:」の行がありません。`## 先行例との対比` の中に、`構造: <パターン id> — 軸: <軸=値, …> — 退けた: <パターン id>(<理由>)`(パターン id と軸の語彙は config/web/structures.toml。ADR-0000)を 1 行で書くか、画面を変えない計画なら `構造: 該当なし — <理由>` の 1 行を書いてください(precedent-grounding スキル §3)
+deny: 画面の面(HTML・CSS・config/web/ など)に触れる計画に見えますが、「構造:」の行がありません。`## 先行例との対比` の中に、`構造: <パターン id> — 軸: <軸=値, …> — 退けた: <パターン id>(<理由>)`(パターン id と軸の語彙は config/web/structures.toml。ADR-1712)を 1 行で書くか、画面を変えない計画なら `構造: 該当なし — <理由>` の 1 行を書いてください(precedent-grounding スキル §3)
 
 そのまま構造を写し、山括弧の中身だけ事実に置き換えれば書式検査は通ります:
 
