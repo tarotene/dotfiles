@@ -357,3 +357,41 @@ scope = "general"
 source = "docs/adr/1704-web-mobile-and-worst-case-requirements.md"
 retrieved = "2026-11-25"
 quote = "`input`・`select`・`textarea`(チェックボックス・ラジオ・ボタン類・`hidden` を除く)の計算後の `font-size` が 16px 未満のものを数える。"
+
+# ---- ページの構造を選ぶ原則(構造パターンの表 `structures.toml` が指す。ADR-1711) ----
+
+[[principle]]
+id = "gov-merge"
+title = "GOV.UK フォームの構造: 1 ページ 1 つの例外(内部向けで、作業を繰り返し切り替える利用者)"
+kind = "principle"
+scope = "structure"
+source = "https://www.gov.uk/service-manual/design/form-structure"
+retrieved = "2026-11-25"
+quote = "User research will tell you when you can merge pages together. For example, if you’re designing an internal service for government users who need to repeat and switch between tasks quickly."
+
+[[principle]]
+id = "nn-wizards-novice"
+title = "NN/g ウィザード: 初心者・まれな手順に使う"
+kind = "principle"
+scope = "structure"
+source = "https://www.nngroup.com/articles/wizards/"
+retrieved = "2026-11-25"
+quote = "Use wizards for novice users or infrequent processes (e.g., configuration or setup)."
+
+[[principle]]
+id = "nn-wizards-overused"
+title = "NN/g ウィザード: 繰り返し使うと、うっとうしく、制御されすぎる"
+kind = "principle"
+scope = "structure"
+source = "https://www.nngroup.com/articles/wizards/"
+retrieved = "2026-11-25"
+quote = "wizards can quickly become annoying and overly controlling if they have to be used over and over again"
+
+[[principle]]
+id = "nn-progressive-interdep"
+title = "NN/g 段階的開示: 手順が互いに依存し、利用者が行き来するときは問題"
+kind = "principle"
+scope = "structure"
+source = "https://www.nngroup.com/articles/progressive-disclosure/"
+retrieved = "2026-11-25"
+quote = "It is problematic when the steps are interdependent and users must alternate between them."

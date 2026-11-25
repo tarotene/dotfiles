@@ -333,7 +333,7 @@ EOF
   if grep -qF 'decideKey({ order: ORDER, cur, view }' "$TEMPLATE" && grep -qF 'keyState({ focused: document.hasFocus()' "$TEMPLATE" && ! grep -qE 'keysOn|showCursor|cursorbar|syncCursor' "$TEMPLATE"; then ok "テンプレート: キー入力と状態の行は、画面に触れない関数(decideKey・keyState)から導く"; else ng "テンプレート: キー入力か状態の行が、画面に触れない関数を使っていない(または古い名前が残っている)"; fi
   # ショートカットのキーが、ボタン・要約などの標準のキー操作(Enter・Space)を奪わないのは、共有の keyguard の仕事(C12)。手書きの keydown を足さない。
   if grep -qF 'window.pageBehavior.keyguard(' "$TEMPLATE" && [ "$(grep -c "addEventListener(\"keydown\"" "$TEMPLATE")" -le 2 ]; then ok "テンプレート: ショートカットのキーは、共有の keyguard で受ける"; else ng "テンプレート: keyguard を使っていない、または手書きの keydown が増えている"; fi
-  # 画面の構造の宣言(ステップ型)。宣言の語彙と整合の検査は、続く規則で足す(ここでは、宣言が在ることだけを見る)。
+  # 画面の構造の宣言(ステップ型)。語彙と軸の整合は repo-structure-check の web_structures が、描画との一致は visual_diff.py audit の F10 が見る(ここでは、宣言が在ることだけを見る)。
   if grep -qF '<meta name="page-structure" content="step">' "$TEMPLATE" && grep -qF '<meta name="page-axes" content="' "$TEMPLATE"; then ok "テンプレート: 画面の構造(step)と、課題の性質の軸が宣言されている"; else ng "テンプレート: 画面の構造の宣言(page-structure・page-axes)が無い"; fi
   if grep -qF 'gEdited' "$TEMPLATE"; then ok "テンプレート: 古いフィードバックを回答に含めない"; else ng "テンプレート: 古いフィードバックを回答に含める"; fi
 

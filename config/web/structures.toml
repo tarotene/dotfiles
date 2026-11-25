@@ -1,0 +1,74 @@
+# ページの構造を選ぶ規則(ADR-1711)。課題の性質の軸(`[[axis]]`)の値から、構造パターン(`[[pattern]]`)の候補を出す。
+#
+# 各ページ(リポジトリ内のすべての HTML)は、自分の構造と、課題の性質を、`<head>` に宣言する(`web_structures` が落とす)。
+#   <meta name="page-structure" content="step">
+#   <meta name="page-axes" content="independence=independent;comparison=none;order=fixed;...">     ← 宣言する軸だけでよい
+#   <meta name="page-structure-deviation" content="<理由>">                                         ← 軸の値から外れるときだけ
+#
+# 整合の規則:
+#   1. 宣言した構造は、パターンの語彙にある。軸と値は、`[[axis]]` の語彙にある。
+#   2. パターンの `fits` に挙げた軸は、すべて宣言する(宣言する軸の値が、`fits` の許す値の中にある)。
+#   3. `fits` から外れる(軸の値が、宣言した構造の許す値の外にある)ときは、`page-structure-deviation` に理由を書く。
+#   4. `default = true` の構造(既定)に軸の値が合うのに、別の構造を選ぶときも、理由を書く。既定は強制でなく、外れるときは理由を書く。
+# `measure` は、描画したページで測れる、その構造の約束(`visual_diff.py audit` の F10)。`viewport-fit` = ページ全体が縦にスクロールしない。
+#
+# 構造に効く原則(`principles.toml` の `scope = "structure"`)は、ここのパターンか、要件が指す。
+# list-detail・task-list・dashboard などのパターンは、原則の出典を原文で再読したときに足す(未実装、意図あり)。
+
+[[axis]]
+id = "independence"
+title = "項目間の独立性(1 件の答えが、ほかの件の答えに影響するか)"
+values = ["independent", "interdependent"]
+
+[[axis]]
+id = "comparison"
+title = "比較・相互参照の要否(別の件の情報を見比べる必要があるか)"
+values = ["none", "needed"]
+
+[[axis]]
+id = "repetition"
+title = "反復頻度・熟練度(同じ利用者が繰り返し使うか)"
+values = ["rare", "daily"]
+
+[[axis]]
+id = "information"
+title = "1 件あたりの情報量"
+values = ["small", "large"]
+
+[[axis]]
+id = "reversibility"
+title = "取り消しの可否(選び直せるか)"
+values = ["undoable", "irreversible"]
+
+[[axis]]
+id = "volume"
+title = "件数"
+values = ["few", "many"]
+
+[[axis]]
+id = "order"
+title = "順序の自由度(利用者が順序を選びたいか)"
+values = ["fixed", "free"]
+
+[[pattern]]
+id = "step"
+title = "ステップ型(1 件 1 画面 + 全件の概観 + 選ぶと次へ + 最後に確認画面)"
+default = true
+measure = "viewport-fit"
+fits = { independence = ["independent"], comparison = ["none"], order = ["fixed"] }
+principles = ["gov-one", "gov-merge", "nn-progressive", "nn-wizards-novice", "nn-wizards-overused", "gov-check", "wcag-3-3-4"]
+note = "順次の裁定・質問に答える面の既定。項目が互いに独立で、比較が要らず、順序が決まっているとき。反復頻度が daily の面は、全件の概観の常時表示・選ぶと自動で次へ・キーだけで完結・確認画面から任意の件へ戻れること、の手当てを入れて、利用者を閉じ込めない。"
+
+[[pattern]]
+id = "single-column"
+title = "縦 1 枚(全件を 1 つの画面に並べる)"
+fits = {}
+principles = ["nn-progressive-interdep"]
+note = "項目が互いに影響して行き来する、または別の件の情報を見比べる必要があるとき。何にでも使えるので、軸の値が step に合うのに選ぶときは、理由を書く。"
+
+[[pattern]]
+id = "document"
+title = "読み物・見本(入力も手順も持たない)"
+measure = "none"
+fits = {}
+note = "入力も手順も持たないページ。構造を選ぶ課題ではないので、軸の宣言は要らない。"

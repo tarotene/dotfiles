@@ -20,4 +20,5 @@ pub mod web_components;
 pub mod web_principles;
 pub mod web_selection;
 pub mod web_specimen;
+pub mod web_structures;
 pub mod web_variables;

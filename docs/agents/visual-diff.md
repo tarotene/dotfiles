@@ -26,9 +26,9 @@
 
 | サブコマンド | 入力 | 出力 |
 |---|---|---|
-| `audit` | 撮影定義(各面の `types`)、`config/web/page-types.toml` | 面ごとの違反(要件 ID・説明・出たセル)、通った検査、人が見る要件(未検査)。違反があれば終了コード 1。`--json` で JSON も書く |
+| `audit` | 撮影定義(各面の `types`)、`config/web/page-types.toml`、`config/web/structures.toml`(`--structures`) | 面ごとの違反(要件 ID・説明・出たセル)、通った検査、人が見る要件(未検査)。違反があれば終了コード 1。`--json` で JSON も書く |
 
-- 検査は 12 個(閉じた語彙 `AUDITS`)。`document`(C1。viewport が拡大を禁じる `user-scalable=no`・2 未満の `maximum-scale` も見る)・`contrast`(C2)・`targets`(C3)・`overflow`(C4。幅 390px のセルだけ)・`third-party`(C9)・`keyboard`(C12)・`hover`(C16。`document.styleSheets` を入れ子まで読み、`@media (hover: hover)` の外にある `:hover` の規則を数える。読めないシートは数えない)・`input-size`(C17。`input`・`select`・`textarea` の計算後の文字が 16px 未満。幅 390px のセルだけ)・`main-button`(F1)・`default-choice`(F2。初期状態だけ)・`confirm`(F4。開いたダイアログと、スクリプトの静的な検出)・`links`(D7)。最悪のデータでの描画(C15)は、機械で測れず、人が見る(`visual`)。
+- 検査は 13 個(閉じた語彙 `AUDITS`)。`document`(C1。viewport が拡大を禁じる `user-scalable=no`・2 未満の `maximum-scale` も見る)・`contrast`(C2)・`targets`(C3)・`overflow`(C4。幅 390px のセルだけ)・`third-party`(C9)・`keyboard`(C12)・`hover`(C16。`document.styleSheets` を入れ子まで読み、`@media (hover: hover)` の外にある `:hover` の規則を数える。読めないシートは数えない)・`input-size`(C17。`input`・`select`・`textarea` の計算後の文字が 16px 未満。幅 390px のセルだけ)・`main-button`(F1)・`default-choice`(F2。初期状態だけ)・`confirm`(F4。開いたダイアログと、スクリプトの静的な検出)・`links`(D7)・`structure`(F10。`<meta name="page-structure">` が在ること、`structures.toml` の語彙にあること、構造が `viewport-fit` を約束するとき(`step`)は、ページ全体が縦にスクロールしないこと。軸の整合は `repo-structure-check` の `web_structures` が検査する)。最悪のデータでの描画(C15)は、機械で測れず、人が見る(`visual`)。
 - 測定(`AUDIT_JS`)は、撮影と同じ行列の各セルで、描画した状態のページの中で走る。コントラストは、文字を持つ要素ごとに、祖先をたどって重ねた背景色から WCAG 2.2 の式で出す。`keyboard` は、撮影定義の状態ごとに、先頭の 4 ボタンにフォーカスして Enter・Space を押し、押されるかを見る(明・幅 1280px で、状態を開き直して)。
 - 測定から違反を作る部分(`cell_findings`)は、ブラウザ無しで試験できる純粋関数。要件の読み込み(`load_types`)も、種別と検査の名前が閉語彙で、結びつかない検査を落とす。
 - 各要件は、`principles`(`config/web/principles.toml` の原則の ID の、空でない配列)を持つ(ADR-1708)。`load_types` は形(ID の形・空でない・重複なし)を見る。実在する原則を指すことは `repo-structure-check` の `web_principles` が落とす。違反の出力には、要件の ID に続けて原則の ID が付く(`違反 C3[wcag-2-5-8]: …`。`--json` では、違反ごとの `principles`)。

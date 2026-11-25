@@ -251,6 +251,23 @@ ADR-1677 の範囲外)。空のツリーを読んで通ってしまわないよ�
 外部の原則の `quote` は、検査では原文と照合できない(ネットワークを使わない)。載せるときに、取得した原文と逐語で照合した(取得日は `retrieved`)。取り直せなかった
 原則は載せない。空のツリーを読み込んで通過してしまわないよう、`tests/tree.rs` が、外部・決定・構造の各行と、要件 C3 の結びつきが読み込まれていることを検証する。
 
+### 構造の規則(`web_structures::check_tree`、ADR-1711)
+
+`config/web/structures.toml` は、課題の性質の軸(`[[axis]]`。独立性・比較・反復・情報量・取り消し・件数・順序)と、構造パターン(`[[pattern]]`。`step`・`single-column`・`document`)を、
+閉じた語彙で保持する。`fits` は、パターンが許す軸の値(空の表 = 何でも許す)、`default = true` は既定の構造、`measure` は描画したページで測れる約束
+(`viewport-fit` = ページ全体が縦にスクロールしない)である。リポジトリ内のすべての `*.html`・`*.htm`(`web_assets` が走査する集合)は、`<head>` の `<meta>` で構造を宣言する。
+
+| 検査 | 落ちる条件 |
+|---|---|
+| 表の形 | TOML として読めない、先頭に `[[axis]]`・`[[pattern]]` 以外のキーがある、知らないキー、`id` が小文字・数字・`-` でない・重複、軸の値が 2 つ未満・重複、`measure` が語彙の外、`default = true` が 2 つ以上、`fits` の軸・値が語彙に無い、`principles` が実在しない |
+| 死んだ原則 | `scope = "structure"` の原則を、どのパターンも、どの要件も指していない |
+| 宣言の有無 | HTML に `<meta name="page-structure">` が無い(ページを足すとき、宣言を忘れられない) |
+| 宣言の語彙 | 構造が語彙に無い。`page-axes`(`軸=値;軸=値`)の軸・値が語彙に無い、`軸=値` の形でない、軸が重複している |
+| 整合 | 宣言した構造の `fits` に挙げた軸を宣言していない。軸の値が `fits` の外にあるのに、`page-structure-deviation` に理由が無い。軸の値が既定の構造に合う(既定の `fits` の軸をすべて宣言し、値が許す範囲内)のに、別の構造を選び、理由が無い |
+
+宣言を免除する一覧は持たない(例外を持たない)。属性は、`name="..."`・`content="..."` の二重引用符の形だけを読む。`<title>` を先頭に要求するページ(Artifact の断片)は、`<title>` の後ろに置く。
+空のツリーを読み込んで通過してしまわないよう、`tests/tree.rs` が、表の 3 つの構造と既定の行と、既知の 3 つの HTML(裁定ページの雛形・見本ページ・モデル同等性マップ)が走査され、構造を宣言していることを検証する。
+
 ### 依存グラフ(`deps::check_tree`、#1446)
 
 各 `crates/*/Cargo.toml` の `[dependencies]`・`[build-dependencies]`(`[target.<cfg>.…]` も)の `path` の依存を辺として読む。
@@ -322,6 +339,7 @@ ADR-1529 の置き場 4)。例外を解消すると鮮度の検査が落ちる�
 - crates/repo-structure-check/src/web_specimen.rs
 - crates/repo-structure-check/src/web_selection.rs
 - crates/repo-structure-check/src/web_principles.rs
+- crates/repo-structure-check/src/web_structures.rs
 - crates/repo-structure-check/src/web_behavior.rs
 - crates/repo-structure-check/src/web_assets.rs
 - crates/civil-time/src/lib.rs
