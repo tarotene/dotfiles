@@ -1,0 +1,359 @@
+# 原則の層(ADR-1708)。ページの型の要件(`page-types.toml`)が、どの原則から起こされたかを、閉じた語彙の表にする。
+#
+# 各要件は、`principles = [...]` で、ここの原則を 1 つ以上指す。検査(`repo-structure-check` の `web_principles`)が、
+# 指された原則の実在と、どの要件にも使われない原則の有無を落とす。
+#
+# 書けるキー(閉じている):
+#   id        小文字・数字・`-` だけ。重複しない。
+#   title     何の原則か(日本語で 1 行)。
+#   kind      `principle` = 外部の原則・規格・公式の指針 / `decision` = このリポジトリの決定(ADR)。
+#   scope     `structure` = ページの構造を選ぶ規則にも効く原則 / `general` = 個々の要件の根拠。
+#   source    出典。`principle` は https の URL、`decision` はリポジトリ内のパス。
+#   retrieved 原文を読んだ日(YYYY-MM-DD)。
+#   quote     原文の逐語の引用。`principle` は取得した原文から照合したもの。`decision` は `source` のファイルに、
+#             そのまま含まれる(検査が照合する)。
+#
+# 外部の原則の `quote` は、原文を取り直して照合したものだけを載せる。取り直せなかった原則は載せない。
+
+# ---- WCAG 2.2(W3C 勧告 2024-12-12 版) ----
+
+[[principle]]
+id = "wcag-1-4-1"
+title = "WCAG 2.2 達成基準 1.4.1 色の使用"
+kind = "principle"
+scope = "general"
+source = "https://www.w3.org/TR/WCAG22/#use-of-color"
+retrieved = "2026-11-25"
+quote = "Color is not used as the only visual means of conveying information, indicating an action, prompting a response, or distinguishing a visual element."
+
+[[principle]]
+id = "wcag-1-4-3"
+title = "WCAG 2.2 達成基準 1.4.3 コントラスト(最低限)"
+kind = "principle"
+scope = "general"
+source = "https://www.w3.org/TR/WCAG22/#contrast-minimum"
+retrieved = "2026-11-25"
+quote = "The visual presentation of text and images of text has a contrast ratio of at least 4.5:1"
+
+[[principle]]
+id = "wcag-1-4-4"
+title = "WCAG 2.2 達成基準 1.4.4 テキストのサイズ変更"
+kind = "principle"
+scope = "general"
+source = "https://www.w3.org/TR/WCAG22/#resize-text"
+retrieved = "2026-11-25"
+quote = "Except for captions and images of text, text can be resized without assistive technology up to 200 percent without loss of content or functionality."
+
+[[principle]]
+id = "wcag-1-4-8"
+title = "WCAG 2.2 達成基準 1.4.8 視覚的提示(1 行の幅)"
+kind = "principle"
+scope = "general"
+source = "https://www.w3.org/TR/WCAG22/#visual-presentation"
+retrieved = "2026-11-25"
+quote = "Width is no more than 80 characters or glyphs (40 if CJK)."
+
+[[principle]]
+id = "wcag-1-4-10"
+title = "WCAG 2.2 達成基準 1.4.10 リフロー"
+kind = "principle"
+scope = "general"
+source = "https://www.w3.org/TR/WCAG22/#reflow"
+retrieved = "2026-11-25"
+quote = "Content can be presented without loss of information or functionality, and without requiring scrolling in two dimensions"
+
+[[principle]]
+id = "wcag-2-1-1"
+title = "WCAG 2.2 達成基準 2.1.1 キーボード"
+kind = "principle"
+scope = "general"
+source = "https://www.w3.org/TR/WCAG22/#keyboard"
+retrieved = "2026-11-25"
+quote = "All functionality of the content is operable through a keyboard interface"
+
+[[principle]]
+id = "wcag-2-1-4"
+title = "WCAG 2.2 達成基準 2.1.4 文字キーのショートカット"
+kind = "principle"
+scope = "general"
+source = "https://www.w3.org/TR/WCAG22/#character-key-shortcuts"
+retrieved = "2026-11-25"
+quote = "If a keyboard shortcut is implemented in content using only letter (including upper- and lower-case letters), punctuation, number, or symbol characters, then at least one of the following is true:"
+
+[[principle]]
+id = "wcag-2-3-3"
+title = "WCAG 2.2 達成基準 2.3.3 インタラクションによるアニメーション"
+kind = "principle"
+scope = "general"
+source = "https://www.w3.org/TR/WCAG22/#animation-from-interactions"
+retrieved = "2026-11-25"
+quote = "Motion animation triggered by interaction can be disabled, unless the animation is essential to the functionality or the information being conveyed."
+
+[[principle]]
+id = "wcag-2-4-2"
+title = "WCAG 2.2 達成基準 2.4.2 ページタイトル"
+kind = "principle"
+scope = "general"
+source = "https://www.w3.org/TR/WCAG22/#page-titled"
+retrieved = "2026-11-25"
+quote = "Web pages have titles that describe topic or purpose."
+
+[[principle]]
+id = "wcag-2-4-7"
+title = "WCAG 2.2 達成基準 2.4.7 フォーカスの可視化"
+kind = "principle"
+scope = "general"
+source = "https://www.w3.org/TR/WCAG22/#focus-visible"
+retrieved = "2026-11-25"
+quote = "Any keyboard operable user interface has a mode of operation where the keyboard focus indicator is visible."
+
+[[principle]]
+id = "wcag-2-5-8"
+title = "WCAG 2.2 達成基準 2.5.8 ターゲットのサイズ(最低限)"
+kind = "principle"
+scope = "general"
+source = "https://www.w3.org/TR/WCAG22/#target-size-minimum"
+retrieved = "2026-11-25"
+quote = "The size of the target for pointer inputs is at least 24 by 24 CSS pixels"
+
+[[principle]]
+id = "wcag-3-1-1"
+title = "WCAG 2.2 達成基準 3.1.1 ページの言語"
+kind = "principle"
+scope = "general"
+source = "https://www.w3.org/TR/WCAG22/#language-of-page"
+retrieved = "2026-11-25"
+quote = "The default human language of each web page can be programmatically determined."
+
+[[principle]]
+id = "wcag-3-3-4"
+title = "WCAG 2.2 達成基準 3.3.4 エラー回避(法的・金銭的・データ)の確認の機会"
+kind = "principle"
+scope = "structure"
+source = "https://www.w3.org/TR/WCAG22/#error-prevention-legal-financial-data"
+retrieved = "2026-11-25"
+quote = "A mechanism is available for reviewing, confirming, and correcting information before finalizing the submission."
+
+# ---- Nielsen Norman Group ----
+
+[[principle]]
+id = "nn-h1"
+title = "ヒューリスティック 1 システムの状態の可視性"
+kind = "principle"
+scope = "general"
+source = "https://www.nngroup.com/articles/ten-usability-heuristics/"
+retrieved = "2026-11-25"
+quote = "The design should always keep users informed about what is going on, through appropriate feedback within a reasonable amount of time."
+
+[[principle]]
+id = "nn-h3"
+title = "ヒューリスティック 3 利用者の制御と自由"
+kind = "principle"
+scope = "general"
+source = "https://www.nngroup.com/articles/ten-usability-heuristics/"
+retrieved = "2026-11-25"
+quote = 'Users often perform actions by mistake. They need a clearly marked "emergency exit" to leave the unwanted action without having to go through an extended process.'
+
+[[principle]]
+id = "nn-h5"
+title = "ヒューリスティック 5 誤りの予防"
+kind = "principle"
+scope = "general"
+source = "https://www.nngroup.com/articles/ten-usability-heuristics/"
+retrieved = "2026-11-25"
+quote = "Good error messages are important, but the best designs carefully prevent problems from occurring in the first place."
+
+[[principle]]
+id = "nn-h7"
+title = "ヒューリスティック 7 柔軟性と効率"
+kind = "principle"
+scope = "general"
+source = "https://www.nngroup.com/articles/ten-usability-heuristics/"
+retrieved = "2026-11-25"
+quote = "Shortcuts — hidden from novice users — may speed up the interaction for the expert user so that the design can cater to both inexperienced and experienced users."
+
+[[principle]]
+id = "nn-h8"
+title = "ヒューリスティック 8 美しさと最小限のデザイン"
+kind = "principle"
+scope = "general"
+source = "https://www.nngroup.com/articles/ten-usability-heuristics/"
+retrieved = "2026-11-25"
+quote = "Interfaces should not contain information that is irrelevant or rarely needed."
+
+[[principle]]
+id = "nn-h9"
+title = "ヒューリスティック 9 誤りの認識・診断・回復の支援"
+kind = "principle"
+scope = "general"
+source = "https://www.nngroup.com/articles/ten-usability-heuristics/"
+retrieved = "2026-11-25"
+quote = "Error messages should be expressed in plain language (no error codes), precisely indicate the problem, and constructively suggest a solution."
+
+[[principle]]
+id = "nn-dark"
+title = "NN/g 暗色: OS の設定に追従する"
+kind = "principle"
+scope = "general"
+source = "https://www.nngroup.com/articles/dark-mode-users-issues/"
+retrieved = "2026-11-25"
+quote = "Mirror the device’s operating system dark mode settings by default."
+
+[[principle]]
+id = "nn-confirm"
+title = "NN/g 確認ダイアログ: 日常の操作に使わない"
+kind = "principle"
+scope = "general"
+source = "https://www.nngroup.com/articles/confirmation-dialog/"
+retrieved = "2026-11-25"
+quote = "Do not use confirmation dialogs for routine actions."
+
+[[principle]]
+id = "nn-radio"
+title = "NN/g ラジオボタン: 既定の選択"
+kind = "principle"
+scope = "general"
+source = "https://www.nngroup.com/articles/radio-buttons-default-selection/"
+retrieved = "2026-11-25"
+quote = "Making a default selection is helpful if you have conducted task analysis and most users make the same choice."
+
+[[principle]]
+id = "nn-empty"
+title = "NN/g 空の状態を設計する"
+kind = "principle"
+scope = "general"
+source = "https://www.nngroup.com/articles/empty-state-interface-design/"
+retrieved = "2026-11-25"
+quote = "Intentionally designed empty states can help increase user confidence, improve system learnability, and help users get started with key tasks."
+
+[[principle]]
+id = "nn-progressive"
+title = "NN/g 段階的開示: 手順の間の相互作用が少ないときに有効"
+kind = "principle"
+scope = "structure"
+source = "https://www.nngroup.com/articles/progressive-disclosure/"
+retrieved = "2026-11-25"
+quote = "Staged disclosure is useful when you can divide a task into distinct steps that have little interaction."
+
+# ---- 各国・各社の公式の指針 ----
+
+[[principle]]
+id = "gov-one"
+title = "GOV.UK フォームの構造: 1 ページに 1 つのこと"
+kind = "principle"
+scope = "structure"
+source = "https://www.gov.uk/service-manual/design/form-structure"
+retrieved = "2026-11-25"
+quote = "Start by splitting the form across multiple pages with each page containing just one thing"
+
+[[principle]]
+id = "gov-check"
+title = "GOV.UK 回答の確認ページ"
+kind = "principle"
+scope = "structure"
+source = "https://design-system.service.gov.uk/patterns/check-answers/"
+retrieved = "2026-11-25"
+quote = "Show a single check answers page immediately before the confirmation screen for small to medium-sized transactions."
+
+[[principle]]
+id = "gov-error"
+title = "GOV.UK エラーメッセージ: 何が起きたかと直し方"
+kind = "principle"
+scope = "general"
+source = "https://design-system.service.gov.uk/components/error-message/"
+retrieved = "2026-11-25"
+quote = "Describe what has happened and tell them how to fix it."
+
+[[principle]]
+id = "dads-button"
+title = "デジタル庁デザインシステム ボタン: 無効にせず、何をすべきかを示す"
+kind = "principle"
+scope = "general"
+source = "https://design.digital.go.jp/dads/components/button/usage/"
+retrieved = "2026-11-25"
+quote = "ユーザーの作業が終わるまでボタンを無効にするのではなく、何をすべきかを提示することで操作や入力を促してください。"
+
+[[principle]]
+id = "dads-radio"
+title = "デジタル庁デザインシステム ラジオボタン: 無選択状態を表す選択肢"
+kind = "principle"
+scope = "general"
+source = "https://design.digital.go.jp/dads/components/radio/usage/"
+retrieved = "2026-11-25"
+quote = "ラジオボタンは選択解除ができないので、任意項目で使用する場合は「あてはまるものはない」というような無選択状態を意味する選択肢を設けましょう。"
+
+[[principle]]
+id = "primer-saving"
+title = "GitHub Primer 保存: 保存の方式を混ぜない"
+kind = "principle"
+scope = "general"
+source = "https://primer.style/product/ui-patterns/saving/"
+retrieved = "2026-11-25"
+quote = "never mix save patterns in a single form"
+
+[[principle]]
+id = "apg-radio"
+title = "WAI-ARIA APG ラジオグループ"
+kind = "principle"
+scope = "general"
+source = "https://www.w3.org/WAI/ARIA/apg/patterns/radio/"
+retrieved = "2026-11-25"
+quote = "A radio group is a set of checkable buttons, known as radio buttons, where no more than one of the buttons can be checked at a time."
+
+# ---- 学習の研究 ----
+
+[[principle]]
+id = "roediger-testing"
+title = "Roediger & Karpicke (2006) テスト効果: 思い出す練習は、後の保持を高める"
+kind = "principle"
+scope = "general"
+source = "https://learninglab.psych.purdue.edu/downloads/2006/2006_Roediger_Karpicke_PsychSci.pdf"
+retrieved = "2026-11-25"
+quote = "Taking a memory test not only assesses what one knows, but also enhances later retention, a phenomenon known as the testing effect."
+
+[[principle]]
+id = "mogavi-gamification"
+title = "Mogavi ら (2022) ゲーム化の誤用: 利用者がゲーム化に気を取られすぎる"
+kind = "principle"
+scope = "general"
+source = "https://arxiv.org/abs/2203.16175"
+retrieved = "2026-11-25"
+quote = "Gamification misuse is a phenomenon that occurs when users become too fixated on gamification and get distracted from learning."
+
+# ---- このリポジトリの決定 ----
+
+[[principle]]
+id = "adr-1677-d6"
+title = "ADR-1677 D6: 第三者からの書体・スタイルの読み込みを禁止する"
+kind = "decision"
+scope = "general"
+source = "docs/adr/1677-web-design-baseline.md"
+retrieved = "2026-11-25"
+quote = "第三者からの書体・スタイルの読み込みは全面で禁止する"
+
+[[principle]]
+id = "adr-1703-d4"
+title = "ADR-1703 D4: D6 の禁止は、スクリプトを含む"
+kind = "decision"
+scope = "general"
+source = "docs/adr/1703-web-selection-order.md"
+retrieved = "2026-11-25"
+quote = "外部スクリプトが必要な場合は同梱して `sha256` を pin する。"
+
+[[principle]]
+id = "adr-1704-hover"
+title = "ADR-1704 D2: `:hover` は `@media (hover: hover)` の中に書く"
+kind = "decision"
+scope = "general"
+source = "docs/adr/1704-web-mobile-and-worst-case-requirements.md"
+retrieved = "2026-11-25"
+quote = "`:hover` を含む規則は、`@media (hover: hover)` の中に書く。"
+
+[[principle]]
+id = "adr-1704-input-size"
+title = "ADR-1704 D2: 入力欄の文字は 16px 以上"
+kind = "decision"
+scope = "general"
+source = "docs/adr/1704-web-mobile-and-worst-case-requirements.md"
+retrieved = "2026-11-25"
+quote = "`input`・`select`・`textarea`(チェックボックス・ラジオ・ボタン類・`hidden` を除く)の計算後の `font-size` が 16px 未満のものを数える。"

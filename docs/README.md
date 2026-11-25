@@ -123,6 +123,7 @@ What runs automatically, when, and on which stack: see the [pipeline map](pipeli
 - [ADR-1701](adr/1701-web-page-type-requirements.md) — ページの型の要件は、検査の種別つきのデータに起こし、描画した HTML で測れるものだけを機械で検査し、測れないものを「通った」にしない
 - [ADR-1703](adr/1703-web-selection-order.md) — 部品と振る舞いは、ブラウザ標準 → 共有の部品 → 外部ライブラリの順に選び、対応表を閉じた語彙のデータにして検査する
 - [ADR-1704](adr/1704-web-mobile-and-worst-case-requirements.md) — ページの型の要件に、最悪のデータでの描画・ホバーの囲い・入力欄の文字の大きさ・拡大の禁止を足す
+- [ADR-1708](adr/1708-web-principles-layer.md) — ページの型の要件を、原則の表に結びつける。要件が原則に結びつかなければ、検査が落とす
 <!-- END GENERATED -->
 
 ## 運用・調査・設計(`docs/` 直下)
