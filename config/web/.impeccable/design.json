@@ -1,0 +1,112 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-11-26T00:00:00Z",
+  "title": "Design System: Web の面のデザインシステム(機体のマーキング)",
+  "extensions": {
+    "colorMeta": {
+      "ink": { "role": "primary", "displayName": "Ink", "canonical": "#1b1f23", "tonalRamp": ["#1b1f23", "#252b31", "#3d464e", "#5b6670", "#9aa4ad", "#c3c9ce", "#e9ecee", "#f6f7f8"] },
+      "safety-yellow": { "role": "secondary", "displayName": "Safety Yellow", "canonical": "#f2c200", "tonalRamp": ["#4d3d00", "#7a6000", "#a68400", "#d4a900", "#f2c200", "#f7d54d", "#fae38a", "#fdf3c4"] },
+      "panel-grey": { "role": "neutral", "displayName": "Panel Grey", "canonical": "#e9ecee", "tonalRamp": ["#1b1f23", "#252b31", "#3d464e", "#5b6670", "#9aa4ad", "#c3c9ce", "#e9ecee", "#f6f7f8"] },
+      "go-green": { "role": "status", "displayName": "Go Green", "canonical": "#197a4b", "tonalRamp": ["#08351f", "#0f5232", "#197a4b", "#3a9a69", "#71c598", "#a8dcc0", "#cdeedb", "#e6f5ec"] },
+      "fault-red": { "role": "status", "displayName": "Fault Red", "canonical": "#ce0000", "tonalRamp": ["#620000", "#8a0000", "#ce0000", "#e64545", "#ff9696", "#ffc4c4", "#fddede", "#fdeeee"] },
+      "caution-orange": { "role": "status", "displayName": "Caution Orange", "canonical": "#ac3e00", "tonalRamp": ["#541e00", "#7e2e00", "#ac3e00", "#d96a24", "#ffa66d", "#ffc7a3", "#ffe0cc", "#ffeee2"] }
+    },
+    "typographyMeta": {
+      "headline": { "displayName": "Headline", "purpose": "1 画面に 1 つの見出し。" },
+      "title": { "displayName": "Title", "purpose": "件の見出し・節の見出し。" },
+      "body": { "displayName": "Body", "purpose": "本文。1 行は和文で 40 字ほど。" },
+      "label": { "displayName": "Label", "purpose": "短いラベル。太く(800)、字間を空ける。" },
+      "readout": { "displayName": "Readout", "purpose": "数字・時刻・符号。等幅で桁が動かない。" }
+    },
+    "shadows": [
+      { "name": "lifted-current", "value": "0 8px 12px -4px color-mix(in srgb, var(--text) 40%, transparent)", "purpose": "「いまの件」だけが持ち上がるときの影。ほかの面には使わない。" }
+    ],
+    "motion": [
+      { "name": "dur-fast", "value": "100ms", "purpose": "小さな状態の切り替え。" },
+      { "name": "dur", "value": "200ms", "purpose": "ボタンの背景などの標準の遷移。" },
+      { "name": "dur-slow", "value": "400ms", "purpose": "大きな領域の出し入れ。prefers-reduced-motion では 0ms。" }
+    ],
+    "breakpoints": [
+      { "name": "wide", "value": "40rem" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-main",
+      "description": "主な操作(次へ)。墨色の塗り。",
+      "html": "<button class=\"ds-btn-main\">次へ</button>",
+      "css": ".ds-btn-main { min-height: 44px; padding: 8px 24px; background: var(--accent, #1b1f23); color: var(--on-accent, #ffffff); border: 2px solid var(--accent, #1b1f23); border-radius: 4px; font: inherit; font-weight: 800; letter-spacing: 0.08em; cursor: pointer; } .ds-btn-main:focus-visible { outline: 3px solid var(--focus, #1b1f23); outline-offset: 2px; }"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-sub",
+      "description": "副の操作(戻る)。白の塗りと墨色の枠。",
+      "html": "<button class=\"ds-btn-sub\">戻る</button>",
+      "css": ".ds-btn-sub { min-height: 44px; padding: 8px 24px; background: var(--surface, #ffffff); color: var(--accent-text, #1b1f23); border: 2px solid var(--accent, #1b1f23); border-radius: 4px; font: inherit; font-weight: 800; letter-spacing: 0.08em; cursor: pointer; } .ds-btn-sub:focus-visible { outline: 3px solid var(--focus, #1b1f23); outline-offset: 2px; }"
+    },
+    {
+      "name": "Choice",
+      "kind": "custom",
+      "refersTo": "choice",
+      "description": "選択肢。既定の選択を置かない。選ぶと枠が墨色になり内側に線が入る。",
+      "html": "<label class=\"ds-choice\"><input type=\"radio\" name=\"ds\"> 水曜 15:30 で受ける</label>",
+      "css": ".ds-choice { display: flex; align-items: center; gap: 12px; min-height: 44px; padding: 8px 12px; background: var(--surface, #ffffff); border: 2px solid var(--border, #5b6670); border-radius: 4px; font-weight: 700; } .ds-choice:has(input:checked) { border-color: var(--accent, #1b1f23); box-shadow: inset 0 0 0 2px var(--accent, #1b1f23); }"
+    },
+    {
+      "name": "Step (done)",
+      "kind": "custom",
+      "refersTo": "step-done",
+      "description": "決めた件の検査札。消えずに残る。",
+      "html": "<button class=\"ds-step-done\"><b class=\"ds-no\">1</b><b class=\"ds-letter\">a</b></button>",
+      "css": ".ds-step-done { position: relative; display: grid; align-content: center; gap: 4px; width: 56px; min-height: 68px; padding: 12px 4px 4px; background: var(--surface, #ffffff); color: var(--text, #1b1f23); border: 2px solid var(--border, #5b6670); border-radius: 6px 2px 2px 2px; font: inherit; place-items: center; } .ds-step-done::before { content: ''; position: absolute; top: 4px; left: 4px; width: 8px; height: 8px; border-radius: 50%; box-shadow: inset 0 0 0 2px var(--border, #5b6670); } .ds-no { font: 800 20px/1 ui-monospace, monospace; } .ds-letter { display: grid; place-items: center; width: 28px; height: 28px; background: var(--text, #1b1f23); color: var(--bg, #e9ecee); border-radius: 2px; font: 700 14px/1 ui-monospace, monospace; }"
+    },
+    {
+      "name": "Step (current)",
+      "kind": "custom",
+      "refersTo": "step-current",
+      "description": "いまの件。黄色の枠+墨色の輪郭で囲み、一段浮く。",
+      "html": "<button class=\"ds-step-current\" aria-current=\"step\"><b class=\"ds-no2\">4</b></button>",
+      "css": ".ds-step-current { display: grid; place-items: center; width: 56px; min-height: 80px; background: var(--surface, #ffffff); color: var(--text, #1b1f23); border: 6px solid var(--marker, #f2c200); outline: 1px solid var(--text, #1b1f23); border-radius: 2px; box-shadow: 0 8px 12px -4px rgba(27, 31, 35, 0.4); transform: translateY(-4px); font: inherit; } .ds-no2 { font: 800 20px/1 ui-monospace, monospace; }"
+    },
+    {
+      "name": "Alert",
+      "kind": "custom",
+      "refersTo": "alert",
+      "description": "警告。背景色・枠・文の 3 つで伝え、色だけに頼らない。",
+      "html": "<p class=\"ds-alert\">期限が近い項目があります。</p>",
+      "css": ".ds-alert { margin: 0; padding: 12px 16px; background: var(--warn-bg, #ffeee2); color: var(--warn, #ac3e00); border: 1px solid var(--warn, #ac3e00); border-radius: 4px; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Walkaround",
+    "overview": "飛ぶ前の機体を 1 周して、点検した場所に札を付けていく。この世界では、決めたことは消えずに札として残り、いまの 1 件だけが黄色の枠で囲まれ、残りは破線で一段下に退く。借りているのは、外板のステンシル文字の太さ・歩行ラインの黄色・検査札の形だけで、画面の構成と操作は標準のまま。",
+    "keyCharacteristics": [
+      "「いま」は黄色の枠、「済み」は札、「まだ」は破線(状態を形と色の両方で伝える)。",
+      "数字・時刻・符号は等幅の読み出しで、桁が動かない。",
+      "位置と大きさがぶれない: 同じ行の件は同じ高さ、選択肢は固定の格子。",
+      "骨格(役割の名前・状態の色の意味・WCAG 2.2 AA)は共通で、面の個性は主色(accent の 4 つ)で出す。"
+    ],
+    "rules": [
+      { "name": "The One Marker Rule", "body": "黄色は「いま」の 1 か所にだけ現れる。装飾に使わない。", "section": "colors" },
+      { "name": "The Outline Pair Rule", "body": "`--marker` を使う規則は、同じ規則の中で `--text` の輪郭を持つ。", "section": "colors" },
+      { "name": "The Readout Only Rule", "body": "等幅の読み出しは、数字・時刻・符号にだけ使う。段落を等幅にしない。", "section": "typography" },
+      { "name": "The One Lifted Rule", "body": "持ち上がるのは「いまの件」だけ。", "section": "elevation" }
+    ],
+    "dos": [
+      "Do 決めた件は札として残し、消さない。",
+      "Do 「いま」の印に黄色を使うときは、墨色の輪郭と対にする(`--marker` + `--text`)。",
+      "Do 数字・時刻・符号は等幅の読み出しにそろえる。",
+      "Do 同じ行の件は同じ高さに、選択肢は同じ大きさ・同じ位置にする。"
+    ],
+    "donts": [
+      "Don't 黄色を装飾や大きな塗りに使わない(「工事中」の見た目に寄る)。",
+      "Don't 黄色の上に文字を載せない(明暗ともコントラストが足りない)。",
+      "Don't 状態の色(成功・誤り・注意)の意味を、この世界の色で変えない。",
+      "Don't 第三者の書体・スタイルを読み込まない。段落を等幅にしない。",
+      "Don't グラデーション・ガラス・生成りの地と飾り書体にしない(避けたい見た目)。"
+    ]
+  }
+}

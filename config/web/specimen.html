@@ -13,13 +13,212 @@
 </head>
 <body>
 <a class="skip-link" href="#main">本文へ</a>
-<main id="main">
-  <h1>デザインの見本</h1>
-  <p>Web の面が共有する、役割・尺度・部品を 1 枚に並べた見本。<code class="mono">variables.css</code> と <code class="mono">components.css</code> を実際に読み込んで描くので、正本を変えるとこの見た目が変わる。明暗は OS の設定に追従する。</p>
-  <p class="note">この見本は、正本の変更の Diff を撮る対象にもなる(<code class="mono">visual.toml</code>)。値そのものは、生成した <code class="mono">variables.json</code> が持つ。</p>
 
-  <h2>色の役割</h2>
-  <p class="note">面ごとのテーマが上書きしてよいのは、accent の 4 つ(accent・on-accent・accent-text・focus)だけ。</p>
+<header class="masthead">
+  <div class="masthead-inner">
+    <p class="doc-no readout">WEB DESIGN SYSTEM · 機体のマーキング · 2026-11</p>
+    <h1>デザインの見本</h1>
+    <p class="masthead-lead">決めたことは札として残り、いまの 1 件だけが黄色の枠で囲まれる。Web の面が共有する、役割・尺度・部品を、<code class="mono">variables.css</code> と <code class="mono">components.css</code> から実際に描いた 1 枚。明暗は OS の設定に追従する。</p>
+
+    <div class="hero">
+      <ol class="steps" aria-label="11 件の概要(見本)">
+        <li><button type="button" class="step" data-state="done" aria-label="1 件目 選択 a"><span class="step-no readout">1</span><span class="step-letter readout">a</span></button></li>
+        <li><button type="button" class="step" data-state="done" aria-label="2 件目 選択 c"><span class="step-no readout">2</span><span class="step-letter readout">c</span></button></li>
+        <li><button type="button" class="step" data-state="done" aria-label="3 件目 選択 d"><span class="step-no readout">3</span><span class="step-letter readout">d</span></button></li>
+        <li><button type="button" class="step" data-state="current" aria-current="step" aria-label="4 件目 いま"><span class="step-no readout">4</span></button></li>
+        <li><button type="button" class="step" data-state="pending" aria-label="5 件目"><span class="step-no readout">5</span></button></li>
+        <li><button type="button" class="step" data-state="pending" aria-label="6 件目"><span class="step-no readout">6</span></button></li>
+        <li><button type="button" class="step" data-state="due" aria-label="7 件目 期限が近い"><span class="step-no readout">7</span></button></li>
+        <li><button type="button" class="step" data-state="pending" aria-label="8 件目"><span class="step-no readout">8</span></button></li>
+        <li><button type="button" class="step" data-state="pending" aria-label="9 件目"><span class="step-no readout">9</span></button></li>
+        <li><button type="button" class="step" data-state="pending" aria-label="10 件目"><span class="step-no readout">10</span></button></li>
+        <li><button type="button" class="step" data-state="pending" aria-label="11 件目"><span class="step-no readout">11</span></button></li>
+      </ol>
+      <ul class="legend">
+        <li>済み = 検査札(消えずに残る)</li>
+        <li>いま = 黄色の枠(一段浮く)</li>
+        <li>まだ = 破線(一段下に退く)</li>
+        <li>期限 = 橙の丸と「!」</li>
+      </ul>
+    </div>
+  </div>
+</header>
+
+<div class="layout">
+  <nav class="toc" aria-label="目次">
+    <p class="toc-title">目次</p>
+    <ol>
+      <li><a href="#world"><span class="readout">01</span>世界</a></li>
+      <li><a href="#types"><span class="readout">02</span>ページの型</a></li>
+      <li><a href="#colors"><span class="readout">03</span>色の役割</a></li>
+      <li><a href="#scale"><span class="readout">04</span>文字・余白・角丸</a></li>
+      <li><a href="#components"><span class="readout">05</span>部品</a></li>
+      <li><a href="#behavior"><span class="readout">06</span>振る舞い</a></li>
+    </ol>
+  </nav>
+
+<main id="main">
+  <div class="section-head" id="world"><span class="section-no readout">01</span><h2>世界: 機体のマーキング</h2></div>
+  <p>航空機の外板の、ステンシルの太い文字・歩行ライン・検査札から借りた。借りたのは、書体の使い方・配色・密度と、署名の動き 1 つ(上のステップの列)だけ。部品の構成と操作は標準のまま。この見本ページ自身も同じ世界で組んでいる(太い帯の見出し、書類番号のような読み出し、節の番号)。</p>
+  <div class="cols">
+    <div>
+      <h3>借りたもの</h3>
+      <ul>
+        <li>短い見出しと符号は太く(800)、字間を空ける</li>
+        <li>数字・時刻・符号は、桁が動かない等幅の読み出し</li>
+        <li>鋼色の灰色と墨色の地、安全黄は「いま」だけ</li>
+        <li>決めた件は札として残り、まだの件は破線で退く</li>
+      </ul>
+    </div>
+    <div>
+      <h3>借りなかったもの</h3>
+      <ul>
+        <li>計器や装置の見た目(貼り付けた装い)</li>
+        <li>黄色と黒の縞(工事中の見た目)</li>
+        <li>画面の構成・ナビゲーション・操作部の形</li>
+        <li>面ごとの色の変更(主色は accent の 4 つで足す)</li>
+      </ul>
+    </div>
+  </div>
+  <div class="demo">
+    <p class="demo-title">等幅の読み出し(.readout)。数字・時刻・符号は、桁が動かないようにそろえる。本文は標準の書体のまま。</p>
+    <p>来週の火曜 <span class="readout">10:00</span>、水曜 <span class="readout">15:30</span>、木曜 <span class="readout">11:00</span> のいずれかで、<span class="readout">11/28</span> までに返す。</p>
+  </div>
+
+  <div class="section-head" id="types"><span class="section-no readout">02</span><h2>ページの型</h2></div>
+  <p class="note">基準(ADR-1677)の 3 つの型を、この世界で並べた見本。部品の組み合わせ方だけを示し、各面の実物は作り直していない。デスクトップとスマートフォンで、位置と大きさは変わらない(スマートフォンは縦に積み、次へが上)。</p>
+
+  <div class="screens">
+    <div class="screen">
+      <div class="screen-bar"><span>裁定フォーム · 1 件ずつ進む(step)</span><span class="readout">デスクトップ</span></div>
+      <div class="screen-body">
+        <p class="status" role="status" data-state="saved">直前: 3 件目「断る」を保存しました <span class="readout">09:14</span></p>
+        <ol class="steps" aria-label="11 件の概要(裁定フォーム)">
+          <li><button type="button" class="step" data-state="done" aria-label="1 件目 選択 a"><span class="step-no readout">1</span><span class="step-letter readout">a</span></button></li>
+          <li><button type="button" class="step" data-state="done" aria-label="2 件目 選択 c"><span class="step-no readout">2</span><span class="step-letter readout">c</span></button></li>
+          <li><button type="button" class="step" data-state="done" aria-label="3 件目 選択 d"><span class="step-no readout">3</span><span class="step-letter readout">d</span></button></li>
+          <li><button type="button" class="step" data-state="current" aria-current="step" aria-label="4 件目 いま"><span class="step-no readout">4</span></button></li>
+          <li><button type="button" class="step" data-state="pending" aria-label="5 件目"><span class="step-no readout">5</span></button></li>
+          <li><button type="button" class="step" data-state="pending" aria-label="6 件目"><span class="step-no readout">6</span></button></li>
+          <li><button type="button" class="step" data-state="due" aria-label="7 件目 期限が近い"><span class="step-no readout">7</span></button></li>
+          <li><button type="button" class="step" data-state="pending" aria-label="8 件目"><span class="step-no readout">8</span></button></li>
+          <li><button type="button" class="step" data-state="pending" aria-label="9 件目"><span class="step-no readout">9</span></button></li>
+          <li><button type="button" class="step" data-state="pending" aria-label="10 件目"><span class="step-no readout">10</span></button></li>
+          <li><button type="button" class="step" data-state="pending" aria-label="11 件目"><span class="step-no readout">11</span></button></li>
+        </ol>
+        <p class="label"><span class="readout">4 / 11</span> · 返信が要るメール · 期限 <span class="readout">11/28</span>(金)</p>
+        <h3>紹介会社から、面談の日程候補が 3 つ届いています</h3>
+        <blockquote class="quote">来週の火曜 <span class="readout">10:00</span>、水曜 <span class="readout">15:30</span>、木曜 <span class="readout">11:00</span> のいずれかで、ご都合はいかがでしょうか。</blockquote>
+        <fieldset class="choices">
+          <legend>どうしますか</legend>
+          <label class="choice"><input type="radio" name="type-verdict" value="a"><span class="readout">a</span> 水曜 <span class="readout">15:30</span> で受ける(推奨)</label>
+          <label class="choice"><input type="radio" name="type-verdict" value="b"><span class="readout">b</span> 火曜 <span class="readout">10:00</span> で受ける</label>
+          <label class="choice"><input type="radio" name="type-verdict" value="c"><span class="readout">c</span> 木曜 <span class="readout">11:00</span> で受ける</label>
+          <label class="choice"><input type="radio" name="type-verdict" value="d"><span class="readout">d</span> 別の日を提案して返す</label>
+          <label class="choice"><input type="radio" name="type-verdict" value="e"><span class="readout">e</span> あとで</label>
+          <label class="choice"><input type="radio" name="type-verdict" value="f"><span class="readout">f</span> その他(メモ)</label>
+        </fieldset>
+        <div class="actions">
+          <button type="button" class="btn btn-main">次へ</button>
+          <button type="button" class="btn btn-sub">戻る</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="screen phone">
+      <div class="screen-bar"><span>裁定フォーム</span><span class="readout">スマートフォン</span></div>
+      <div class="screen-body">
+        <p class="status" role="status" data-state="saved">直前: 3 件目を保存 <span class="readout">09:14</span></p>
+        <ol class="steps" aria-label="11 件の概要(スマートフォン)">
+          <li><button type="button" class="step" data-state="done" aria-label="1 件目 選択 a"><span class="step-no readout">1</span><span class="step-letter readout">a</span></button></li>
+          <li><button type="button" class="step" data-state="done" aria-label="2 件目 選択 c"><span class="step-no readout">2</span><span class="step-letter readout">c</span></button></li>
+          <li><button type="button" class="step" data-state="done" aria-label="3 件目 選択 d"><span class="step-no readout">3</span><span class="step-letter readout">d</span></button></li>
+          <li><button type="button" class="step" data-state="current" aria-current="step" aria-label="4 件目 いま"><span class="step-no readout">4</span></button></li>
+          <li><button type="button" class="step" data-state="pending" aria-label="5 件目"><span class="step-no readout">5</span></button></li>
+          <li><button type="button" class="step" data-state="pending" aria-label="6 件目"><span class="step-no readout">6</span></button></li>
+        </ol>
+        <p class="label"><span class="readout">4 / 11</span> · 期限 <span class="readout">11/28</span></p>
+        <h3>面談の日程候補が 3 つ届いています</h3>
+        <fieldset class="choices">
+          <legend>どうしますか</legend>
+          <label class="choice"><input type="radio" name="type-verdict-phone" value="a"><span class="readout">a</span> 水曜 <span class="readout">15:30</span>(推奨)</label>
+          <label class="choice"><input type="radio" name="type-verdict-phone" value="b"><span class="readout">b</span> 火曜 <span class="readout">10:00</span></label>
+          <label class="choice"><input type="radio" name="type-verdict-phone" value="e"><span class="readout">e</span> あとで</label>
+        </fieldset>
+        <div class="actions">
+          <button type="button" class="btn btn-main">次へ</button>
+          <button type="button" class="btn btn-sub">戻る</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="screens">
+    <div class="screen">
+      <div class="screen-bar"><span>学習・演習 · 1 問ずつ(step)</span><span class="readout">デスクトップ</span></div>
+      <div class="screen-body">
+        <p class="label"><span class="readout">第 3 問 / 20</span> · 正答 <span class="readout">2</span> · 連続 <span class="readout">2</span></p>
+        <h3>電圧 <span class="readout">5 V</span> の回路に抵抗 <span class="readout">250 Ω</span> をつないだとき、流れる電流はどれか。</h3>
+        <fieldset class="choices">
+          <legend>答えを選ぶ</legend>
+          <label class="choice"><input type="radio" name="type-quiz" value="a"><span class="readout">a</span> <span class="readout">10 mA</span></label>
+          <label class="choice"><input type="radio" name="type-quiz" value="b"><span class="readout">b</span> <span class="readout">20 mA</span></label>
+          <label class="choice"><input type="radio" name="type-quiz" value="c"><span class="readout">c</span> <span class="readout">50 mA</span></label>
+        </fieldset>
+        <p class="alert alert-ok">正解です。<span class="readout">I = V / R = 5 / 250 = 0.02 A</span> なので、<span class="readout">20 mA</span> です。</p>
+      </div>
+    </div>
+    <div class="screen phone">
+      <div class="screen-bar"><span>学習・演習</span><span class="readout">スマートフォン</span></div>
+      <div class="screen-body">
+        <p class="label"><span class="readout">第 3 問 / 20</span></p>
+        <h3>電圧 <span class="readout">5 V</span>、抵抗 <span class="readout">250 Ω</span> のとき、電流は。</h3>
+        <fieldset class="choices">
+          <legend>答えを選ぶ</legend>
+          <label class="choice"><input type="radio" name="type-quiz-phone" value="a"><span class="readout">a</span> <span class="readout">10 mA</span></label>
+          <label class="choice"><input type="radio" name="type-quiz-phone" value="b"><span class="readout">b</span> <span class="readout">20 mA</span></label>
+        </fieldset>
+        <p class="alert alert-ng">不正解です。もう一度、<span class="readout">I = V / R</span> から。</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="screens">
+    <div class="screen">
+      <div class="screen-bar"><span>ダッシュボード · 状態を一覧で見る</span><span class="readout">デスクトップ</span></div>
+      <div class="screen-body">
+        <ul class="kpis">
+          <li class="kpi"><span class="kpi-name">未裁定</span><span class="kpi-value readout">7</span></li>
+          <li class="kpi"><span class="kpi-name">今日の期限</span><span class="kpi-value readout">2</span></li>
+          <li class="kpi"><span class="kpi-name">保存の失敗</span><span class="kpi-value readout">0</span></li>
+        </ul>
+        <p class="alert alert-warn">期限が近い項目が <span class="readout">2</span> 件あります。</p>
+        <table class="table-cards">
+          <thead>
+            <tr><th>項目</th><th>状態</th><th>期限</th></tr>
+          </thead>
+          <tbody>
+            <tr><td data-label="項目">更新手続きの確認</td><td data-label="状態">要対応</td><td data-label="期限" class="readout">11/30</td></tr>
+            <tr><td data-label="項目">フィルタの反映</td><td data-label="状態">済み</td><td data-label="期限" class="readout">なし</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div class="screen phone">
+      <div class="screen-bar"><span>ダッシュボード</span><span class="readout">スマートフォン</span></div>
+      <div class="screen-body">
+        <ul class="kpis">
+          <li class="kpi"><span class="kpi-name">未裁定</span><span class="kpi-value readout">7</span></li>
+          <li class="kpi"><span class="kpi-name">今日</span><span class="kpi-value readout">2</span></li>
+          <li class="kpi"><span class="kpi-name">失敗</span><span class="kpi-value readout">0</span></li>
+        </ul>
+        <p class="alert alert-warn">期限が近い項目が <span class="readout">2</span> 件。</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="section-head" id="colors"><span class="section-no readout">03</span><h2>色の役割</h2></div>
+  <p class="note">面ごとのテーマが上書きしてよいのは、accent の 4 つ(accent・on-accent・accent-text・focus)だけ。<code class="mono">--marker</code>(安全黄)は「いま」の印の専用色で、単独では明るい背景と 3:1 に届かないので、必ず <code class="mono">--text</code> の輪郭と対にし、その上に文字を載せない。</p>
   <ul class="grid">
     <li class="swatch" data-role="bg"><span class="chip"></span><span class="mono">--bg</span></li>
     <li class="swatch" data-role="surface"><span class="chip"></span><span class="mono">--surface</span></li>
@@ -31,6 +230,7 @@
     <li class="swatch" data-role="on-accent"><span class="chip"></span><span class="mono">--on-accent</span></li>
     <li class="swatch" data-role="accent-text"><span class="chip"></span><span class="mono">--accent-text</span></li>
     <li class="swatch" data-role="focus"><span class="chip"></span><span class="mono">--focus</span></li>
+    <li class="swatch" data-role="marker"><span class="chip"></span><span class="mono">--marker</span></li>
     <li class="swatch" data-role="ok"><span class="chip"></span><span class="mono">--ok</span></li>
     <li class="swatch" data-role="ok-bg"><span class="chip"></span><span class="mono">--ok-bg</span></li>
     <li class="swatch" data-role="ng"><span class="chip"></span><span class="mono">--ng</span></li>
@@ -39,15 +239,13 @@
     <li class="swatch" data-role="warn-bg"><span class="chip"></span><span class="mono">--warn-bg</span></li>
   </ul>
 
-  <h2>文字の大きさ</h2>
+  <div class="section-head" id="scale"><span class="section-no readout">04</span><h2>文字・余白・角丸</h2></div>
   <p class="t-small">小(--fs-small) 本文の補足・状態の表示</p>
   <p class="t-body">本文(--fs-body) 1 行は和文で 40 字ほどに収める</p>
   <p class="t-lead">リード(--fs-lead) 節の導入</p>
   <p class="t-h3">見出し 3(--fs-h3)</p>
   <p class="t-h2">見出し 2(--fs-h2)</p>
   <p class="t-h1">見出し 1(--fs-h1)</p>
-
-  <h2>余白と角丸</h2>
   <ul class="bars" aria-label="余白の尺度 1 から 6">
     <li class="bar" data-space="1"></li>
     <li class="bar" data-space="2"></li>
@@ -64,7 +262,7 @@
   </ul>
   <p class="note">左から --radius-s・--radius-m・--radius-l。</p>
 
-  <h2>部品</h2>
+  <div class="section-head" id="components"><span class="section-no readout">05</span><h2>部品</h2></div>
 
   <div class="demo">
     <p class="demo-title">ボタンと置き方(.btn・.actions)。HTML では主な操作を先に書く。PC は「戻る」を左端、「次へ」を右端。スマートフォンは縦に積み、「次へ」を上に置く。</p>
@@ -76,7 +274,7 @@
   </div>
 
   <div class="demo">
-    <p class="demo-title">選択肢(.choices・.choice)。選んだ行は、太い枠と面の色で示す(下は、選ぶ前)。既定の選択を置かない。</p>
+    <p class="demo-title">選択肢(.choices・.choice)。選んだ行は、太い枠と内側の線で示す(下は、選ぶ前)。既定の選択を置かない。</p>
     <fieldset class="choices">
       <legend>どうしますか</legend>
       <label class="choice"><input type="radio" name="demo-choice" value="a">自分でやる</label>
@@ -117,7 +315,7 @@
     </table>
   </div>
 
-  <h2>振る舞い(behavior.js)</h2>
+  <div class="section-head" id="behavior"><span class="section-no readout">06</span><h2>振る舞い(behavior.js)</h2></div>
   <p class="note">見た目だけでなく、保存の表示・ショートカットのキー・読み込み中/失敗/空の出し分けも、共有の部品として置く(ADR-1703 D2)。下は、<code class="mono">specimen.js</code> が <code class="mono">window.pageBehavior</code> を呼んで動かす見本。失敗は 1 回目だけ起こす。</p>
 
   <div class="demo">
@@ -153,5 +351,6 @@
     <a class="skip-link" href="#main">本文へ</a>
   </div>
 </main>
+</div>
 </body>
 </html>

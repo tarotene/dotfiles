@@ -26,7 +26,7 @@ use crate::manifest::Violation;
 pub const VARIABLES_PATH: &str = "config/web/variables.css";
 
 /// 役割の集合(閉じた語彙)。面ごとのテーマは、この集合に足さず、値だけを上書きする。
-pub const REQUIRED_ROLES: [&str; 16] = [
+pub const REQUIRED_ROLES: [&str; 17] = [
     "--bg",
     "--surface",
     "--text",
@@ -37,6 +37,7 @@ pub const REQUIRED_ROLES: [&str; 16] = [
     "--on-accent",
     "--accent-text",
     "--focus",
+    "--marker",
     "--ok",
     "--ok-bg",
     "--ng",
@@ -484,7 +485,7 @@ mod tests {
     #[test]
     fn a_low_contrast_pair_is_reported_in_the_scheme_it_fails() {
         // 弱い文字を、明の背景とほぼ同じ明るさにする。
-        let bad = REAL.replace("--ref-gray-700: #4d4d4d;", "--ref-gray-700: #cccccc;");
+        let bad = REAL.replace("--ref-steel-600: #5b6670;", "--ref-steel-600: #c3c9ce;");
         let vs = check_tokens(VARIABLES_PATH, &bad);
         let d = details(&vs);
         assert!(d.contains("弱い文字") && d.contains("明"), "{d}");
@@ -494,7 +495,7 @@ mod tests {
     fn a_white_text_on_a_light_accent_in_the_dark_scheme_fails() {
         // 暗色の `--on-accent` を白にすると、淡い強調色の上で読めない(実測した型 P4)。
         let bad = REAL.replace(
-            "--on-accent: light-dark(var(--ref-white), var(--ref-gray-900));",
+            "--on-accent: light-dark(var(--ref-white), var(--ref-steel-900));",
             "--on-accent: light-dark(var(--ref-white), var(--ref-white));",
         );
         let d = details(&check_tokens(VARIABLES_PATH, &bad));
@@ -514,8 +515,8 @@ mod tests {
     #[test]
     fn a_raw_hex_in_the_role_layer_is_reported() {
         let bad = REAL.replace(
-            "--focus: light-dark(var(--ref-blue-900), var(--ref-blue-300));",
-            "--focus: light-dark(#0017c1, #9db7f9);",
+            "--focus: light-dark(var(--ref-steel-900), var(--ref-steel-100));",
+            "--focus: light-dark(#1b1f23, #e9ecee);",
         );
         let d = details(&check_tokens(VARIABLES_PATH, &bad));
         assert!(d.contains("16 進を直書き"), "{d}");
@@ -524,12 +525,12 @@ mod tests {
     #[test]
     fn a_color_the_check_cannot_read_is_reported_not_passed() {
         let bad = REAL.replace(
-            "--ref-blue-900: #0017c1;",
-            "--ref-blue-900: oklch(0.4 0.2 260);",
+            "--ref-steel-900: #1b1f23;",
+            "--ref-steel-900: oklch(0.4 0.2 260);",
         );
         let d = details(&check_tokens(VARIABLES_PATH, &bad));
         assert!(
-            d.contains("原色 `--ref-blue-900` が 16 進の値でない"),
+            d.contains("原色 `--ref-steel-900` が 16 進の値でない"),
             "{d}"
         );
         assert!(d.contains("色に解けない"), "{d}");
@@ -565,9 +566,9 @@ mod tests {
                 "{role} が生成物に無い"
             );
         }
-        // `--bg: light-dark(var(--ref-white), var(--ref-gray-900))` を、明暗の 16 進に解く。
+        // `--bg: light-dark(var(--ref-steel-100), var(--ref-steel-900))` を、明暗の 16 進に解く。
         assert!(
-            json.contains("{ \"name\": \"bg\", \"light\": \"#ffffff\", \"dark\": \"#1a1a1a\" }"),
+            json.contains("{ \"name\": \"bg\", \"light\": \"#e9ecee\", \"dark\": \"#1b1f23\" }"),
             "{json}"
         );
         // `@media (prefers-reduced-motion)` の中の再宣言(0ms)でなく、最初の宣言(100ms)を載せる。
@@ -587,16 +588,16 @@ mod tests {
     #[test]
     fn a_role_that_cannot_be_resolved_is_an_error_not_a_hole() {
         let bad = REAL.replace(
-            "--ref-gray-900: #1a1a1a;",
-            "--ref-gray-900: oklch(0.2 0 0);",
+            "--ref-steel-900: #1b1f23;",
+            "--ref-steel-900: oklch(0.2 0 0);",
         );
         assert!(tokens_json(&bad).is_err());
     }
 
     #[test]
     fn a_var_cycle_is_reported_and_does_not_hang() {
-        // `--ref-white` が `--bg` を指し、`--bg` が `--ref-white` を指す。
-        let bad = REAL.replace("--ref-white: #ffffff;", "--ref-white: var(--bg);");
+        // `--ref-steel-100` が `--bg` を指し、`--bg` が `--ref-steel-100` を指す。
+        let bad = REAL.replace("--ref-steel-100: #e9ecee;", "--ref-steel-100: var(--bg);");
         let d = details(&check_tokens(VARIABLES_PATH, &bad));
         assert!(d.contains("循環"), "{d}");
     }
