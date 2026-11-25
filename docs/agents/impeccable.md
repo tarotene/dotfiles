@@ -1,7 +1,7 @@
 # impeccable — 画面のデザインの手順と検出器を、版を固定して配る第三者スキル
 
 実装: `flake.nix`(入力 `impeccable`)、`home/modules/agents.nix`(スキルの配備、検出エンジンの固定、`impeccable` コマンド)、`home/tests/agent-skills.nix`(配布範囲の検査)
-決定: `docs/adr/0000-impeccable-pinned-skill.md`
+決定: `docs/adr/1719-impeccable-pinned-skill.md`
 上流: https://github.com/pbakaus/impeccable (Apache-2.0。Paul Bakaus。スキル 4.11.0、エンジン 0.1.30、2026-11-24)
 隣の標準: [`personal-web-app.md`](personal-web-app.md)(画面の作り方。基準・トークン・検査の正本は `config/web/`)
 
