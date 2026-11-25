@@ -1,0 +1,31 @@
+# このリポジトリ自身の面が取り込んだ、Web のデザイン正本(config/web/)の固定(ADR-1677・ADR-1685・ADR-1700)。
+# 裁定ページの雛形は、Artifact の 1 枚だけの HTML で、CSS・JavaScript を HTML の中に持つので、正本を、HTML の中の印を付けた
+# 区間に複写する(design-pin:begin と design-pin:end の行の間。区間の内容の sha256 が、正本のファイルの sha256 と一致する)。
+# 検査は CI の `design-pin`(このリポジトリの `.github/actions/design-pin`)。正本を変えたら、複写・commit・sha256 を同じ変更で上げる。
+# 主色は、区間の外の、この面のテーマ(`--accent`・`--on-accent`・`--accent-text`・`--focus` の上書き)に残す。
+
+[[file]]
+commit = "2a7e9278dc5a8d03f965c5c07e4b84b759d31b7d"
+name   = "variables.css"
+sha256 = "dc1f37107e3230df837a0f33bc944f2e1407efdce46a3451772cc3fad6ec87fd"
+path   = "config/agents/skills/inbox-adjudication/reference/verdict-page/template.html"
+begin  = "design-pin:begin variables.css"
+end    = "design-pin:end variables.css"
+
+[[file]]
+commit = "2a7e9278dc5a8d03f965c5c07e4b84b759d31b7d"
+name   = "components.css"
+sha256 = "20a3f453df6faf1af35884065cbf85a7aef247dca2a34e5bfff75901118e908f"
+path   = "config/agents/skills/inbox-adjudication/reference/verdict-page/template.html"
+begin  = "design-pin:begin components.css"
+end    = "design-pin:end components.css"
+
+# 振る舞いの共有部品(config/web/behavior.js。ADR-1703 D2)。ショートカットのキーが `keyguard` を使う。
+# JavaScript の区間は、<script> の中に `/* design-pin:begin behavior.js */` と `/* design-pin:end behavior.js */` の行で挟む。
+[[file]]
+commit = "2a7e9278dc5a8d03f965c5c07e4b84b759d31b7d"
+name   = "behavior.js"
+sha256 = "f1e044d78182997866577cb598b7484501b211f315813c07c56ed6ee728f48a3"
+path   = "config/agents/skills/inbox-adjudication/reference/verdict-page/template.html"
+begin  = "design-pin:begin behavior.js"
+end    = "design-pin:end behavior.js"

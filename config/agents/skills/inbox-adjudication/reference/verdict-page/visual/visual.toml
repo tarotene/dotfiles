@@ -16,11 +16,21 @@ clock = "2026-01-01T09:00:00+09:00"
 [[page.state]]
 name = "initial"
 
+# 1 件目の選択肢を押すと、2 件目へ進む。Backspace(前へ)で 1 件目へ戻ると、保存の表示が見える。
 [[page.state]]
 name = "chosen-saved"
-steps = [ { click = "[id^='b-a1-']" }, { wait = 300 } ]
+steps = [ { click = "[id^='b-a1-']" }, { wait = 300 }, { press = "Backspace" }, { wait = 100 } ]
 
 [[page.state]]
 name = "chosen-failed"
 globals = { mode = "fail" }
-steps = [ { click = "[id^='b-a1-']" }, { wait = 300 } ]
+steps = [ { click = "[id^='b-a1-']" }, { wait = 300 }, { press = "Backspace" }, { wait = 100 } ]
+
+# Ctrl+Enter で確認画面、もう 1 回で完了画面(確定)。
+[[page.state]]
+name = "confirm"
+steps = [ { press = "Control+Enter" }, { wait = 200 } ]
+
+[[page.state]]
+name = "done"
+steps = [ { press = "Control+Enter" }, { wait = 200 }, { press = "Control+Enter" }, { wait = 200 } ]

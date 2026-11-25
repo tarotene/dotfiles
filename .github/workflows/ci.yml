@@ -351,6 +351,15 @@ jobs:
       - name: design-pin --selftest
         run: bash .github/actions/design-pin/check.sh --selftest
 
+      # このリポジトリ自身の面(裁定ページの雛形)が取り込んだ正本の複写を、`design-pin.toml` の固定と照合する(ADR-1710)。
+      # 正本の内容の取得(`CHECK_UPSTREAM`)は、pin した commit の raw の内容で行う。
+      - name: design-pin (this repository's own surfaces)
+        env:
+          PIN_FILE: design-pin.toml
+          CHECK_UPSTREAM: 'true'
+          SOURCE_REPO: ${{ github.repository }}
+        run: bash .github/actions/design-pin/check.sh
+
       # vocab-graph-check (ADR-1293, docs/agents/state-vocabulary.md): 対象の状態遷移の語彙 JSON の
       # Schema とグラフの性質(到達・出口・担い手の解決など)の検査。--skills は、どの語彙にも
       # external-objects.json にも載らない skill を落とす(全 skill を載せ切ったので配線した。ADR-1305)。
