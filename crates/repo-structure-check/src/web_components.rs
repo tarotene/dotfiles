@@ -20,7 +20,9 @@ use crate::web_variables::{declarations, strip_comments};
 pub const COMPONENTS_PATH: &str = "config/web/components.css";
 
 /// 必須の部品の綴り。
-const REQUIRED: [&str; 11] = [
+const REQUIRED: [&str; 13] = [
+    ".steps",
+    ".readout",
     ":focus-visible",
     ".skip-link",
     ".btn-main",
@@ -88,10 +90,42 @@ pub(crate) fn var_references(stripped: &str) -> Vec<(usize, String)> {
     out
 }
 
+/// `var(--marker)` を持つのに `var(--text)` を持たない規則(宣言のかたまり `{…}`)の、開き括弧の行番号。
+/// 安全黄の `--marker` は、明るい背景とのコントラストが 3:1 に届かないので、単独で「いま」の印にしてはならず、
+/// 同じ規則の中で `--text` の輪郭と対にする(`variables.css` の冒頭の注)。
+pub(crate) fn marker_without_text_lines(stripped: &str) -> Vec<usize> {
+    let mut out = Vec::new();
+    let mut line = 1;
+    let mut open: Option<(usize, usize)> = None; // (開き括弧の位置, その行番号)
+    for (i, c) in stripped.char_indices() {
+        match c {
+            '\n' => line += 1,
+            '{' => open = Some((i + 1, line)),
+            '}' => {
+                if let Some((start, open_line)) = open.take() {
+                    let block = &stripped[start..i];
+                    if block.contains("var(--marker)") && !block.contains("var(--text)") {
+                        out.push(open_line);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    out
+}
+
 /// 部品の文字列を検査する。`declared` は、正本が宣言する変数名。
 pub fn check_components(path: &str, css: &str, declared: &BTreeSet<String>) -> Vec<Violation> {
     let mut out = Vec::new();
     let stripped = strip_comments(css);
+
+    for line in marker_without_text_lines(&stripped) {
+        out.push(violation(
+            path,
+            format!("{line} 行目: `var(--marker)` を `var(--text)` の輪郭と対にしていない(安全黄は単独で 3:1 に届かない)"),
+        ));
+    }
 
     for line in hex_color_lines(&stripped) {
         out.push(violation(
@@ -231,6 +265,19 @@ mod tests {
         let bad = css.replace("row-reverse", "row");
         let d = details(&check_components(COMPONENTS_PATH, &bad, &declared));
         assert!(d.contains("row-reverse"), "{d}");
+    }
+
+    #[test]
+    fn a_marker_without_a_text_outline_is_reported() {
+        let (css, declared) = real();
+        let bad = format!("{css}\n.lonely {{\n  border: 4px solid var(--marker);\n}}\n");
+        let d = details(&check_components(COMPONENTS_PATH, &bad, &declared));
+        assert!(d.contains("`var(--marker)` を `var(--text)`"), "{d}");
+        // 輪郭と対なら通る。
+        let ok = format!(
+            "{css}\n.paired {{\n  border: 4px solid var(--marker);\n  outline: 1px solid var(--text);\n}}\n"
+        );
+        assert!(check_components(COMPONENTS_PATH, &ok, &declared).is_empty());
     }
 
     #[test]

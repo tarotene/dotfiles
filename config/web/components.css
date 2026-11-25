@@ -32,7 +32,7 @@ body {
 }
 
 :focus-visible {
-  outline: 2px solid var(--focus);
+  outline: 3px solid var(--focus);
   outline-offset: 2px;
 }
 
@@ -62,7 +62,8 @@ body {
   border: 2px solid var(--accent);
   border-radius: var(--radius-m);
   font: inherit;
-  font-weight: 700;
+  font-weight: var(--fw-label);
+  letter-spacing: var(--ls-label);
   cursor: pointer;
   transition: background var(--dur) ease;
 }
@@ -73,7 +74,7 @@ body {
 }
 
 .btn-sub {
-  background: var(--bg);
+  background: var(--surface);
   color: var(--accent-text);
 }
 
@@ -117,13 +118,15 @@ body {
   gap: var(--space-3);
   min-height: var(--target);
   padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--border);
+  border: 2px solid var(--border);
   border-radius: var(--radius-m);
+  background: var(--surface);
+  font-weight: var(--fw-strong);
 }
 
 .choice:has(input:checked) {
-  border: 2px solid var(--accent);
-  background: var(--surface);
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 2px var(--accent);
 }
 
 .status {
@@ -168,6 +171,136 @@ body {
   padding: var(--space-6) var(--space-4);
   color: var(--text-muted);
   text-align: center;
+}
+
+/* 世界「機体のマーキング」の部品。数字・時刻・符号は、桁が動かない等幅の読み出しにそろえる。 */
+.readout {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+}
+
+/*
+ * 全件の概観(ステップの列)。署名の動き: 決めた件には検査札が付いて残り(消えない)、いまの件は黄色の枠で囲まれて
+ * 一段浮き、残りは破線で一段下に退く。期限の近い件は、橙の丸と「!」(色だけで伝えない)。
+ * `--marker` は単独で 3:1 に届かないので、必ず `--text` の輪郭と対にする(`web_components` が検査する)。
+ *
+ *   <ol class="steps">
+ *     <li><button type="button" class="step" data-state="done"><span class="step-no readout">1</span><span class="step-letter readout">a</span></button></li>
+ *     <li><button type="button" class="step" data-state="current" aria-current="step"><span class="step-no readout">4</span></button></li>
+ *     <li><button type="button" class="step" data-state="due" aria-label="7 件目 期限が近い"><span class="step-no readout">7</span></button></li>
+ *   </ol>
+ */
+.steps {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: var(--space-2);
+  margin: 0;
+  padding: var(--space-2) 0 0;
+  list-style: none;
+}
+
+@media (min-width: 40rem) {
+  .steps {
+    grid-template-columns: repeat(11, minmax(0, 1fr));
+  }
+}
+
+/* 同じ行の件は、状態にかかわらず同じ高さにそろえる(位置と大きさがぶれない)。 */
+.steps > li {
+  display: grid;
+}
+
+.step {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 100%;
+  min-height: var(--target);
+  padding: 0;
+  border: 2px dashed var(--border);
+  border-radius: var(--radius-s);
+  background: none;
+  color: var(--text-muted);
+  font: inherit;
+  font-weight: var(--fw-label);
+  cursor: pointer;
+}
+
+@media (min-width: 40rem) {
+  .step {
+    min-height: 5rem;
+  }
+}
+
+.step-no {
+  font-size: var(--fs-h3);
+  line-height: 1;
+}
+
+.step-letter {
+  display: grid;
+  place-items: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: var(--radius-s);
+  background: var(--text);
+  color: var(--bg);
+  font-size: var(--fs-small);
+}
+
+/* 決めた件の検査札。番号の下に符号を縦に置く(11 列に並べても、札が列からはみ出さない)。 */
+.step[data-state="done"] {
+  align-content: center;
+  gap: var(--space-1);
+  min-height: 4.25rem;
+  padding: var(--space-3) var(--space-1) var(--space-1);
+  border: 2px solid var(--border);
+  border-radius: var(--radius-l) var(--radius-s) var(--radius-s) var(--radius-s);
+  background: var(--surface);
+  color: var(--text);
+}
+
+/* 検査札の穴 */
+.step[data-state="done"]::before {
+  content: "";
+  position: absolute;
+  top: var(--space-1);
+  left: var(--space-1);
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: var(--bg);
+  box-shadow: inset 0 0 0 2px var(--border);
+}
+
+
+.step[data-state="current"] {
+  border: var(--frame) solid var(--marker);
+  outline: 1px solid var(--text);
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 0.5rem 0.75rem -0.25rem color-mix(in srgb, var(--text) 40%, transparent);
+  transform: translateY(-0.25rem);
+}
+
+.step[data-state="due"]::after {
+  content: "!";
+  position: absolute;
+  top: -0.375rem;
+  right: -0.375rem;
+  display: grid;
+  place-items: center;
+  width: 1.25rem;
+  height: 1.25rem;
+  border-radius: 50%;
+  box-shadow: 0 0 0 2px var(--bg);
+  background: var(--warn);
+  color: var(--bg);
+  font-size: var(--fs-small);
+  font-weight: var(--fw-label);
+  line-height: 1;
 }
 
 /* 表を、狭い画面で 1 行 1 枚に組み替える(列を隠さない)。各欄の名前は data-label から出す。 */

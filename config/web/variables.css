@@ -27,21 +27,30 @@
  *     余裕を持って 4.5:1 を超えるため。
  *   - 書体は、機体の書体を既定にする(ADR-1677 D6)。Linux の和文の書体名 `Noto Sans CJK JP` を足した。
  *     第三者からの書体の読み込みは禁止(`web_assets` が検査する)。
+ *
+ * 見た目の世界: 「機体のマーキング」(航空機の外板のステンシル文字・歩行ライン・検査札)。全面に通す世界で、
+ * 借りるのは、書体の使い方・配色・密度・1 つの特徴的な動き(いまの件を囲む黄色の枠と、決めた件に付く検査札)だけ。
+ * 骨格(役割の名前・状態の色の意味・コントラストの検査)は変えていない。DADS のグレーと青を、鋼色(steel)の
+ * 灰色と墨色に置き換えた(DADS の semantic の緑・赤・橙は、そのまま使う)。
+ *   - `--accent` の既定は墨色(濃い鋼色)。面ごとのテーマが、自分の主色で上書きする。
+ *   - `--marker`(安全黄)は、「いまの件」「いまのステップ」の印の専用色。役割を 1 つ足した(役割の集合は 17)。
+ *     明るい背景とのコントラストが 3:1 に届かないので、単独では図形の条件を満たさない。必ず `--text` の輪郭と対にし、
+ *     その上に文字を載せない(`web_components` が、`var(--marker)` を持つ規則に `var(--text)` を求める)。
+ *     状態の色(`--ok`・`--ng`・`--warn`)とは別に保ち、意味を変えない。
  */
 
 :root {
-  /* ── 層 1: 原色(DADS のトークン名の階調) ─────────────────────────── */
+  /* ── 層 1: 原色(鋼色の階調と、DADS の semantic の階調) ───────────── */
   --ref-white: #ffffff;
-  --ref-gray-50: #f2f2f2;
-  --ref-gray-200: #cccccc;
-  --ref-gray-300: #b3b3b3;
-  --ref-gray-400: #999999;
-  --ref-gray-536: #767676;
-  --ref-gray-700: #4d4d4d;
-  --ref-gray-850: #262626;
-  --ref-gray-900: #1a1a1a;
-  --ref-blue-300: #9db7f9;
-  --ref-blue-900: #0017c1;
+  --ref-steel-50: #f6f7f8;
+  --ref-steel-100: #e9ecee;
+  --ref-steel-300: #c3c9ce;
+  --ref-steel-400: #9aa4ad;
+  --ref-steel-600: #5b6670;
+  --ref-steel-700: #3d464e;
+  --ref-steel-800: #252b31;
+  --ref-steel-900: #1b1f23;
+  --ref-yellow-400: #f2c200;
   --ref-green-50: #e6f5ec;
   --ref-green-300: #71c598;
   --ref-green-800: #197a4b;
@@ -56,16 +65,17 @@
   --ref-orange-1200: #541e00;
 
   /* ── 層 2: 役割(明, 暗)。面ごとのテーマが上書きしてよいのは、accent の 4 つだけ ── */
-  --bg: light-dark(var(--ref-white), var(--ref-gray-900));
-  --surface: light-dark(var(--ref-gray-50), var(--ref-gray-850));
-  --text: light-dark(var(--ref-gray-900), var(--ref-gray-50));
-  --text-muted: light-dark(var(--ref-gray-700), var(--ref-gray-300));
-  --border: light-dark(var(--ref-gray-536), var(--ref-gray-400));
-  --border-subtle: light-dark(var(--ref-gray-200), var(--ref-gray-700));
-  --accent: light-dark(var(--ref-blue-900), var(--ref-blue-300));
-  --on-accent: light-dark(var(--ref-white), var(--ref-gray-900));
-  --accent-text: light-dark(var(--ref-blue-900), var(--ref-blue-300));
-  --focus: light-dark(var(--ref-blue-900), var(--ref-blue-300));
+  --bg: light-dark(var(--ref-steel-100), var(--ref-steel-900));
+  --surface: light-dark(var(--ref-white), var(--ref-steel-800));
+  --text: light-dark(var(--ref-steel-900), var(--ref-steel-100));
+  --text-muted: light-dark(var(--ref-steel-600), var(--ref-steel-400));
+  --border: light-dark(var(--ref-steel-600), var(--ref-steel-400));
+  --border-subtle: light-dark(var(--ref-steel-300), var(--ref-steel-700));
+  --accent: light-dark(var(--ref-steel-900), var(--ref-steel-100));
+  --on-accent: light-dark(var(--ref-white), var(--ref-steel-900));
+  --accent-text: light-dark(var(--ref-steel-900), var(--ref-steel-100));
+  --focus: light-dark(var(--ref-steel-900), var(--ref-steel-100));
+  --marker: light-dark(var(--ref-yellow-400), var(--ref-yellow-400));
   --ok: light-dark(var(--ref-green-800), var(--ref-green-300));
   --ok-bg: light-dark(var(--ref-green-50), var(--ref-green-1100));
   --ng: light-dark(var(--ref-red-900), var(--ref-red-300));
@@ -85,9 +95,13 @@
   --lh-body: 1.7;
   --lh-tight: 1.4;
   --measure: 40em;
-  --radius-s: 0.25rem;
-  --radius-m: 0.5rem;
-  --radius-l: 0.75rem;
+  --fw-strong: 700;
+  --fw-label: 800;
+  --ls-label: 0.08em;
+  --radius-s: 0.125rem;
+  --radius-m: 0.25rem;
+  --radius-l: 0.375rem;
+  --frame: 0.375rem;
   --space-1: 0.25rem;
   --space-2: 0.5rem;
   --space-3: 0.75rem;
