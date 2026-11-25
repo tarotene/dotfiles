@@ -151,6 +151,23 @@
         "type": "github"
       }
     },
+    "impeccable": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1795545839,
+        "narHash": "sha256-wRRr7MpmnkoNKUPFAf9JGENLUYSY3WG4uYYOl8HAT/M=",
+        "owner": "pbakaus",
+        "repo": "impeccable",
+        "rev": "88cfafae649164e6dc48b88d3c0c1bf6662eaade",
+        "type": "github"
+      },
+      "original": {
+        "owner": "pbakaus",
+        "repo": "impeccable",
+        "rev": "88cfafae649164e6dc48b88d3c0c1bf6662eaade",
+        "type": "github"
+      }
+    },
     "nix-darwin": {
       "inputs": {
         "nixpkgs": [
@@ -275,6 +292,7 @@
         "crane": "crane",
         "frontend-slides": "frontend-slides",
         "home-manager": "home-manager",
+        "impeccable": "impeccable",
         "nix-darwin": "nix-darwin",
         "nix-flatpak": "nix-flatpak",
         "nixgl": "nixgl",

@@ -13,12 +13,15 @@ let
   # 入口と知識の 2 層(ADR-1400)。手で打つ入口の名前は `my-` で始める(home/modules/agents.nix と同じ)。
   entryPrefix = "my-";
   entryNames = builtins.filter (name: lib.hasPrefix entryPrefix name) names;
+  # 第三者のスキル(docs/agents/impeccable.md)。`config/agents/skills` の外から flake の入力で配るので、
+  # `names` に含めない。配布先の集合には、名指しで足す(足し忘れ・紛れ込みの両方をここで落とす)。
+  thirdParty = [ "impeccable" ];
   entries = lib.filterAttrs (
     path: _: lib.hasPrefix ".claude/skills/" path || lib.hasPrefix ".agents/skills/" path
   ) files;
   expected =
-    map (name: ".claude/skills/${name}") (names ++ [ "repo-governance-common" ])
-    ++ map (name: ".agents/skills/${name}") (shared ++ [ "repo-governance-common" ]);
+    map (name: ".claude/skills/${name}") (names ++ [ "repo-governance-common" ] ++ thirdParty)
+    ++ map (name: ".agents/skills/${name}") (shared ++ [ "repo-governance-common" ] ++ thirdParty);
 in
 # スキルの本数は、source の readDir から導いた集合(`names`)の長さで、固定値を持たない
 # (足すたびに手で更新する値は、同じ集合を数えるだけの循環した検査だった)。ここで見るのは
@@ -45,6 +48,25 @@ pkgs.runCommand "agent-skills" { } (
         test -L "$dir"
         test -z "$(find -L "$dir" -type l -print -quit)"
         name=$(basename "$dir")
+        # 第三者のスキルは、`/` の一覧から隠さない(upstream の名前と frontmatter のまま使う)。
+        # hook・plugin の宣言を持ち込まないこと(スキルの配布は、ディレクトリだけ)と、
+        # 配備した検出器の起動口(ランチャー)が実行できることを見る。
+        case "$name" in
+          ${lib.concatStringsSep "|" thirdParty})
+            test -f "$dir/SKILL.md"
+            test "$(sed -n 's/^name: //p' "$dir/SKILL.md" | head -n 1)" = "$name"
+            if [ "$claude" = 1 ]; then
+              grep -q '^user-invocable: true$' "$dir/SKILL.md"
+            else
+              test "$(grep -c '^user-invocable:' "$dir/SKILL.md" || true)" -eq 0
+            fi
+            test -x "$dir/scripts/impeccable"
+            test -f "$dir/scripts/engine-checksums.txt"
+            test ! -e "$dir/hooks"
+            test ! -e "$dir/hooks.json"
+            continue
+            ;;
+        esac
         # 入口でないスキルは、Claude の `/` の一覧から隠す。Codex 用の配布には足さない。
         hide=0
         if [ "$claude" = 1 ] && [[ $name != ${entryPrefix}* ]] && [ "$name" != repo-governance-common ]; then hide=1; fi

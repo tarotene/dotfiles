@@ -103,6 +103,22 @@
       flake = false;
     };
 
+    # impeccable: a third-party design skill (1 skill, 24 commands) plus a
+    # deterministic detector engine (https://github.com/pbakaus/impeccable,
+    # Apache-2.0). Plain source tree like bleep, pinned to the commit of the tag
+    # skill-v4.11.0 (2026-11-24). Unlike frontend-slides it IS placed under
+    # ~/.claude/skills/ and ~/.agents/skills/: the point is that it fires on UI
+    # work. Only the skill directory is deployed. Its hook, plugin, sub-agents and
+    # sign-in are deliberately not installed (docs/agents/impeccable.md). The
+    # detector engine is pinned separately by sha256 in home/modules/agents.nix
+    # (upstream's skill/scripts/engine-checksums.txt, engine 0.1.30), and must be
+    # re-pinned together with this rev: the engine version is the one in
+    # <skill>/scripts/VERSION.
+    impeccable = {
+      url = "github:pbakaus/impeccable/88cfafae649164e6dc48b88d3c0c1bf6662eaade";
+      flake = false;
+    };
+
     # Rust workspace builder for the hook/CLI migration (ADR-0024, #391).
     # crane over rustPlatform.buildRustPackage because buildDepsOnly caches the
     # whole workspace's dependency graph as one derivation shared by every
@@ -153,6 +169,7 @@
       nixgl,
       bleep,
       frontend-slides,
+      impeccable,
       crane,
       nix-flatpak,
       system-manager,
@@ -454,7 +471,7 @@
           # value that decides attribute names is an infinite recursion (the module
           # system needs the attribute names to find `_module.args`).
           extraSpecialArgs = {
-            inherit bleep frontend-slides;
+            inherit bleep frontend-slides impeccable;
             repoConfig = ./config;
           };
         };
