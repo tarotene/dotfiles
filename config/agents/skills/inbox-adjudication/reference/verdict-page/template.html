@@ -343,6 +343,8 @@ h2 { font-size: var(--fs-body); line-height: var(--lh-tight); text-wrap: balance
 h2[tabindex]:focus { outline: none; }
 h3 { font-size: var(--fs-body); }
 .sub { color: var(--text-muted); font-size: var(--fs-small); }
+.rec, .why, .sub, .after dd, .crow .t, .crow .note, .guidance p, .handoff li, h2 { word-break: auto-phrase; text-wrap: pretty; }
+h2 { text-wrap: balance; }
 .mono { font-family: var(--font-mono); }
 .top { display: flex; align-items: baseline; gap: var(--space-3); min-width: 0; }
 .top .sub { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -359,10 +361,10 @@ button:disabled { cursor: not-allowed; }
 #alert p { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: var(--fs-small); min-width: 0; }
 /* 全件の概観: 横に送る 1 行の格子。色だけに頼らず、印(✓ あとで ! 空)も出す。押すと、その件へ飛ぶ。 */
 #ovnav { display: grid; gap: 2px; }
-.overview { display: flex; flex-wrap: nowrap; gap: var(--space-2); margin: 0; padding: 3px 2px 5px; list-style: none; overflow-x: auto; scroll-snap-type: x proximity; }
+.overview { display: flex; flex-wrap: nowrap; gap: var(--space-2); margin: -2px -4px 0; padding: 5px 6px; list-style: none; overflow-x: auto; scroll-snap-type: x proximity; }
 .overview li { flex: 0 0 auto; scroll-snap-align: center; }
 button.cell { min-width: var(--target); min-height: var(--target); padding: 2px 6px; display: grid; place-items: center; line-height: 1.1; font-family: var(--font-mono); font-size: var(--fs-small); border: 2px solid var(--border-subtle); border-radius: var(--radius-m); background: var(--surface); cursor: pointer; }
-button.cell .mk { font-size: 0.68rem; display: block; min-height: 0.8em; }
+button.cell .mk { font-size: 0.75rem; display: block; min-height: 0.8em; }
 button.cell[data-s="chosen"] { background: var(--chosen); border-color: var(--accent); }
 button.cell[data-s="later"] { background: var(--warn-bg); border-color: var(--warn); }
 button.cell[data-s="waiting"] { background: var(--ng-bg); border-color: var(--ng); }
@@ -398,9 +400,9 @@ button.cell[aria-current="step"] { outline: 3px solid var(--focus); outline-offs
 .opts button[aria-checked="true"] .code { border-color: var(--on-accent); }
 .opts button[data-rec="1"]:not([aria-checked="true"]) { border-color: var(--accent); }
 /* 「推奨」の印は、ボタンの右上の角に重ねる(ラベルの幅も、ボタンの高さも変えない) */
-.opts button .tag { position: absolute; top: -8px; right: 8px; display: block; font-size: 0.68rem; line-height: 1; padding: 2px 6px; border: 1px solid var(--accent); border-radius: 999px; background: var(--bg); color: var(--accent-text); }
+.opts button .tag { position: absolute; top: -8px; right: 8px; display: block; font-size: 0.75rem; line-height: 1; padding: 2px 6px; border: 1px solid var(--accent); border-radius: 999px; background: var(--bg); color: var(--accent-text); }
 .opts button[aria-checked="true"] .tag { background: var(--on-accent); color: var(--accent); }
-@media (hover: hover) { .opts button:hover { border-color: var(--accent); } }
+@media (hover: hover) { .opts button:hover, button.cell:hover { border-color: var(--accent); } }
 .after { background: var(--bg); border-radius: var(--radius-s); padding: var(--space-2) var(--space-3); display: grid; gap: 2px; font-size: var(--fs-small); }
 .after dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 2px var(--space-3); }
 .after dt { color: var(--text-muted); font-family: var(--font-mono); }
@@ -429,8 +431,8 @@ label.note .warn { color: var(--warn); }
 /* 確認画面・完了画面 */
 .crows { display: grid; gap: var(--space-2); margin: 0; padding: 0; list-style: none; }
 .crow { display: grid; grid-template-columns: auto 1fr auto; gap: var(--space-1) var(--space-3); align-items: center; background: var(--surface); border: 1px solid var(--border-subtle); border-radius: var(--radius-m); padding: var(--space-2) var(--space-3); }
-.crow[data-s="none"], .crow[data-s="waiting"] { border-left: 4px solid var(--ng); }
-.crow[data-s="later"] { border-left: 4px solid var(--warn); }
+.crow[data-s="none"], .crow[data-s="waiting"] { border-color: var(--ng); box-shadow: inset 0 0 0 1px var(--ng); }
+.crow[data-s="later"] { border-color: var(--warn); box-shadow: inset 0 0 0 1px var(--warn); }
 .crow .what { min-width: 0; display: grid; gap: 2px; }
 .crow .t { font-weight: 700; overflow-wrap: anywhere; }
 .crow .v { font-size: var(--fs-small); }
