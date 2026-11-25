@@ -1,4 +1,4 @@
-# ADR-0000 — デザインの目視のために、画面に出る使い捨ての Chrome の Playwright を、ログイン用の Firefox と分けて足す
+# ADR-1722 — デザインの目視のために、画面に出る使い捨ての Chrome の Playwright を、ログイン用の Firefox と分けて足す
 
 - Status: Accepted
 - Date: 2026-11-26
