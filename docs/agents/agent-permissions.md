@@ -1,7 +1,7 @@
-# Claude と Codex はそれぞれの native 権限設定を使う
+# Claude・Codex・Antigravity はそれぞれの native 権限設定を使う
 
 共有権限ポリシーの実行時管理は撤去した。Claude は Claude 専用 reconciler、
-Codex は native 設定を使う。所有記録が無いことや、設定を本人が変更したことを
+Codex は native 設定を使う。Antigravity CLI も、専用の部分コマンドで native 設定へ配る。所有記録が無いことや、設定を本人が変更したことを
 理由に router が通常のツール実行を止める仕組みは無い。裁定は
 [ADR-457 の 2026-10-27 Amendment](../adr/457-claude-native-install-source-of-truth.md) に残す。
 
@@ -11,6 +11,7 @@ Codex は native 設定を使う。所有記録が無いことや、設定を本
 |---|---|---|
 | Claude | `home/modules/claude.nix`、`agent-settings-reconcile claude-permissions` | native の allow / ask / deny と撤回リスト、`sandbox`・`autoMode.classifyAllShell`([層構造](#claude-と-codex-の層構造を揃える)) |
 | Codex | `home/modules/codex.nix`、`agent-settings-reconcile codex-permissions` | `on-request`、`auto_review`、名前付き `dotfiles` 権限 profile、通信 proxy、秘密パスの masking、個別 MCP 設定 |
+| Antigravity CLI(`agy`) | `home/modules/antigravity.nix`、`agent-settings-reconcile antigravity-permissions` | `permissions.{allow,ask,deny}`、`toolPermission`、`enableTerminalSandbox`([宣言の仕様](#antigravity-cli-の宣言)) |
 
 Claude の入力は `dotfiles.claudePermissions.{extraAllow,secretPaths,sandboxDomains,excludedCommands}`、Codex の入力は
 `dotfiles.codexPermissions.secretPaths` / `domains` / `mcpAllow` / `apps` に置く。
@@ -46,6 +47,49 @@ hook と同じ「所有の記録」（`agent-settings-reconcile` の `managed`�
 （`mcp_servers.<server>` 自体も残す）。記録が無い初回は何も消さず、撤回リスト（`retire_allow`）の
 完全一致だけが従来どおり効く。
 
+
+## Antigravity CLI の宣言
+
+`agy`(Antigravity CLI)の権限も、Claude・Codex と同じ共有の入力(`agentPermissions.secret_paths`・`domains`)と
+Claude の許可・確認の規則から、`home/modules/antigravity.nix` が `~/.gemini/antigravity-cli/settings.json`
+へ配る。個人の identity だけで有効にし(`home/identities/personal.nix` の
+`dotfiles.antigravityPermissions.enable`。クラウドの AI の道具を company へ配らない、#9 と同じ判断)、
+比較対象の宣言 `agent-native/antigravity-permissions.json`(`{enable, spec}`)は全ホストに出す
+(`hms --follow` は欠落を「変化」と数えて止まるため)。
+
+| 正本 | agy のキー | 変換 |
+|---|---|---|
+| `secret_paths` | `permissions.deny` | `read_file(<絶対パス>)`。`~/` は Nix が `home.homeDirectory` に展開する(`~` の展開は文書に記述なし)。読みの拒否は書きの拒否も含む |
+| `domains` + `raw.githubusercontent.com` | `permissions.allow` | `read_url(<host>)`。sandbox の外向きの許可リストにもなる |
+| `dotfiles.claudePermissions.allowRules` | `permissions.allow` | `Bash(P *)`・`Bash(P)` → `command(P)`(語単位の前方一致)。`mcp__…` は変換しない(agy の MCP は未設定)。`P` に `*` を含む規則は、`noAgyCounterpart` に載せたものだけを落とし、他は評価で失敗する |
+| `dotfiles.claudePermissions.askRules` | `permissions.ask` | 同じ変換 |
+| `sandboxed_shell = "auto"` | `toolPermission` | `proceed-in-sandbox`(`prompt` なら書かない) |
+| (Claude の `sandbox.enabled`) | `enableTerminalSandbox` | `true` |
+
+- 規則の評価順は Deny > Ask > Allow(Antigravity docs "Permissions"、<https://antigravity.google/docs/permissions.md>、取得 2026-11-26)。
+  本人が承認や `/permissions` で足した規則は、所有の記録(`~/.local/state/dotfiles/managed-permissions-antigravity.json`、種別は
+  `allow`・`ask`・`deny`)に無いので残り、宣言から外した規則だけが次の適用で消える。
+- 書かないキー: `agentMode`(既定が `auto`。CLI は既定値のキーを書き直しで消すので、宣言しても毎回の差になる)・
+  `allowNonWorkspaceAccess`・`trustedWorkspaces`・`model`。MCP の許可は変換しない(`~/.gemini/config/mcp_config.json` が空)。
+- **広がる範囲**: Claude の `Bash(git push *)` などは分類器(`classifyAllShell`)を後ろに持つが、agy の `command(git push)` の許可は
+  確認なしで、sandbox の中でも外でも動く(同ページ "Terminal sandbox" の `git push` の例)。agy の `auto` モードの審査は、許可の規則に
+  合うコマンドには効かない。agy の `command(P)` は前方一致なので、Claude の完全一致の `Bash(nix fmt)`・`Bash(npm ci)` は、引数つきも通る。
+  Claude の `excludedCommands`(`hms *`・`lp *` など)に対応する `unsandboxed(...)` は、個人のアカウントでは無視される(同ページ)ため、
+  変換しない。`hms`・`lp`・`pkexec`・headless Chrome は、確認の規則(ask)だけを配る。
+- reconciler は、`action(target)` の形でない規則と、`toolPermission` の列挙に無い値を、ファイルを書く前に exit 1 で止める
+  (CLI は解釈できない規則を黙って無視するので、配ったつもりで効かない状態を作らないため。スキーマ:
+  <https://antigravity.google/schemas/v1/settings.json> の `permissionRule`)。
+
+**実測(vega、2026-11-26)**: 使い捨ての `HOME` に reconcile した `settings.json` を置いて `agy -p` を起動すると、ログ
+`CLI settings initialized: permissions=&{Allow:[…] Deny:[…] Ask:[…]}, toolPermission=proceed-in-sandbox` に、宣言した規則がそのまま
+出た。起動時の書き直しの後も、規則と 2 つのスカラーは残り、キーが辞書順に並び(`permissions` の中は `allow`・`deny`・`ask`)、権限は 0600
+になる。reconciler は順序を見ずに比べるので、書き直しの後の再適用で差は出ない。
+
+**未確認**: 承認で「永続」にした規則の保存先(`settings.json` には書かれなかった)。vega で agy の Linux の sandbox が使えるか
+(使えないと `proceed-in-sandbox` は `request-review` として動く。Antigravity docs "Terminal sandbox")。`read_file(<dir>)` の拒否が
+配下のファイルに及ぶか(許可側は再帰と書かれているが、拒否側は記述なし)。agy の OAuth トークンの置き場(`~/.gemini` 配下に、名前で
+見つかるファイルは無かった。鍵束なら `~/.local/share/keyrings` で拒否済み)。agy の実行中に `hms` が書いた場合、CLI が保持する設定で
+上書きされるか(次の `hms` で戻る)。実機での確認は vega の確認の台帳に載せる。
 
 ## 認証 launcher は native の保護を確かめる
 
@@ -312,7 +356,8 @@ journal が無い場合は保守的に扱う。共有管理の名前付き selec
 ## main の自動追従では native 宣言を比較する
 
 `hms --follow` は候補世代と配備済みの両方にある
-`agent-native/claude-permissions.json` と `agent-native/codex-permissions.json` を全バイト比較する。
-両宣言が存在し、読み取れ、一致するときだけ自動適用する。変更・欠落・読み取り失敗時は
+`agent-native/claude-permissions.json`・`agent-native/codex-permissions.json`・
+`agent-native/antigravity-permissions.json` を全バイト比較する。
+3 つの宣言が存在し、読み取れ、一致するときだけ自動適用する。変更・欠落・読み取り失敗時は
 適用せず通知し、本人の差分確認と手動の `hms` を待つ。共有管理の `migrate` は要求しない。
 詳細は [適用手順](../operations.md) の main 自動追従を参照する。

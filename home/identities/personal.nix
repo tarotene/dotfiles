@@ -80,6 +80,11 @@ in
   # 確かめてから(home/modules/ja-polish.nix の冒頭)。
   dotfiles.jaPolish.enable = true;
 
+  # Antigravity CLI(agy)の settings.json に、Claude・Codex と同じ正本から権限を配る
+  # (home/modules/antigravity.nix)。クラウドの AI の道具なので、warp-terminal(#9)と同じく個人の
+  # identity だけで有効にする。
+  dotfiles.antigravityPermissions.enable = true;
+
   dotfiles.claude.mcpServers = {
     # PR の Before/After 視覚証跡(docs/agents/pr-description.md の G_visual)と
     # Web UI の実地確認に使う。普段の Firefox のログイン状態をそのまま使うため、

@@ -354,3 +354,136 @@ fn auto_mode_allow_keeps_defaults_first_and_the_owners_entries() {
     let out = run(&strs(&["claude-permissions", spec]), &k);
     assert!(!out.status.success());
 }
+
+// --- antigravity-permissions(agy の settings.json) ---
+
+fn agy_rules(f: &Path, kind: &str) -> Vec<String> {
+    read_json(f)["permissions"][kind]
+        .as_array()
+        .map(|a| a.iter().map(|v| v.as_str().unwrap().to_owned()).collect())
+        .unwrap_or_default()
+}
+
+#[test]
+fn antigravity_permissions_merge_keep_the_owners_keys_and_are_idempotent() {
+    // CLI が書いた `model`・`trustedWorkspaces` と、本人が承認で足した規則は残る。宣言は和で足す。
+    let (d, f) = tmp_file(Some(
+        r#"{"model":"m","trustedWorkspaces":["/w"],"permissions":{"allow":["command(manual)"]}}"#,
+    ));
+    let state = d.path().join("state/managed-permissions-antigravity.json");
+    let spec = serde_json::json!({
+        "allow": ["command(git status)", "read_url(github.com)"],
+        "ask": ["command(hms)"],
+        "deny": ["read_file(/home/u/.ssh)"],
+        "tool_permission": "proceed-in-sandbox",
+        "enable_terminal_sandbox": true,
+        "state": state,
+    })
+    .to_string();
+
+    let out = run(&strs(&["antigravity-permissions", &spec]), &f);
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let v = read_json(&f);
+    assert_eq!(v["model"], "m");
+    assert_eq!(v["trustedWorkspaces"][0], "/w");
+    assert_eq!(v["toolPermission"], "proceed-in-sandbox");
+    assert_eq!(v["enableTerminalSandbox"], true);
+    assert_eq!(
+        agy_rules(&f, "allow"),
+        [
+            "command(manual)",
+            "command(git status)",
+            "read_url(github.com)"
+        ]
+    );
+    assert_eq!(agy_rules(&f, "ask"), ["command(hms)"]);
+    assert_eq!(agy_rules(&f, "deny"), ["read_file(/home/u/.ssh)"]);
+
+    // 冪等: 内容も所有の記録も変わらない。
+    let before = (
+        std::fs::read_to_string(&f).unwrap(),
+        std::fs::read_to_string(&state).unwrap(),
+    );
+    assert!(run(&strs(&["antigravity-permissions", &spec]), &f)
+        .status
+        .success());
+    assert_eq!(
+        (
+            std::fs::read_to_string(&f).unwrap(),
+            std::fs::read_to_string(&state).unwrap()
+        ),
+        before
+    );
+}
+
+#[test]
+fn antigravity_rule_removed_from_the_declaration_is_removed_but_the_owners_stays() {
+    let (d, f) = tmp_file(Some(r#"{"permissions":{"deny":["read_file(/mine)"]}}"#));
+    let state = d.path().join("managed.json");
+    let spec = |deny: &[&str]| serde_json::json!({"deny": deny, "state": state}).to_string();
+
+    assert!(run(
+        &strs(&[
+            "antigravity-permissions",
+            &spec(&["read_file(/a)", "read_file(/b)"])
+        ]),
+        &f
+    )
+    .status
+    .success());
+    assert_eq!(
+        agy_rules(&f, "deny"),
+        ["read_file(/mine)", "read_file(/a)", "read_file(/b)"]
+    );
+
+    assert!(run(
+        &strs(&["antigravity-permissions", &spec(&["read_file(/a)"])]),
+        &f
+    )
+    .status
+    .success());
+    assert_eq!(agy_rules(&f, "deny"), ["read_file(/mine)", "read_file(/a)"]);
+
+    // 宣言が空になっても、前回の記録ぶんだけが消える(本人の規則は残る)。
+    assert!(run(&strs(&["antigravity-permissions", &spec(&[])]), &f)
+        .status
+        .success());
+    assert_eq!(agy_rules(&f, "deny"), ["read_file(/mine)"]);
+}
+
+#[test]
+fn antigravity_undeclared_keys_are_not_created_or_touched() {
+    // 宣言が空のとき、`permissions` も scalar も作らない(CLI は既定値のキーを書かない)。
+    let (_d, f) = tmp_file(Some(r#"{"toolPermission":"strict"}"#));
+    assert!(run(&strs(&["antigravity-permissions", "{}"]), &f)
+        .status
+        .success());
+    let v = read_json(&f);
+    assert_eq!(v, serde_json::json!({"toolPermission": "strict"}));
+}
+
+#[test]
+fn antigravity_malformed_rule_is_a_runtime_error_and_leaves_the_file_alone() {
+    // CLI は解釈できない規則を黙って無視する。配ったつもりで効かない状態を作らない。
+    let (_d, f) = tmp_file(Some("{\"a\":1}\n"));
+    for spec in [
+        r#"{"allow":["Bash(git status)"]}"#,
+        r#"{"deny":["read_file (/x)"]}"#,
+        r#"{"tool_permission":"yolo"}"#,
+    ] {
+        let out = run(&strs(&["antigravity-permissions", spec]), &f);
+        assert_eq!(out.status.code(), Some(1), "{spec}");
+        assert_eq!(std::fs::read_to_string(&f).unwrap(), "{\"a\":1}\n");
+    }
+}
+
+#[test]
+fn antigravity_unknown_spec_field_is_a_usage_error() {
+    let (_d, f) = tmp_file(Some("{}\n"));
+    let out = run(&strs(&["antigravity-permissions", r#"{"alow":[]}"#]), &f);
+    assert_eq!(out.status.code(), Some(2));
+}

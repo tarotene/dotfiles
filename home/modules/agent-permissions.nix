@@ -68,6 +68,11 @@ in
         # outside the sandbox; the agent itself must not read the key.
         "~/.config/io.datasette.llm"
         "~/Library/Application Support/io.datasette.llm"
+        # Antigravity CLI's file-based secret store (plugin-secrets.json; the CLI log reads
+        # `Using file-based secret storage at ~/.config/antigravity/plugin-secrets.json`, vega
+        # 2026-11-26). Where its OAuth token lives is not confirmed: a name search under
+        # ~/.gemini found nothing (if it is in the keyring, ~/.local/share/keyrings covers it).
+        "~/.config/antigravity"
       ];
       description = ''
         Credential paths excluded from ordinary file reads; use reviewed operations.
