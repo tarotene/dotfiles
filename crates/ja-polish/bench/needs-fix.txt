@@ -1,0 +1,18 @@
+# ja-polish bench の見本(参照の文書つき。docs/agents/ja-polish.md「測定」、docs/adr/1387-ja-polish.md の D18)。
+# 1 行は `<commit>:<path> <ref-commit>`。`<commit>` の文書が測る対象で、同じパスの `<ref-commit>` での中身が参照。
+# 対象の段落のうち、参照に(空白をそろえて)残っていない段落が「直すべき段落」で、表の「取りこぼし」の列は、その段落を
+# 書き直しが変えずに返した割合(低いほど良い)。参照は、エージェントが直した結果であり、正解ではない。直し方の良し悪しは測らず、
+# 「直すべき所に手を付けたか」だけを測る。
+#
+# 対象は、PR #1738(agy に docs/agents の日本語を直させた PR。2026-11-27)の base と head。
+#   5b5255cf = base(main)
+#   51e8bf9e = head
+# head のコミットは、PR が閉じても `refs/pull/1738/head` に残る。手元に無いときは、測る前に取る:
+#   git fetch origin pull/1738/head
+# 見本の選び方: 差分が大きい文書のうち、情報を大きく削った文書(agent-permissions・decision-colocation)と、巨大で
+# 1 組あたりの測定が重い文書(agent-permissions・pr-gate)を除いた 5 本。見本を入れ替えたときは、表を測り直す。
+5b5255cf:docs/agents/attribution-guard.md 51e8bf9e
+5b5255cf:docs/agents/copilot-plan-review.md 51e8bf9e
+5b5255cf:docs/agents/calendar-handshake.md 51e8bf9e
+5b5255cf:docs/agents/repo-structure-check.md 51e8bf9e
+5b5255cf:docs/agents/plan-view.md 51e8bf9e

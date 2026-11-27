@@ -143,6 +143,21 @@ D14 の知らせ(`billing_line`)は素通しの率しか見ないので、この
 先行例: `crates/gate-failopen-advisory` の `billing_line`(ADR-1387 D14、取得 2026-11-27)。差分: 異なる — 素通しの率でなく、通ったが予備のモデルが答えた段落の率を、同じ期間・同じ下限で数える。
 軸: 検出のみ — 質の劣化を見えるようにするだけで、防がない(防ぐのは、送り先を直す別の段)。
 
+### D18: bench に、参照の文書と比べた「取りこぼしの率」を足す
+
+D15 の物差し(時間・書き直しの件数・括弧・用語の置き換え・変更行の割合・冗長表現の指摘)は、**直すべき段落を直したか**を測らない。「変更なし」の段落が多いほど、変更行の割合は下がり、数字の上では「安全」に見える。無料枠の上限のあと、予備の軽量モデルが何も直さずに返す劣化(D17)は、この物差しでは良く見えてしまう。
+
+見本の一覧(`crates/ja-polish/bench/needs-fix.txt`)の行に、任意で `<ref-commit>` を足せる。見本の段落のうち、同じパスの `<ref-commit>` の文書に(空白をそろえて)残っていない段落を「直すべき段落」とし、モデルが答えたそのような段落のうち、本文を**変えずに返した**割合を、表の「取りこぼし」の列に出す。低いほど良い。
+
+- 段落の対応付けはしない。集合の所属だけで決めるので、参照が段落を分けた・まとめた場合も壊れない。
+- 素通し(答えが無い)の段落は、分子にも分母にも入れない。混雑による欠測を、モデルの取りこぼしに混ぜない。
+- 参照を持つ見本が無ければ、列は出ず、従来の表のまま。
+- 参照は、エージェントが直した結果であり、正解ではない(情報を落とした変更が混ざりうる)。この列は「直すべき所に手を付けたか」だけを測り、直し方の良し悪しは測らない。直し方の質は、従来の列(用語の置き換え・全角括弧の増減・変更行の割合)と、差分を読むことで見る。
+- 最初の見本は、PR #1738(agy に `docs/agents` の日本語を直させた PR)の base と head の組 5 本。
+
+先行例: ERRANT(Bryant ら。原文と訂正文の対から、文法誤りを自動で取り出して分類する道具)https://github.com/chrisjbryant/errant (取得 2026-11-27。リポジトリの説明文だけを読んだ。論文・実装は未読)。差分: 異なる — 誤りの分類はせず、参照が直した段落に手を付けたかだけを、段落の集合の所属で数える。
+軸: 検出のみ — 測るだけで、防がない。
+
 ### 執行点
 
 - `crates/ja-polish/src/llm.rs` — 失敗の 3 種(`FailureKind`)と、標準エラーからの判定(`classify_stderr`)、`-o thinking_level` の受け渡し
@@ -161,8 +176,9 @@ D14 の知らせ(`billing_line`)は素通しの率しか見ないので、この
 - `crates/ja-polish/src/records.rs` — 変更の有無の印(`changed`)と、予備が答えた割合・変更なしの割合(`quality_rate`、D17)
 - `crates/ja-polish/src/polish.rs` — 書き直した段落に `changed` を渡す(D17)
 - `crates/gate-failopen-advisory/src/main.rs` — 予備のモデルが答えた割合の知らせ(`fallback_line`、D17)
-- `crates/ja-polish/src/bench.rs` — 見本の測定(`measure`・`render_table`、D15)
+- `crates/ja-polish/src/bench.rs` — 見本の測定(`measure`・`render_table`、D15)と、参照の文書から直すべき段落を決める読み込み(`load_samples`・`Sample::needs_fix`)、取りこぼしの率(`Row::needs_fix`・`Row::missed`、D18)
 - `crates/ja-polish/bench/samples.txt` — 固定の見本の一覧(D15)
+- `crates/ja-polish/bench/needs-fix.txt` — 参照の文書つきの見本の一覧(D18)
 
 ## Alternatives considered
 
@@ -220,4 +236,5 @@ D14 の知らせ(`billing_line`)は素通しの率しか見ないので、この
 - D13: Gemini の前後に textlint の自動修正を挟む。先行例: textlint, "CLI" https://textlint.org/docs/cli/ (取得 2026-11-12、調査の委譲先が `--fix` の説明を逐語で引いたもの)。差分: 一致 — `--fix` の自動修正をそのまま使う。設定は作業ツリーに置かず、ja-polish が実行のたびに作る。既存手段: 採用 — textlint(nixpkgs の固定版 15.7.1)。軸: 還元 — 定型の直しを、決定論の道具へ移す。
 - D14: 一時的な原因の素通しの率が閾値を超えたら、セッションの冒頭で知らせる。先行例: `crates/gate-failopen-advisory`(連続の fail-open を SessionStart で知らせる既存の仕組み、`docs/agents/gate-failopen-advisory.md`、取得 2026-11-12)。差分: 異なる — 連続回数でなく、期間内の率で判定し、件数の下限を持つ。軸: 検出のみ — 課金の判断は本人に残す。
 - D17: 書き直しの記録に変更の有無を残し、予備のモデルが答えた割合を知らせる。先行例: `crates/gate-failopen-advisory` の `billing_line`(ADR-1387 D14、`docs/agents/gate-failopen-advisory.md`、取得 2026-11-27)。差分: 異なる — 素通しの率でなく、通ったが予備のモデルが答えた段落の率を数える。軸: 検出のみ — 質の劣化を見えるようにするだけで、防がない。
+- D18: 参照の文書と比べた取りこぼしの率を、bench の物差しに足す。先行例: ERRANT https://github.com/chrisjbryant/errant (取得 2026-11-27。リポジトリの説明文だけを読んだ)。差分: 異なる — 誤りの分類はせず、参照が直した段落に手を付けたかだけを、段落の集合で数える。軸: 検出のみ — 測るだけ。
 - D15: 思考量とモデルを、固定の見本の測定で決める。先行例なし: Nejumi Leaderboard 4・Japanese MT-Bench を探した(2026-11-12、本文は取得できず、未確認)。書き直しの前後を、規則の指摘数と括弧の幅で比べる先行例は見つからなかった。軸: 検出のみ — 品質の低下を測るだけで、防がない。
