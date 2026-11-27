@@ -1,0 +1,6 @@
+# ja-polish bench の見本(用語の置き換えを測る用。docs/agents/ja-polish.md「測定」、docs/adr/1387-ja-polish.md の D21)。
+# 1 行 1 件の `<commit>:<path>`(参照の commit は付けない。取りこぼしの列は出ない)。
+# 選び方: `bench::WATCHED_SWAPS` の語(主のモデル・予備のモデル・時間切れ・送り先など)を多く含む文書。`needs-fix.txt` の
+# 見本(PR #1738 の 5 本)には、これらの語がほとんど無く、「用語の置き換え」の列が働かない。
+d4e5bbc2:docs/agents/ja-polish.md
+d4e5bbc2:docs/adr/1387-ja-polish.md
