@@ -1,20 +1,147 @@
-# Antigravity CLI (`agy`) keeps its writable settings.json; reconcile only the declared
-# permission keys, from the same sources Claude and Codex read (docs/agents/agent-permissions.md).
+# Antigravity CLI (`agy`) configuration from the same sources Claude and Codex read:
+#   - permissions: agy keeps its writable settings.json; only the declared keys are reconciled
+#     (docs/agents/agent-permissions.md).
+#   - global rules: the shared AGENTS.md plus an agy-specific file, cut into rule files that fit
+#     agy's per-file cap (docs/agents/global-agents-md.md).
 #
-# Evaluated on every host, applied only where `dotfiles.antigravityPermissions.enable` is set (the
-# personal identity: a cloud-connected AI tool does not go to the company hosts, #9). The declaration
-# file under agent-native/ is written on every host, because `hms --follow` stops on a missing file
-# (crates/hms/src/lib.rs, `policy_changed`).
+# Evaluated on every host, applied only where `dotfiles.antigravity.enable` is set (the personal
+# identity: a cloud-connected AI tool does not go to the company hosts, #9). The permission
+# declaration file under agent-native/ is written on every host, because `hms --follow` stops on a
+# missing file (crates/hms/src/lib.rs, `policy_changed`).
 {
   config,
   lib,
   pkgs,
+  repoConfig,
   ...
 }:
 let
   settingsReconcile = "${pkgs.dotfiles-tools}/bin/agent-settings-reconcile";
   cfg = config.dotfiles.antigravityPermissions;
   home = config.home.homeDirectory;
+
+  # --- global rules -------------------------------------------------------------------------
+  # agy cuts a rule file at 24,000 bytes and demotes rules beyond a 20,000-token budget to a list
+  # of paths and descriptions (Antigravity docs, `agy-customizations/docs/rules.md`, "Size Limits
+  # and Context Budget", read 2026-11-27 from the installed CLI 1.5.17). The cap includes the
+  # frontmatter, so the body gets a little less.
+  ruleBodyMaxBytes = 23500;
+
+  # Cut a Markdown text into units at `# ` and `## ` headings. A `#` inside a code fence is not a
+  # heading (the shared AGENTS.md has shell comments in a fence), so the fence state is tracked.
+  headingUnits =
+    text:
+    let
+      step =
+        acc: line:
+        let
+          isFence = lib.hasPrefix "```" line;
+          isHeading = !acc.fence && (lib.hasPrefix "# " line || lib.hasPrefix "## " line);
+          fence = if isFence then !acc.fence else acc.fence;
+          current = lib.last acc.units;
+          units =
+            if isHeading then
+              acc.units
+              ++ [
+                {
+                  title = lib.removePrefix "# " (lib.removePrefix "## " line);
+                  text = line;
+                }
+              ]
+            else
+              lib.init acc.units ++ [ (current // { text = current.text + "\n" + line; }) ];
+        in
+        {
+          inherit fence units;
+        };
+    in
+    (lib.foldl' step {
+      fence = false;
+      units = [
+        {
+          title = "";
+          text = "";
+        }
+      ];
+    } (lib.splitString "\n" text)).units;
+
+  # Pack neighbouring units greedily into chunks of at most `ruleBodyMaxBytes`. A unit that is
+  # alone over the cap fails the evaluation (asserted below): no oversized rule file is expressible.
+  packUnits =
+    units:
+    lib.foldl'
+      (
+        chunks: unit:
+        let
+          current = lib.last chunks;
+          merged = current.text + "\n" + unit.text;
+          titles = lib.optional (unit.title != "") unit.title;
+        in
+        if current.text == "" then
+          lib.init chunks
+          ++ [
+            {
+              text = unit.text;
+              inherit titles;
+            }
+          ]
+        else if builtins.stringLength merged <= ruleBodyMaxBytes then
+          lib.init chunks
+          ++ [
+            {
+              text = merged;
+              titles = current.titles ++ titles;
+            }
+          ]
+        else
+          chunks
+          ++ [
+            {
+              text = unit.text;
+              inherit titles;
+            }
+          ]
+      )
+      [
+        {
+          text = "";
+          titles = [ ];
+        }
+      ]
+      units;
+
+  ruleFile =
+    {
+      description,
+      body,
+    }:
+    assert lib.assertMsg (builtins.stringLength body <= ruleBodyMaxBytes)
+      "home/modules/antigravity.nix: a rule unit is ${toString (builtins.stringLength body)} bytes, over the ${toString ruleBodyMaxBytes}-byte body cap (agy cuts a rule file at 24,000 bytes). Split the section in config/agents/AGENTS.md or config/antigravity/AGENTS.antigravity.md.";
+    ''
+      ---
+      trigger: always_on
+      description: ${builtins.toJSON description}
+      ---
+      ${body}
+    '';
+
+  sharedChunks = packUnits (headingUnits (builtins.readFile (repoConfig + "/agents/AGENTS.md")));
+
+  rulesFiles = {
+    ".gemini/config/rules/00-antigravity.md".text = ruleFile {
+      description = "Antigravity CLI(agy)固有の施行配線: 道具名の読み替え・計画の自己検査・PR 運用";
+      body = builtins.readFile (repoConfig + "/antigravity/AGENTS.antigravity.md");
+    };
+  }
+  // lib.listToAttrs (
+    lib.imap1 (i: chunk: {
+      name = ".gemini/config/rules/${lib.fixedWidthNumber 2 (10 + i)}-shared.md";
+      value.text = ruleFile {
+        description = "共有の作業規範(" + lib.concatStringsSep "・" chunk.titles + ")";
+        body = chunk.text;
+      };
+    }) sharedChunks
+  );
 
   # agy's rule targets are absolute paths or paths relative to a workspace root; `~` is not
   # documented as expanded (Google, Antigravity docs "Permissions", retrieved 2026-11-26).
@@ -80,8 +207,14 @@ let
   };
 in
 {
+  options.dotfiles.antigravity.enable = lib.mkEnableOption "deploying Antigravity CLI configuration (permissions, global rules)";
+
   options.dotfiles.antigravityPermissions = {
-    enable = lib.mkEnableOption "declaring permissions in Antigravity CLI's settings.json";
+    enable = lib.mkOption {
+      type = lib.types.bool;
+      default = config.dotfiles.antigravity.enable;
+      description = "Declare permissions in Antigravity CLI's settings.json (follows `dotfiles.antigravity.enable`).";
+    };
     secretPaths = lib.mkOption {
       type = lib.types.listOf lib.types.str;
       default = config.dotfiles.agentPermissions.secret_paths;
@@ -116,6 +249,10 @@ in
   };
 
   config = {
+    # Read-only store files: agy never writes into rules/ (the TUI's `/permissions` and `/hooks`
+    # write settings.json and hooks.json, not rules).
+    home.file = lib.mkIf config.dotfiles.antigravity.enable rulesFiles;
+
     xdg.configFile."agent-native/antigravity-permissions.json".text = builtins.toJSON {
       inherit (cfg) enable;
       inherit spec;
