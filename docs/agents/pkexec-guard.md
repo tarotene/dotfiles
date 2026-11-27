@@ -299,6 +299,23 @@ guard が先に deny する。
 polkit の規則で YES にする案は、同じ uid のどのプロセスにも ask を迂回させる)。agent から見えない場所(root 側の検証プログラムと、GUI
 セッションのダイアログ)に入力を置くことが、この設計の要である。
 
+## 素の sudo は、書き換え案つきで deny する(2026-11-27、段 2)
+
+それまで guard は、`sudo -A`/`-S`/`--askpass`/`--stdin` と `SUDO_ASKPASS` だけを deny し、素の `sudo whoami` は通していた
+(対話端末なら sudo のプロンプトが働くため)。しかし agent の Bash には制御端末が無く、sandbox の中は no_new_privs で
+setuid の sudo が root になれない(「sandbox との関係」の実測)ので、素の `sudo` は**必ず失敗する**。失敗してから原因を探させず、
+実行前に、次の一手つきで返す。
+
+- **対象**: 文の**命令位置**の語が `sudo`(先頭の `NAME=値` の代入は読み飛ばす)。複合コマンド(`;`・`&&`・`|`)の各文も見る。
+  `man sudo`・`grep sudo f`・`echo sudo`・commit メッセージ・引用符付きヒアドキュメントの本文は、命令位置の語ではないので対象にしない。
+  解析できない文(展開・リダイレクトを含むもの)の中の `sudo` は素通りし、実行時に失敗する(検出は案内のためで、安全の関所ではない)。
+- **Claude の場合**: 許可リストにある命令は、書き換え案を返す。`sudo apt-get install foo` → `/usr/bin/pkexec /usr/bin/apt-get install foo`。
+  ベース名(`apt-get`)も絶対パス(`/usr/bin/apt-get`)も受ける。許可リスト外の命令(`tee` など)と、sudo のオプション付き(`-u`・`-E`・`-i`・`-s`。
+  pkexec に対応が無い)は、書き換え案を出さず、許可リストを示して、本人に `!` 付きの実行を頼むよう案内する。
+- **Codex・Copilot の場合**: pkexec を全 deny している(不変条件 5)ので、書き換え案を出さず、本人が端末で実行するよう案内する。
+- **`updatedInput` による自動書き換えは採らない**: hook が入力を黙って書き換えると、承認の画面にどちらの文字列が出るかが未確認で、
+  承認した文字列と実行される文字列がずれるおそれがある。deny して書き直させれば、承認の対象は常に、agent が自分で書いた pkexec の形になる。
+
 ## 先行例との差分
 
 - **`rulesets-write-guard`**: 同じ「`command_inspection::simple_shell::split` で語分割し、
