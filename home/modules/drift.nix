@@ -56,7 +56,7 @@ in
   # 一切値を持たない(ADR-0034「規則は public・実値は private」) — 値は
   # private wrapper flake の extraModules が `dotfiles.detectDrift.issueRepo
   # = "<private-owner>/<private-repo>";` として注入する。既定の null は
-  # 「起票しない(検出のみ)」を表す。dotfiles.claude.mcpServers
+  # 「起票しない(検出のみ)」を表す。dotfiles.agents.mcpServers
   # (claude-mcp-servers.nix)と同じ「口だけを公開する extensible option」
   # の型。
   options.dotfiles.detectDrift.issueRepo = lib.mkOption {

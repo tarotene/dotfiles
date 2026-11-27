@@ -12,13 +12,14 @@ home-manager は activation のたびに、**宣言したものだけ**をこれ
 | `claude-hooks` | `~/.claude/settings.json` の `.hooks` | `builtins.toJSON` の spec(`claudeHookDeclarations` + `retiredHookEntries`) |
 | `claude-permissions` | 同 `.permissions.allow` / `.ask` | spec(`permissionRules` ほか) |
 | `claude-statusline` | 同 `.statusLine` | spec(`statusLineCmd` + `retiredStatusLineCommands`) |
-| `claude-mcp-servers` | `~/.claude.json` の `.mcpServers` | `dotfiles.claude.mcpServers` の JSON |
+| `claude-mcp-servers` | `~/.claude.json` の `.mcpServers` | `dotfiles.agents.mcpServers`(旧名 `dotfiles.claude.mcpServers`)の JSON |
 | `codex-hooks-spec` | `~/.codex/hooks.json` | spec(`codexHookDeclarations` + 退役の一覧 + `state`) |
 | `copilot-hooks-spec` | `~/.copilot/settings.json` | spec(`copilotHookDeclarations` + 退役の一覧 + `state`) |
 | `codex-config` | `~/.codex/config.toml` | spec(`home/modules/codex.nix` の `codexConfigSpec`) |
 | `codex-permissions` | 同 `default_permissions` の権限 profile と MCP 許可 | `{settings, mcp_allow, state}` |
 | `antigravity-permissions` | `~/.gemini/antigravity-cli/settings.json` の `.permissions.{allow,ask,deny}`・`.toolPermission`・`.enableTerminalSandbox` | spec(`home/modules/antigravity.nix`。`state` は 3 種の規則を記録) |
 | `antigravity-hooks` | `~/.gemini/config/hooks.json` の自分の名前のキー(`dotfiles`) | spec(`antigravityHooksSpec`: `{name, hooks}`。所有の単位はキーなので、`state` は持たない。agy が捨てる形の宣言は書く前に止める) |
+| `antigravity-mcp-servers` | `~/.gemini/config/mcp_config.json` の `.mcpServers` のうち、所有の記録に載せた名前 | spec(`home/modules/antigravity.nix` の `mcpSpec`: `{servers, state}`。agy が捨てるキーを持つ宣言は書く前に止める。空のファイルは `{}` として読む) |
 
 ## hook は宣言を正とする
 

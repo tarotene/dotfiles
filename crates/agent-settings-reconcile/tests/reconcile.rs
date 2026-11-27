@@ -487,3 +487,97 @@ fn antigravity_unknown_spec_field_is_a_usage_error() {
     let out = run(&strs(&["antigravity-permissions", r#"{"alow":[]}"#]), &f);
     assert_eq!(out.status.code(), Some(2));
 }
+
+// --- antigravity-mcp-servers / antigravity-hooks(agy の config/ の下のファイル) ---
+
+#[test]
+fn antigravity_mcp_servers_start_from_agys_empty_file_and_keep_the_owners_servers() {
+    let d = tempfile::tempdir().unwrap();
+    let f = d.path().join("mcp_config.json");
+    // agy は、中身が 0 バイトの `mcp_config.json` を作る。
+    std::fs::write(&f, "").unwrap();
+    let state = d.path().join("state/managed-mcp-antigravity.json");
+    let spec = |servers: &str| {
+        format!(
+            r#"{{"servers":{servers},"state":"{}"}}"#,
+            state.to_string_lossy()
+        )
+    };
+    let out = run(
+        &strs(&[
+            "antigravity-mcp-servers",
+            &spec(r#"{"a":{"command":"/x"},"b":{"command":"/y"}}"#),
+        ]),
+        &f,
+    );
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    // 本人が `agy mcp add` で足したサーバー。
+    let mut v: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&f).unwrap()).unwrap();
+    v["mcpServers"]["mine"] = serde_json::json!({"command": "m"});
+    std::fs::write(&f, v.to_string()).unwrap();
+    // b を宣言から外す: b は消え、本人の mine は残る。
+    let out = run(
+        &strs(&[
+            "antigravity-mcp-servers",
+            &spec(r#"{"a":{"command":"/x"}}"#),
+        ]),
+        &f,
+    );
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let v: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&f).unwrap()).unwrap();
+    let names: Vec<&str> = v["mcpServers"]
+        .as_object()
+        .unwrap()
+        .keys()
+        .map(String::as_str)
+        .collect();
+    assert_eq!(names, ["a", "mine"]);
+}
+
+#[test]
+fn antigravity_mcp_servers_reject_a_key_agy_drops_before_writing() {
+    let d = tempfile::tempdir().unwrap();
+    let f = d.path().join("mcp_config.json");
+    std::fs::write(&f, "{}\n").unwrap();
+    let out = run(
+        &strs(&[
+            "antigravity-mcp-servers",
+            r#"{"servers":{"a":{"command":"/x","type":"stdio"}}}"#,
+        ]),
+        &f,
+    );
+    assert_eq!(out.status.code(), Some(1));
+    assert_eq!(std::fs::read_to_string(&f).unwrap(), "{}\n");
+}
+
+#[test]
+fn antigravity_hooks_own_one_key_and_leave_herdrs_alone() {
+    let d = tempfile::tempdir().unwrap();
+    let f = d.path().join("hooks.json");
+    std::fs::write(&f, r#"{"herdr-agent-state":{"Stop":[{"command":"h"}]}}"#).unwrap();
+    let spec =
+        r#"{"name":"dotfiles","hooks":{"Stop":[{"type":"command","command":"x","timeout":5}]}}"#;
+    assert!(run(&strs(&["antigravity-hooks", spec]), &f)
+        .status
+        .success());
+    let v: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&f).unwrap()).unwrap();
+    assert_eq!(v["herdr-agent-state"]["Stop"][0]["command"], "h");
+    assert_eq!(v["dotfiles"]["Stop"][0]["command"], "x");
+    // 宣言を空にすると、自分のキーだけが消える。
+    let empty = r#"{"name":"dotfiles","hooks":{}}"#;
+    assert!(run(&strs(&["antigravity-hooks", empty]), &f)
+        .status
+        .success());
+    let v: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&f).unwrap()).unwrap();
+    assert!(v.get("dotfiles").is_none());
+    assert!(v.get("herdr-agent-state").is_some());
+}

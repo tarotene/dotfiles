@@ -1,4 +1,9 @@
-# ~/.claude.json の .mcpServers を宣言的に管理する「口」(docs/claude/claude-mcp-servers.md)。
+# MCP サーバーを宣言的に管理する「口」(docs/claude/claude-mcp-servers.md)。宣言は 1 か所
+# (`dotfiles.agents.mcpServers`)で、Claude Code(~/.claude.json の .mcpServers)と Antigravity CLI
+# (~/.gemini/config/mcp_config.json、home/modules/antigravity.nix)の両方へ配る。旧名の
+# `dotfiles.claude.mcpServers` は別名として残す(private wrapper が同じ名前で値を足していても評価が通る)。
+#
+# ~/.claude.json の .mcpServers の扱い:
 #
 # ~/.claude.json は Claude-Code-owned(`claude mcp add` が実行時に書き換える)なので
 # ~/.claude/settings.json と同じ制約が掛かる — store symlink にはできず、activation
@@ -6,7 +11,7 @@
 # と同じ agent-settings-reconcile の別サブコマンド)。ただしこのモジュール自身はサーバーの値を
 # 一切持たない: home/modules/quarantine.nix の `dotfiles.quarantine.managedFiles` と
 # 同型の extensible option として「口」だけを公開し、personal.nix / company.nix /
-# このファイル自身のいずれからも `dotfiles.claude.mcpServers.<name> = {...}` で
+# このファイル自身のいずれからも `dotfiles.agents.mcpServers.<name> = {...}` で
 # populate する。
 #
 # 書き換えは reconcile(宣言集合 = user scope の望ましい完全状態)。当初は加法的
@@ -24,16 +29,22 @@
   ...
 }:
 let
-  cfg = config.dotfiles.claude;
+  cfg = config.dotfiles.agents;
 in
 {
-  options.dotfiles.claude.mcpServers = lib.mkOption {
+  imports = [
+    (lib.mkAliasOptionModule [ "dotfiles" "claude" "mcpServers" ] [ "dotfiles" "agents" "mcpServers" ])
+  ];
+
+  options.dotfiles.agents.mcpServers = lib.mkOption {
     type = lib.types.attrsOf lib.types.anything;
     default = { };
     description = ''
       MCP servers to declaratively manage in `~/.claude.json`'s
-      top-level `.mcpServers` (user scope). Each attribute name is the
-      server name Claude Code shows; the value is the raw MCP server
+      top-level `.mcpServers` (user scope), and, converted to Antigravity
+      CLI's schema, in `~/.gemini/config/mcp_config.json`
+      (`dotfiles.antigravity.mcpServers`). Each attribute name is the
+      server name the agent shows; the value is the raw MCP server
       config object (Claude Code's own schema — `command`/`args`/`env`
       for stdio servers, `type = "http"`/`url` for remote ones).
 

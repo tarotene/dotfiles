@@ -8,12 +8,19 @@ hook 登録 / permissions(`docs/claude/claude-permissions.md`)と
 
 配備は独立モジュール `home/modules/claude-mcp-servers.nix`(`home/modules/quarantine.nix`
 と同じ「1 option = 1 ファイル」の粒度、`home/modules/` に置く)の
-`options.dotfiles.claude.mcpServers` /
+`options.dotfiles.agents.mcpServers`(旧名 `dotfiles.claude.mcpServers` は別名として残る)/
 `home.activation.registerClaudeMcpServers`。
+
+宣言は 1 か所で、Antigravity CLI(`agy`)にも配る: `home/modules/antigravity.nix` が、同じ宣言から agy の
+`mcp_config.json` が許すキー(`command`・`args`・`env`・`cwd`・`url`・`headers`・`disabled`・`variables`)だけを残し
+(Claude の `type` などは落とす)、`~/.gemini/config/mcp_config.json` へ `agent-settings-reconcile antigravity-mcp-servers`
+で書く。agy へは**所有の記録に載せた名前だけ**を管理し、`agy mcp add` で本人が足したサーバーは消さない(Claude と
+違い、宣言外を消さない)。agy に出さないサーバーは `dotfiles.antigravity.mcpServers` で上書きして外す
+(agy のツールの出力は、別の事業者のモデルに送られる)。
 
 ## 宣言集合が user scope の完全状態である(reconcile)
 
-`dotfiles.claude.mcpServers` に挙がったサーバーが user scope の望ましい完全状態で、
+`dotfiles.agents.mcpServers` に挙がったサーバーが user scope の望ましい完全状態で、
 activation は宣言外の user-scope サーバーを**削除する**。`claude mcp add` で足した
 野良サーバーは次の `hms` で消える — 残したいなら宣言に格上げする。
 
@@ -214,7 +221,7 @@ Firefox の複製を headless で動かすので、本人には見えない(`sho
 ```nix
 # home/identities/company.nix — 秘密の要らない stdio server の例
 {
-  dotfiles.claude.mcpServers.playwright = {
+  dotfiles.agents.mcpServers.playwright = {
     type = "stdio";
     command = "npx";
     args = [ "@playwright/mcp@latest" ];
@@ -231,7 +238,7 @@ Firefox の複製を headless で動かすので、本人には見えない(`sho
   ADR-0010 が明示的に退役させたパターン(シェル起動時の GPG PIN プロンプト・
   全プロセスへの秘密展開)に戻ってしまう。そのケースでは `${VAR}` に頼らず、
   `command` にそのサーバー専用の launcher(起動時にだけ復号して `exec` する
-  スクリプト)を据える — 実例は `dotfiles.claude.mcpServers.esa`
+  スクリプト)を据える — 実例は `dotfiles.agents.mcpServers.esa`
   (`home/identities/personal/esa.nix` + `crates/esa-mcp-launcher`、
   [`esa-mcp.md`](../agents/esa-mcp.md)、ADR-0022)。セッション環境に元から乗っている
   トークン(例: 別プロセスが供給する company workspace のトークン)なら

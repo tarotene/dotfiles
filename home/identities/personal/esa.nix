@@ -19,7 +19,7 @@
 # env 展開自体を使わない。
 #
 # `~/.claude.json` への登録は `home/modules/claude-mcp-servers.nix` が公開する
-# 共通の「口」(`dotfiles.claude.mcpServers`)に populate するだけでよい —
+# 共通の「口」(`dotfiles.agents.mcpServers`)に populate するだけでよい —
 # `~/.claude.json` が Claude-Code-owned で store symlink にできない制約への
 # 対処(冪等 jq merge)はそちらが一元的に持つため、このモジュール自身は
 # activation スクリプトを持たない。
@@ -42,7 +42,7 @@ in
 
   # LANG=ja は旧 private リポジトリの .mcp.json が持っていた実績値をそのまま
   # 引き継ぐ。
-  dotfiles.claude.mcpServers.esa = {
+  dotfiles.agents.mcpServers.esa = {
     type = "stdio";
     command = launcherPath;
     args = [ ];

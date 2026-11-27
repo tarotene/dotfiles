@@ -164,8 +164,10 @@ let
       "home/modules/antigravity.nix: `${rule}` has a `*` inside the prefix, which agy's command(...) cannot express. List it in noAgyCounterpart or declare it differently.";
     prefix;
 
-  # Only `Bash(...)` rules convert. `mcp__…` rules name Claude's MCP servers, and agy has none of
-  # them configured (~/.gemini/config/mcp_config.json is empty), so they are left out on purpose.
+  # Only `Bash(...)` rules convert. Claude's `mcp__…` allow rules name servers that are no longer declared
+  # (brave-search, github) or connector tools (claude_ai_*); none of the servers agy now gets from
+  # `dotfiles.agents.mcpServers` (playwright, playwright-chrome, esa) has an allow rule in Claude, so there is
+  # nothing to convert, and agy asks per tool for them.
   toCommands =
     rules:
     lib.unique (
@@ -205,9 +207,46 @@ let
   // lib.optionalAttrs (config.dotfiles.agentPermissions.sandboxed_shell == "auto") {
     tool_permission = "proceed-in-sandbox";
   };
+
+  # --- MCP servers ----------------------------------------------------------------------------
+  # 宣言は共有の `dotfiles.agents.mcpServers`(Claude と同じ。home/modules/claude-mcp-servers.nix)。agy の
+  # `mcp_config.json` が許すキーだけを残す。Claude の `type`・`timeout` などは agy が黙って捨てるので、
+  # reconcile も、残っていれば書く前に止める(`migrate-agent-settings` の変換の規則、取得 2026-11-27)。
+  mcpAllowedKeys = [
+    "command"
+    "args"
+    "env"
+    "cwd"
+    "url"
+    "headers"
+    "disabled"
+    "variables"
+  ];
+  mcpServersForAgy = lib.mapAttrs (
+    _: lib.filterAttrs (k: _: builtins.elem k mcpAllowedKeys)
+  ) config.dotfiles.antigravity.mcpServers;
+  # build の検査(home.checks)は、所有の記録(実ホームのファイル)を書かないよう、`state` を持たない宣言を使う。
+  mcpSpecForCheck = builtins.toJSON { servers = mcpServersForAgy; };
+  mcpSpec = builtins.toJSON {
+    servers = mcpServersForAgy;
+    # 前回書いた名前の記録。宣言から外したサーバーだけを消し、`agy mcp add` で本人が足したものは残す。
+    state = "${home}/.local/state/dotfiles/managed-mcp-antigravity.json";
+  };
+
 in
 {
-  options.dotfiles.antigravity.enable = lib.mkEnableOption "deploying Antigravity CLI configuration (permissions, global rules)";
+  options.dotfiles.antigravity.enable = lib.mkEnableOption "deploying Antigravity CLI configuration (permissions, global rules, hooks, MCP servers)";
+
+  options.dotfiles.antigravity.mcpServers = lib.mkOption {
+    type = lib.types.attrsOf lib.types.anything;
+    default = config.dotfiles.agents.mcpServers;
+    defaultText = lib.literalExpression "config.dotfiles.agents.mcpServers";
+    description = ''
+      MCP servers written to Antigravity CLI's `~/.gemini/config/mcp_config.json`. Follows the shared
+      `dotfiles.agents.mcpServers` (Claude's declaration); override it to leave a server out of agy
+      (its tool output goes to a different vendor's model).
+    '';
+  };
 
   options.dotfiles.antigravityPermissions = {
     enable = lib.mkOption {
@@ -252,6 +291,24 @@ in
     # Read-only store files: agy never writes into rules/ (the TUI's `/permissions` and `/hooks`
     # write settings.json and hooks.json, not rules).
     home.file = lib.mkIf config.dotfiles.antigravity.enable rulesFiles;
+
+    # `agy mcp add` で本人が足したサーバーは残す(所有の記録に載せた名前だけを管理する)。
+    home.activation.registerAntigravityMcpServers = lib.mkIf config.dotfiles.antigravity.enable (
+      lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+        run ${settingsReconcile} antigravity-mcp-servers "$HOME/.gemini/config/mcp_config.json" \
+          ${lib.escapeShellArg mcpSpec}
+      ''
+    );
+
+    # 宣言の形の検査を、build の時にも回す(適用で初めて落ちる形を、generation の build で落とす)。
+    home.checks = [
+      (pkgs.runCommand "antigravity-mcp-spec" { } ''
+        f="$TMPDIR/mcp_config.json"
+        : > "$f"
+        ${settingsReconcile} antigravity-mcp-servers "$f" ${lib.escapeShellArg mcpSpecForCheck}
+        touch $out
+      '')
+    ];
 
     xdg.configFile."agent-native/antigravity-permissions.json".text = builtins.toJSON {
       inherit (cfg) enable;

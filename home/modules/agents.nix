@@ -296,7 +296,7 @@
 #    詳細は docs/adr/0027-uncertainty-first-stacking.md と
 #    docs/agents/stack-base-guard.md。
 #
-# 20) dotfiles.claude.mcpServers(home/modules/claude-mcp-servers.nix、値は既定で空):
+# 20) dotfiles.agents.mcpServers(旧名 dotfiles.claude.mcpServers。home/modules/claude-mcp-servers.nix、値は既定で空):
 #    ~/.claude.json の .mcpServers を加法的に merge する extensible option。この
 #    ファイルではなく独立モジュールに切り出してある(quarantine.nix と同じ
 #    「1 option = 1 ファイル」の粒度)。詳細は docs/claude/claude-mcp-servers.md。

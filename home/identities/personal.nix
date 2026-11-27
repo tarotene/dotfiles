@@ -85,7 +85,7 @@ in
   # identity だけで有効にする。権限の宣言(`dotfiles.antigravityPermissions.enable`)はこれに従う。
   dotfiles.antigravity.enable = true;
 
-  dotfiles.claude.mcpServers = {
+  dotfiles.agents.mcpServers = {
     # PR の Before/After 視覚証跡(docs/agents/pr-description.md の G_visual)と
     # Web UI の実地確認に使う。普段の Firefox のログイン状態をそのまま使うため、
     # 起動ラッパー(crates/playwright-mcp-launcher)が普段のプロファイルを
