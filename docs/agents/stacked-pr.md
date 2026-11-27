@@ -14,8 +14,8 @@ open issue、バージョン番号)は `docs/stacked-pr-github-native.md` に切
 ## 動機
 
 「commit → push → `gh pr create` を問答無用で一続きに実行する」という既存の
-完了定義(global `CLAUDE.md`)は、PR 同士に依存関係が無い前提で書かれていた。
-実際には次の 4 つが同時に起きていた:
+完了定義(global `CLAUDE.md`)は、PR 同士に依存関係がない前提で書かれていた。
+実際には次の 5 つが同時に起きていた:
 
 1. 依存を無視して main 起点で並行し、同一ファイル(ADR、単一設定ファイル)を
    触る PR が衝突・上書きする
@@ -23,7 +23,7 @@ open issue、バージョン番号)は `docs/stacked-pr-github-native.md` に切
 3. 分けられないので ADR + 実装 + docs を 1 PR に詰め、レビュー不能な塊になる
 4. 「これは分けるべきか」の判断がセッションごとにブレる
 5. grilling セッションや Plan モード中にスコープ外だが価値のある発見が
-   あったとき、選択肢空間に「stack の一段として受ける」が無いため、
+   あったとき、選択肢空間に「stack の一段として受ける」がないため、
    「wrap-up inbox 送り」か「同一 PR に混ぜる」かという極端な二択を
    `AskUserQuestion` で迫ってしまう(2026-09-19 の grilling セッションで
    観測)
@@ -109,7 +109,7 @@ required check が 0 件のときの縮退経路)を持つ。つまり stacked P
 block する案(`G_stack`)も検討したが、`pr-gate` の既存の設計原則
 (「判定できる場合だけ踏み込む」、`docs/agents/pr-gate.md` 参照)に倣い、
 今回は指示文とスキルの運用を先に確立し、実際に取り違えが起きてから block
-化を検討することにした。誘発の実測が無いまま `MAX_BLOCKS` を引き上げて
+化を検討することにした。誘発の実測がないまま `MAX_BLOCKS` を引き上げて
 PR を大きくする判断はしない。
 
 ## 保留条項の発火と ADR-0027(2026-09-21)
@@ -176,7 +176,7 @@ ADR-0008(記録の器の選択規約)はこのスキル自身の執筆にも適�
 `Build arcturus` / `Build altair` を skip する(共有 composite action
 `.github/actions/stack-position` の判定、#419)。§4 の「下位段への修正が
 入ったときの追従」どおり全上位段を rebase すれば、tip の合成木で
-改めて検査されるので実害は無い。rebase せずにその段を単独でマージする
+改めて検査されるので実害はない。rebase せずにその段を単独でマージする
 場合だけ `ci:full` ラベルを貼って heavy を手動で走らせる — この場合を
 自動検出する仕組み(`pull_request: edited` での再発火や `pr-gate` 側の
 検出)はコストに見合わないため意図的に追加していない(ADR-468

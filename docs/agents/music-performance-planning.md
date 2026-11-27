@@ -33,7 +33,7 @@
 配列・テーブルを含む非スカラー値の TOML 出力を試みると
 `only scalars ... are supported for TOML output at the moment` で失敗する。
 つまり `state/performances/*.toml` が持つ `[[appearances]]`・`[[rehearsals]]`
-のような配列オブテーブルを、yq で TOML として書き戻すことはできない。
+のようなテーブル配列を、yq で TOML として書き戻すことはできない。
 
 このため、このスキルの設計は「TOML の**読み取り**(yq -p toml -o json)は
 決定的スクリプトが担うが、TOML への**書き込み**は Claude が Edit ツールで
@@ -51,7 +51,7 @@ person-state リポジトリ側の `state/performances/scripts/capacity-check.sh
 (需要 vs 供給)と `scripts/milestone-check.sh`(マイルストーン目標日の
 到来)の出力をそのまま読み、今週の練習配分案を組み立てる。決定的
 スクリプトは person-state リポジトリ側に既にあるため、このスキル側に
-新規スクリプトは無い — 月次レビュー(person-state リポジトリで毎月起きる
+新規スクリプトはない — 月次レビュー(person-state リポジトリで毎月起きる
 Issue「月次レビュー YYYY-MM」の Cadence 割当節)から呼ばれる想定で、割当そのものはソルバ化しない
 (person-state リポジトリ側の既存決定を継承)。
 
@@ -97,7 +97,7 @@ person-state リポジトリ側のフィールドの対応表を SKILL.md に持
 会場確保・ドレスコード確認・スーツ準備/クリーニング・宿泊要否判断/予約は
 person-state リポジトリ側の `state/performances/scripts/obligations.sh`
 が演奏データから導出するビュー(ADR-0015)。このスキル側に対応する新規
-スクリプトは無く、出力をそのまま読んで対応する手順のみを持つ
+スクリプトはなく、出力をそのまま読んで対応する手順のみを持つ
 (「1. 練習計画提案」が capacity-check.sh/milestone-check.sh の出力を
 そのまま読むのと同じ設計)。
 

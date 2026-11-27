@@ -9,7 +9,7 @@ N コミット遅れています」)で伝えるが、**ブランチ自体は動
 だった。
 
 一方で「まだ何も積んでいない、正真正銘そのままの worktree」は履行歴を持たず、
-動かしても失うものが無い。この hook(`crates/worktree-base-sync`,
+動かしても失うものがない。この hook(`crates/worktree-base-sync`,
 SessionStart)はその一点だけを能動的に解消する: 条件を満たす worktree に限り
 `git merge --ff-only` で origin/`<base>` へ黙って揃える。
 
@@ -18,7 +18,7 @@ SessionStart)はその一点だけを能動的に解消する: 条件を満た�
 - `git branch --show-current` が非空(detached HEAD・rebase 中は触らない)
 - カレントブランチが default branch(`origin/HEAD` が指すもの)自身ではない
 - `git status --porcelain` が空(作業ツリークリーン)
-- `ahead == 0`(自分のコミットが origin/`<base>` に対して 1 つも無い)
+- `ahead == 0`(自分のコミットが origin/`<base>` に対して 1 つもない)
 - `behind > 0`(origin より遅れている)
 
 この 5 条件を fetch 後に満たすときだけ `git merge --ff-only --quiet
@@ -52,7 +52,7 @@ hook/script に複製されている(手続き的な複数箇所同期コメン�
 変更時はこの列挙をまず更新し、そのうえで各実装を揃える。根本解決(共通クレートへの集約)は Rust 移行
 Tracking Issue #389 の Stage 2(#391)で進み、`crates/git-repository`
 ([`agent-libraries.md`](agent-libraries.md))の `default_branch` に寄った。**この節の列挙は 2026-09-23 の実測のままで、
-現在の実体とは一致しない**(byte-identical の 4 箇所は無くなり、`origin/HEAD` を自前で読む箇所が `crates/git-audit-worktrees` と
+現在の実体とは一致しない**(byte-identical の 4 箇所はなくなり、`origin/HEAD` を自前で読む箇所が `crates/git-audit-worktrees` と
 `crates/ja-polish` に残る)。列挙の書き直しは、`git` の実行を寄せるリファクタリング(親 Issue #1433 の段12)で行う。
 
 ## fetch は base ブランチ名を明示する
@@ -74,7 +74,7 @@ Tracking Issue #389 の Stage 2(#391)で進み、`crates/git-repository`
 
 fetch に失敗した(ネットワーク・認証・時間切れ)ときは、手元の `origin/<base>` に対して HEAD が遅れていれば
 (`git rev-list --count HEAD..origin/<base>` が 1 以上)、`additionalContext` で知らせる。最新かは分からない(追跡 ref
-自体が古い可能性もある)が、遅れているという事実は確かなので、黙って終えない。遅れの根拠が無いとき(追跡 ref が無い、
+自体が古い可能性もある)が、遅れているという事実は確かなので、黙って終えない。遅れの根拠がないとき(追跡 ref がない、
 HEAD と同じ)は黙る。動かす(fast-forward)のは、fetch に成功したときだけ。
 
 ## 順序について: pr-gate との実行順は保証されない
@@ -104,7 +104,7 @@ hook を並列実行するため逐次実行は保証できない
 
 親チェックアウト自身の `main` を常に新鮮に保つ(home-manager 管理の systemd
 user timer で定期 fetch + ff-only pull する)案は、全リポジトリへの常駐動作
-という別議論が要るため、この hook のスコープには含めない。
+という別議論が必要なため、この hook のスコープには含めない。
 
 長い Plan セッション中の drift(この hook は SessionStart 限定なので対象外)
 は `plan-fresh-gate`(PreToolUse / ExitPlanMode)が別途担う。移動条件

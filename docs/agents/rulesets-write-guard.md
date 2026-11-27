@@ -12,7 +12,7 @@ job 名として報告されるか」を検証するようにした(D5)。しか
 検証を素通りしてリポジトリ外の値をそのまま live ruleset に書き込める —
 telepath#243 を含む複数リポジトリで required check を永久 Expected に
 した事故を生んだのと同じ「テンプレートの required context が対象リポジトリの
-実際のジョブ名と同じ PR で編集される保証が無い」構造を、hook を迂回する
+実際のジョブ名と同じ PR で編集される保証がない」構造を、hook を迂回する
 形で再現してしまう。
 
 ## 仕組み
@@ -50,5 +50,5 @@ PreToolUse(`Bash`、`if: Bash(gh *)`)専用。`gh-edit-allow` と違い記録役
 - **実装言語**: ADR-0024 は新規 hook を既定で Rust とし、bash 例外は
   「既存の巨大 bash 資産(かつての `scripts/github-audit` 等)を source して判定
   ロジックを再利用する」ときに限った
-  (その bash 資産は、`crates/pr-contract-check` への移植で無くなった)。この hook は `gh api` の引数解析だけで完結し、
-  `github-audit` を source する必要が無いため、既定どおり Rust で書いた。
+  (その bash 資産は、`crates/pr-contract-check` への移植でなくなった)。この hook は `gh api` の引数解析だけで完結し、
+  `github-audit` を source する必要がないため、既定どおり Rust で書いた。

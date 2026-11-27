@@ -178,24 +178,24 @@ What runs automatically, when, and on which stack: see the [pipeline map](pipeli
 - [`agents/agent-tooling-authoring.md`](agents/agent-tooling-authoring.md) — agent-tooling-authoring スキル
 - [`agents/attribution-guard.md`](agents/attribution-guard.md) — attribution-guard — AI 生成テキストに attribution を強制する PreToolUse hook
 - [`agents/browser-login-handoff.md`](agents/browser-login-handoff.md) — browser-login-handoff — ブラウザ未ログイン時のハンドオフ手順を型化した理由
-- [`agents/browser-settings.md`](agents/browser-settings.md) — browser-settings — サービスの設定画面の 1 項目を、読み取り・貼り付け・読み戻しする
-- [`agents/calendar-handshake.md`](agents/calendar-handshake.md) — calendar-handshake — 個人と勤務先のカレンダーの握手に使う印の語彙
-- [`agents/ci-consumers.md`](agents/ci-consumers.md) — ci-consumers — 編集するパスを入力にしている CI の検査を、編集の前に引く
-- [`agents/ci-wait-guard.md`](agents/ci-wait-guard.md) — ci-wait-guard — CI の待ち方を実行前に止め、`pr-checks-wait` へ案内する
+- [`agents/browser-settings.md`](agents/browser-settings.md) — browser-settings — サービスの設定画面の 1 項目を読み取り・貼り付け・読み戻しする
+- [`agents/calendar-handshake.md`](agents/calendar-handshake.md) — calendar-handshake — 個人と勤務先のカレンダー連携に使う状態マークの語彙
+- [`agents/ci-consumers.md`](agents/ci-consumers.md) — ci-consumers — 編集するパスを入力とする CI の検査を編集前に確認する
+- [`agents/ci-wait-guard.md`](agents/ci-wait-guard.md) — ci-wait-guard — 不適切な CI 待ち方を実行前に止め、`pr-checks-wait` へ案内する
 - [`agents/codex-network-exceptions.md`](agents/codex-network-exceptions.md) — Codex の調査用ネットワーク例外
 - [`agents/codify-signals.md`](agents/codify-signals.md) — as-code 化の候補を振り返りで記録する(段・兆候・既存手段)
 - [`agents/copilot-plan-review.md`](agents/copilot-plan-review.md) — プランレビューは critic を黙らせるのではなく、受入基準で閉じる
 - [`agents/decision-colocation.md`](agents/decision-colocation.md) — decision-colocation — 決定成果物と執行点を同じ PR に強制する
-- [`agents/deploy-worker.md`](agents/deploy-worker.md) — deploy-worker — private リポジトリの静的サイトを Workers に置き、配信の手順を共通の action で呼ぶ
+- [`agents/deploy-worker.md`](agents/deploy-worker.md) — deploy-worker — private リポジトリの静的サイトを Workers に配置し、配信手順を共通の action にまとめる
 - [`agents/diagramming.md`](agents/diagramming.md) — diagramming スキル
 - [`agents/docs-index.md`](agents/docs-index.md) — docs-index — `docs/README.md` の索引を、文書の H1 から生成する
 - [`agents/esa-mcp.md`](agents/esa-mcp.md) — esa-mcp — esa.io MCP サーバのトークン供給
 - [`agents/esa-mirror-context.md`](agents/esa-mirror-context.md) — esa-mirror-context — 社内 wiki のミラーの所在と引用形式を注入する hook
 - [`agents/external-send-guard.md`](agents/external-send-guard.md) — external-send-guard — 外部宛メール・Slack 送信を下書きへ誘導する PreToolUse hook
-- [`agents/feedback-trial.md`](agents/feedback-trial.md) — Bounded Codex feedback trial — 保存した Codex の会話から、観測の候補を別の収集役が集める試行
-- [`agents/free-plan-declaration.md`](agents/free-plan-declaration.md) — free-plan-declaration — 無料プランの非公開リポジトリを、宣言 1 つで前提検査から外す
+- [`agents/feedback-trial.md`](agents/feedback-trial.md) — Bounded Codex feedback trial — 保存した Codex の会話から観測候補を別のコレクタで収集する試行
+- [`agents/free-plan-declaration.md`](agents/free-plan-declaration.md) — free-plan-declaration — 無料プランの非公開リポジトリを宣言 1 つで前提検査から除外する
 - [`agents/gas-clasp-ops.md`](agents/gas-clasp-ops.md) — gas-clasp-ops — Google Apps Script を clasp で CLI 操作する
-- [`agents/gate-failopen-advisory.md`](agents/gate-failopen-advisory.md) — gate-failopen-advisory — fail-open で素通りし続けている gate を、セッション開始時に知らせる
+- [`agents/gate-failopen-advisory.md`](agents/gate-failopen-advisory.md) — gate-failopen-advisory — fail-open で素通りし続けている gate をセッション開始時に通知する
 - [`agents/gh-edit-allow.md`](agents/gh-edit-allow.md) — gh-edit-allow — 自セッションが作成した PR/Issue の編集を検証付きで allow する
 - [`agents/git-checkout-sync.md`](agents/git-checkout-sync.md) — 親チェックアウトの鮮度を保つ systemd user timer
 - [`agents/git-stash-guard.md`](agents/git-stash-guard.md) — git-stash-guard — 素の `git stash` を弾く PreToolUse hook
@@ -207,16 +207,16 @@ What runs automatically, when, and on which stack: see the [pipeline map](pipeli
 - [`agents/handoff.md`](agents/handoff.md) — handoff — 中断ハンドオフを Human / AI 双方に起票する仕組みの設計記録
 - [`agents/herdr-sidebar-metadata.md`](agents/herdr-sidebar-metadata.md) — herdr-sidebar-metadata — エージェント毎のモード/モデルを Herdr サイドバーに常時表示する
 - [`agents/herdr-status-advisory.md`](agents/herdr-status-advisory.md) — herdr-status-advisory — herdr の client と server の版の食い違いを、作業ツリーを切る前に知らせる
-- [`agents/herdr-tab-bar-local.md`](agents/herdr-tab-bar-local.md) — herdr-tab-bar-local — タブバー右側に、ホストごとの 1 行を出すスロット
+- [`agents/herdr-tab-bar-local.md`](agents/herdr-tab-bar-local.md) — herdr-tab-bar-local — タブバー右側にホストごとの 1 行を出すスロット
 - [`agents/hook-router.md`](agents/hook-router.md) — hook-router — ツール呼び出しの検査を、1 つの登録にまとめる
 - [`agents/human-task-scheduling.md`](agents/human-task-scheduling.md) — human-task-scheduling — 電話等ハンドオフ作業をカレンダーに反映する判断知識
-- [`agents/impeccable.md`](agents/impeccable.md) — impeccable — 画面のデザインの手順と検出器を、版を固定して配る第三者スキル
+- [`agents/impeccable.md`](agents/impeccable.md) — impeccable — 画面デザインの手順と検出器を、版を固定して配布する第三者スキル
 - [`agents/inbox-adjudication.md`](agents/inbox-adjudication.md) — inbox-adjudication — 溜まった受信箱を、返信の裁定から処理する判断知識
 - [`agents/issue-create-guard.md`](agents/issue-create-guard.md) — issue-create-guard — `gh issue create` を、ボールのラベルと本文の先頭行を持たせて作らせる
 - [`agents/issue-index.md`](agents/issue-index.md) — issue-index — 自分に関係する open Issue の索引だけを注入する hook
 - [`agents/issue-ref-freshness.md`](agents/issue-ref-freshness.md) — issue-ref-freshness スキル
 - [`agents/ja-polish.md`](agents/ja-polish.md) — ja-polish — 日本語の文書を Gemini に書き直させ、通した証拠を残す
-- [`agents/lang-ja-declaration.md`](agents/lang-ja-declaration.md) — lang-ja-declaration — 日本語が正本のリポジトリを、宣言 1 つで CJK 検査から外す
+- [`agents/lang-ja-declaration.md`](agents/lang-ja-declaration.md) — lang-ja-declaration — 日本語が正本のリポジトリを、宣言 1 つで CJK 検査から除外する
 - [`agents/living-description.md`](agents/living-description.md) — living-description スキル
 - [`agents/mail-lifecycle.md`](agents/mail-lifecycle.md) — mail-lifecycle — 未裁定のメール項目が、状態をたどって必ず終わる
 - [`agents/main-checkout-guard.md`](agents/main-checkout-guard.md) — main-checkout-guard — 本物の checkout を変更させない PreToolUse + Stop hook
@@ -230,7 +230,7 @@ What runs automatically, when, and on which stack: see the [pipeline map](pipeli
 - [`agents/pkexec-guard.md`](agents/pkexec-guard.md) — pkexec-guard — agent セッションから root 権限コマンドを polkit 経由で許す
 - [`agents/pkill-guard.md`](agents/pkill-guard.md) — pkill-guard — 検索語が自分のコマンド行に当たる `pkill -f` / `pgrep -f` を、実行前に止める
 - [`agents/plan-fresh-gate.md`](agents/plan-fresh-gate.md) — plan-fresh-gate — ExitPlanMode 直前のコードベース鮮度ゲート
-- [`agents/plan-view.md`](agents/plan-view.md) — plan-view — プランを HTML にして Chrome の専用窓へ飛ばす
+- [`agents/plan-view.md`](agents/plan-view.md) — plan-view — プランを HTML にして Chrome の専用ウィンドウへ送る
 - [`agents/pr-description.md`](agents/pr-description.md) — pr-description スキル
 - [`agents/pr-followup-guard.md`](agents/pr-followup-guard.md) — pr-followup-guard — PR 本文に未チェック task list を残さず、人の確認は Issue へ払い出す
 - [`agents/pr-gate.md`](agents/pr-gate.md) — PR completion barrier — Stop の 1 点だけで CI 待ち・push 忘れを弾く
@@ -250,8 +250,8 @@ What runs automatically, when, and on which stack: see the [pipeline map](pipeli
 - [`agents/retro.md`](agents/retro.md) — 作業終了時のレトロ(ADR-697)
 - [`agents/routines-write-guard.md`](agents/routines-write-guard.md) — routines-write-guard — 宣言外の cron routine 作成/更新を deny する
 - [`agents/rulesets-write-guard.md`](agents/rulesets-write-guard.md) — rulesets-write-guard — GitHub ruleset の直接書換を deny する
-- [`agents/sandbox-compound-guard.md`](agents/sandbox-compound-guard.md) — sandbox-compound-guard — sandbox の外で動かす道具の連結を、実行前に止める
-- [`agents/show-image.md`](agents/show-image.md) — show-image — 本人にその場で見せる図・画像を、手元の別窓(Chrome の専用窓)に出す
+- [`agents/sandbox-compound-guard.md`](agents/sandbox-compound-guard.md) — sandbox-compound-guard — sandbox の外で動かすコマンドの連結を、実行前に止める
+- [`agents/show-image.md`](agents/show-image.md) — show-image — 本人にその場で見せる図・画像を、手元の別ウィンドウ(Chrome の専用ウィンドウ)に出す
 - [`agents/slot-availability.md`](agents/slot-availability.md) — slot-availability — 候補日程 × Google Calendar の3コマ当たり判定
 - [`agents/slot-offer.md`](agents/slot-offer.md) — slot-offer — 日程の提示と仮押さえを、1 提案 1 ジャーナルで食い違わせない
 - [`agents/stack-base-guard.md`](agents/stack-base-guard.md) — stack-base-guard — セッション内 PR を常時単一チェーンに積む PreToolUse hook

@@ -19,13 +19,13 @@ Git に置かず、Obsidian vault の当日ノートに置く。スマホから�
 ```text
 worklog add <kind> <text...> [--ref N] [--repo owner/repo]
 worklog list [--since YYYY-MM-DD] [--until YYYY-MM-DD] [--repo owner/repo] [--kind k[,k]]
-worklog session-start [--agent claude|codex|copilot]   # SessionStart hook。手で打つ必要は無い
+worklog session-start [--agent claude|codex|copilot]   # SessionStart hook。手で打つ必要はない
 ```
 
-- `add` は当日ノートの `## 作業ログ` 節の末尾に 1 行を足す。`owner/repo` は作業ディレクトリの
-  `remote.origin.url` から付く。git の外では参照が付かず、`--ref` を渡すなら `--repo` も要る。
-- `list` は `日付<TAB>時刻<TAB>kind<TAB>本文<TAB>参照` を出す(無い項目は `-`)。既定は今日を含む直近 7 日。
-  kind の無い行は `memo`。以前の見出し `## 済んだこと` の行も読む。
+- `add` は当日ノートの `## 作業ログ` 節の末尾に 1 行を追加する。`owner/repo` は作業ディレクトリの
+  `remote.origin.url` から付く。git の外では参照が付かず、`--ref` を渡すなら `--repo` も必要。
+- `list` は `日付<TAB>時刻<TAB>kind<TAB>本文<TAB>参照` を出す(ない項目は `-`)。既定は今日を含む直近 7 日。
+  kind のない行は `memo`。以前の見出し `## 済んだこと` の行も読む。
 - 本人は Obsidian で同じ節に、kind も時刻も付けずに書いてよい。
 
 行の形は `- HH:MM [kind] 本文 (owner/repo#N)`。kind は `reply|deadline|task|pr|found|stuck|mail|slot`。
@@ -62,7 +62,7 @@ worklog mail snapshot <鍵> --body-file <ファイル> | diff <鍵> --sent-file 
 
 `mail` と同じ作りで、`[slot]` 行を出来事として畳み込む(`done`・`drop`)。時間枠の定義は予定データ(Git)に残り、
 作業ログが持つのは済んだ・やめたの完了記録だけ。鍵は予定データの予定 id で、時間枠・Issue・本文・個人名は書かない。
-タイマーは無い。既存の自由記述の `task` kind とは別の kind である。
+タイマーはない。既存の自由記述の `task` kind とは別の kind である。
 
 ## offer — 日程の提示と仮押さえの、1 提案 1 ジャーナル
 
@@ -76,15 +76,15 @@ worklog slot closed [--json] | check
 
 ## vault の場所の解決
 
-hub-resolve と同じ間接参照で、環境変数 `OBSIDIAN_VAULT`、無ければ
+hub-resolve と同じ間接参照で、環境変数 `OBSIDIAN_VAULT`、なければ
 `${XDG_CONFIG_HOME:-$HOME/.config}/dotfiles/obsidian-vault` の 1 行目(絶対パス。wrap-up の inbox と共有する単一の正本)。マーカーは
-vault を宣言した機体にしか無い(vega は `obsidian.nix` が `vaultPath` から置く。会社の機体は private 側の宣言が置く)。存在確認は共有の
+vault を宣言した機体にしかない(vega は `obsidian.nix` が `vaultPath` から置く。会社の機体は private 側の宣言が置く)。存在確認は共有の
 `<vault>/.obsidian/app.json` で、worklog はさらに `<vault>/.obsidian/daily-notes.json` から、
 当日ノートの置き場と書式を読む。
 
-`daily-notes.json` が**無い** vault(`.obsidian/` はあるが、日次ノートのプラグインを設定していない)は、キーが
-無いときと同じ既定値 — vault の直下・書式 `YYYY-MM-DD` — で開く(#1363。以前は全サブコマンドが exit 2 で
-落ちていた)。`.obsidian/` も無い(vault の場所が違う)・ファイルを読めない(権限、ディレクトリになっている)・
+`daily-notes.json` が**ない** vault(`.obsidian/` はあるが、日次ノートのプラグインを設定していない)は、キーが
+ないときと同じ既定値 — vault の直下・書式 `YYYY-MM-DD` — で開く(#1363。以前は全サブコマンドが exit 2 で
+失敗していた)。`.obsidian/` もない(vault の場所が違う)・ファイルを読めない(権限、ディレクトリになっている)・
 JSON でない・扱えない書式は、これまでどおりエラーにする。既定値で開いた vault には、当日ノートが vault の直下に
 作られる。
 
@@ -94,7 +94,7 @@ JSON でない・扱えない書式は、これまでどおりエラーにする
   Codex は共通の hook 宣言から展開される。Copilot は `home/modules/agents.nix` が `~/.copilot/settings.json` の
   `sessionStart` に `--agent copilot` つきで登録する。出力の形は、Claude Code と Codex が `hookSpecificOutput` の
   入れ子、Copilot が最上位の `additionalContext`。
-- マーカーも環境変数も無い機体では何も出さない。マーカーがある機体は、その機体の vault に書く(個人の機体は個人用、
+- マーカーも環境変数もない機体では何も出さない。マーカーがある機体は、その機体の vault に書く(個人の機体は個人用、
   会社の機体は会社用。会社用 vault を個人 vault へ自動でコピーしない)。
 - 宣言はあるが vault が使えないときは、stderr に 1 行だけ出して exit 0 で終わる。
 - 注入文は、書く時点と kind の意味、書かないもの(会社の業務の中身、機密、既存の記録から導けること)、
@@ -107,4 +107,4 @@ JSON でない・扱えない書式は、これまでどおりエラーにする
 - 日次ノートの書式が `YYYY` / `MM` / `DD` 以外の記号語を含む: `worklog` は止まり、理由を出す。
 - 同時に書く複数のセッション: ノートへの flock で直列にする。Obsidian はこのロックを見ないので、
   Obsidian が同じ瞬間に保存すると、LiveSync の競合の扱いに任される。
-- 時刻は JST 固定で、`TZ` に依存しない。試験用に `WORKLOG_NOW`(unix 秒)で固定できる。
+- 時刻は JST 固定で、`TZ` に依存しない。テスト用に `WORKLOG_NOW`(unix 秒)で固定できる。

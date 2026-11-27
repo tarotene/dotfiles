@@ -4,14 +4,7 @@
 
 ## なぜこれが必要か
 
-`gpg-subkey rotate` は「新しいサブ鍵を作る」ことしかしない。実際にローテー
-ションを完了させるには、export → nix 編集 → GitHub/keyserver 同期 → PR →
-`hms` 適用という後続ステップが要る(`docs/operations.md` の「Rotating a
-machine-local GPG [S] signing subkey」節に手順そのものは既にある)。さらに
-`rotate --revoke-old` を付け忘れる・rotate が途中で失敗するなどで旧サブ鍵が
-revoke されずに残ることもあり、この場合は新しい鍵をもう一度作らずに旧鍵
-だけを収束させる手段が要る(このスキル起票時点では CLI 側にも存在せず、
-`gpg-subkey revoke --key <primary> --subkey <keyid>` として同時に追加した)。
+`gpg-subkey rotate` は「新しいサブ鍵を作る」ことしかしない。実際にローテーションを完了させるには、export → nix 編集 → GitHub/keyserver 同期 → PR → `hms` 適用という後続ステップが必要になる(`docs/operations.md` の「Rotating a machine-local GPG [S] signing subkey」節に手順そのものは既にある)。さらに `rotate --revoke-old` を付け忘れる、あるいは `rotate` が途中で失敗するなどで旧サブ鍵が revoke されずに残ることもあり、この場合は新しい鍵をもう一度作らずに旧鍵だけを収束させる手段が必要だった(このスキル起票時点では CLI 側にも存在しなかったため、`gpg-subkey revoke --key <primary> --subkey <keyid>` として同時に追加した)。
 
 問題は手順の有無ではなく、**途中で止まっても誰も気づけない**こと。`rotate`
 を実行した直後は何も壊れていないように見える(古いサブ鍵はまだ有効なので
@@ -43,13 +36,13 @@ nix 編集・GitHub/keyserver 同期のどれも行わずにセッションが�
 - rotate はハードウェア操作(YubiKey 挿入・タッチ)を要し、実行はほぼ常に
   ユーザーの手動操作か、Claude が明示的に依頼して待つ形になる。「rotate
   コマンドの直後」を hook で捕捉しても、後続ステップは別セッション・別日に
-  行われることが多く、状態を跨いで追跡する仕組みが別途要る。
+  行われることが多く、状態を跨いで追跡する仕組みが別途必要になる。
 - 完了判定(`gpg-subkey sync` の drift 有無)は既にコマンド自体が提供して
   いる。「rotate したら sync を忘れずに」を強制したいだけなら、スキルの
   完了条件チェックリストで十分に機能する。
 - 発見の入口(このスキルが生まれた実例)は pr-gate 等の既存 hook が既に
   持つ「CI 失敗を見逃さない」という別の安全網であり、そこが機能している
-  限り、rotate 専用の新しい hook を足す優先度は低い。
+  限り、rotate 専用の新しい hook を追加する優先度は低い。
 
 ## 内部構成の意図
 

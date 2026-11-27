@@ -2,7 +2,7 @@
 
 `config/agents/skills/tracking-issue/SKILL.md` — 複数の子作業を束ねる親 Issue(Tracking Issue)を起票・更新するときの書式規約。地の文と GitHub sub-issues の二重管理を避け、更新すべき箇所を最小化する。
 
-## 動機: 規約は既にあったが、発動する場所が無かった
+## 動機: 規約は既にあったが、発動する場所がなかった
 
 `issue-hygiene` スキル §4 が既に「傘の本文の書き方」(子一覧は本文に書かない・書くのは依存/完了定義/スコープ外の 3 つ)を規定していた。しかし `issue-hygiene` の description は「Issue 整理・tracking を清算」で発動する事後衛生管理スキルであり、Issue を起票・更新する場面では引かれない。
 
@@ -36,11 +36,11 @@
 
 親子構造は SessionStart の Issue 索引(`issue-index`、Search API のメタデータのみを注入する軽量索引で、本文も sub-issues も読まない)には現れない。ラベルは索引にそのまま出るため、`tracking` ラベルを新設して findability を担保した(`gh label create tracking --repo tarotene/dotfiles` で作成)。ラベル体系全体の宣言的管理・台帳化は別の課題(組織全体のラベル運用衛生)であり、このスキルのスコープには含めない。
 
-## 傘の目標日を Milestone でなく Project の日付欄に置く場合を足した理由(2026-11-25)
+## 傘の目標日を Milestone でなく Project の日付欄に置く場合を追加した理由(2026-11-25)
 
 複数のリポジトリの傘を 1 枚のロードマップで見渡す要望が出た。Milestone はリポジトリ単位で、リポジトリをまたぐ傘に使えず、ロードマップでは縦線の目印にしかならず棒にならない(GitHub Docs「Customizing the roadmap layout」、取得 2026-11-25)。そこで、ロードマップ用の Project に載せる傘に限り、目標日を Project の日付欄にだけ置き、Milestone の期日と重ねない(「書く場所を 1 つに固定する」の適用。GitHub 自身も目標日は 1 か所に置くよう勧める。「Best practices for Projects」)。Project に載せないまとまりは、従来どおり Milestone に置く。
 
-実測(ある個人所有の非公開 Project、2026-11-25)で、sub-issue は親の Project を既定で引き継ぐと確かめた(傘 4 件を足しただけで、子 39 件が自動で入った。GitHub Changelog 2025-09-11 の記述と一致する)。したがって、Project に足すのは傘だけでよく、傘だけを見るにはビューの絞り込み `no:parent-issue` を使う。目標日は、外部の締切か、毎週の時間の割当がある傘だけに付ける任意の欄で、締切のない傘に必須で付けると、日付が過ぎて組み直す負担が増える。
+実測(ある個人所有の非公開 Project、2026-11-25)で、sub-issue は親の Project を既定で引き継ぐと確かめた(傘 4 件を追加しただけで、子 39 件が自動で入った。GitHub Changelog 2025-09-11 の記述と一致する)。したがって、Project に追加するのは傘だけでよく、傘だけを見るにはビューの絞り込み `no:parent-issue` を使う。目標日は、外部の締切か、毎週の時間の割当がある傘だけに付ける任意の欄で、締切のない傘に必須で付けると、日付が過ぎて組み直す負担が増える。
 
 ## gh CLI のフラグに更新した理由
 

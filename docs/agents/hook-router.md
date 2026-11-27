@@ -27,15 +27,15 @@ Claude Code の hook は、検査 1 つごとに別々の登録だった(`claude
 `(event, command)` が宣言の一意キーなので 2 つ目が無視され、MCP の経路が無検査のまま残る(bleep の旧実装が
 `Bash` 単体の matcher だったために持っていた最大の欠陥)。
 
-ルータは、ツール呼び出しに付く検査のうち、権限の逸脱検査・拒否の検査と記録役(PostToolUse)を、**1 つのプロセスで、規則の表に従って**走らせる。Claude Code には `PreToolUse` と `PostToolUse` の
+ルータは、ツール呼び出しに付く検査のうち権限の逸脱検査・拒否の検査・記録役(PostToolUse)を、**1 つのプロセスで規則の表に従って**走らせる。Claude Code には `PreToolUse` と `PostToolUse` の
 2 件だけを、`matcher` なしで登録する。どのツールにどの検査を当てるかは、表の [`Tools`](型) が持つ:
 `All` / `Bash` / `BashOrMcp` / `Mcp` / `Named(&[…])` の 5 通りだけが書ける。文字列の書き間違いはコンパイルが
-通らず、表に載せ忘れた検査は pipeline-map の `cargo test` が「auto なのに登録箇所が無い」で落とす。
+通らず、表に載せ忘れた検査は pipeline-map の `cargo test` が「auto なのに登録箇所がない」で失敗させる。
 
 ## 載せるもの
 
-ルータの表(`rules.rs`)に載せた検査は、次の表のとおり。**規則名の集合は `crates/hook-router/src/rules.rs` が唯一の正本**で、この表は同じ集合を持つ
-(`crates/hook-router/tests/doc_table.rs` が、足し忘れ・消し忘れ・綴りの誤りを `cargo test` で落とす)。件数は書かない。共有権限の検査は撤去した。
+ルータの表(`rules.rs`)に載せた検査は、次の表のとおりである。**規則名の集合は `crates/hook-router/src/rules.rs` が唯一の正本**であり、この表は同じ集合を持つ
+(`crates/hook-router/tests/doc_table.rs` が、追加漏れ・削除漏れ・綴りの誤りを `cargo test` で失敗させる)。件数は書かない。共有権限の検査は撤去した。
 
 | イベント | 検査 |
 |---|---|
@@ -48,7 +48,7 @@ Claude Code の hook は、検査 1 つごとに別々の登録だった(`claude
    外部宛の Gmail 送信を ask(Claude Code の許可の確認を本人に 1 回求める)にする(#1317 で deny から変えた。hms 適用後の
    実機確認は #1316 が持つ)。`main-checkout-guard-pre` は、初めて触れた checkout を `additionalContext` で知らせる
    (Claude のみ)。allow を出す検査は載せない(許可の範囲を `if` が決めるので、評価を Claude Code に任せる。下の裁定の表)。
-   PostToolUse は `additionalContext` だけ。`Outcome` に無い形(Stop の `StopOutcome`、`PermissionRequest`)を出す検査は
+   PostToolUse は `additionalContext` だけ。`Outcome` にない形(Stop の `StopOutcome`、`PermissionRequest`)を出す検査は
    載せられない。この条件は、判定の種類が実行時に決まるので、機械検査できない(散文のまま。再発したら昇格を検討する)。
 2. **プロセス全体の状態を変えない。** 規則は同じプロセスの別スレッドで並列に走る。作業ディレクトリ
    (`set_current_dir`)、umask、シグナルは全スレッドに及ぶので、触る検査は載せられない。作業ツリーを書き換える
@@ -65,17 +65,17 @@ Claude Code の hook は、検査 1 つごとに別々の登録だった(`claude
 
 | 検査(pipeline-map の node) | イベント | 裁定 | 理由 | 出典 |
 |---|---|---|---|---|
-| plan-scope-gate | PreToolUse(ExitPlanMode) | **載せた** | 条件 1〜4 を満たす。`plan_scope_gate::hook` は deny だけを返し(allow・ask の経路が無い)、標準出力・標準エラーへ書かない。外へ出るのは `git remote get-url` と `gh api graphql`(フォールバックは `gh issue view`)の読み取りだけで、失敗は参照 Issue 単位で黙って諦める。`gh` の呼び出しは、判定の副作用ではなく入力。かつての `timeout` 20 秒を `budget` に写した。作業ディレクトリへ移っていた `enter_cwd` は、`HookInput::effective_cwd`(移動しない)に置き換えた | 読んだ: `crates/plan-scope-gate/src/lib.rs`(`hook`)、`main.rs` |
+| plan-scope-gate | PreToolUse(ExitPlanMode) | **載せた** | 条件 1〜4 を満たす。`plan_scope_gate::hook` は deny だけを返し(allow・ask の経路がない)、標準出力・標準エラーへ書かない。外へ出るのは `git remote get-url` と `gh api graphql`(フォールバックは `gh issue view`)の読み取りだけで、失敗は参照 Issue 単位で黙って諦める。`gh` の呼び出しは、判定の副作用ではなく入力。かつての `timeout` 20 秒を `budget` に写した。作業ディレクトリへ移っていた `enter_cwd` は、`HookInput::effective_cwd`(移動しない)に置き換えた | 読んだ: `crates/plan-scope-gate/src/lib.rs`(`hook`)、`main.rs` |
 | plan-precedent-gate | PreToolUse(ExitPlanMode) | **載せた** | 判定は計画の本文への正規表現だけで、`gh`・ネットワークを呼ばない。出力は deny だけ。かつての `timeout` 10 秒を `budget` に写した | 読んだ: `crates/plan-precedent-gate/src/lib.rs`(`hook`)、`main.rs` |
 | plan-fresh-gate | PreToolUse(ExitPlanMode) | 残す | 条件 2・3 に反する。pristine な worktree を `git merge --ff-only` で動かす(作業ツリーを書き換える)。`git fetch` に最大 15 秒を許し、判定を含めた `timeout` は 30 秒で、ルータの最大の予算(20 秒)を越える | 読んだ: `crates/plan-fresh-gate/src/lib.rs:10`、`main.rs:15,76`、`agents.nix` の `timeout = 30` |
 | plan-view | PreToolUse(ExitPlanMode) | 残す | 条件 2 に反する。起動時に `restrict_umask()` でプロセス全体の umask を 077 に落とし、`setsid` で切り離したブラウザを起動する。ルータに載せると、umask がほかの規則のスレッドが作るファイルにも及ぶ。判定(deny)も出さない表示役 | 読んだ: `crates/plan-view/src/main.rs:6`、`lib.rs:236-249,461-465` |
 | copilot-plan-review | PreToolUse(ExitPlanMode) | 残す | 条件 3 に反する。外部の LLM(Copilot CLI)のレビューを待つ `timeout` は 300 秒で、ルータの最大の予算の 15 倍。ルータは越えた規則を素通りにするので、載せると、レビューが常に「検査しない」になる | 読んだ: `agents.nix` の `timeout = 300`。内容は #991 |
-| git-worktree-allow | PreToolUse(Bash、`if: Bash(git -C *)`) | 残す | 条件 1 に反する(allow を出す)。`if` の絞り込みが許可の範囲を決め、その評価は Claude Code の意味である。型付きの述語に写し直すと、複合コマンドでの許可の範囲が変わりうる。**白紙から選んでも、許可の範囲を決める文字列は、評価する側(Claude Code)に置く** | #991、本ドキュメントの旧「載せない」の節 |
+| git-worktree-allow | PreToolUse(Bash、`if: Bash(git -C *)`) | 残す | 条件 1 に反する(allow を出す)。`if` の絞り込みが許可の範囲を決め、その評価は Claude Code の意味である。型付きの述語に写し直すと、複合コマンドでの許可の範囲が変わる可能性がある。**白紙から選んでも、許可の範囲を決める文字列は、評価する側(Claude Code)に置く** | #991、本ドキュメントの旧「載せない」の節 |
 | gh-edit-allow(判定役) | PreToolUse(Bash、`if: Bash(gh *)`) | 残す | 同上。記録役(PostToolUse の `gh-edit-allow-record`)は、判定を出さないので載せた | 同上 |
 | pr-gate | Stop | 残す | 条件 1・3 に反する。CI の完了を最大 300 秒待ち(`PR_GATE_CI_TIMEOUT`、`timeout` は 600 秒)、出力は `StopOutcome::Block`(終了コード 0 の JSON)。再入は `Reentry::Recheck`(`stop_hook_active` を見ない設計。再呼び出しでも判定する) | 読んだ: `docs/agents/pr-gate.md:675`、`crates/pr-gate/src/lib.rs:62`、`agents.nix` の `timeout = 600` |
 | session-wrapup(wrap-up inbox とレトロの Stop) | Stop | 残す | 条件 1 に反する。出力は `StopOutcome::Block`(終了コード 0 の JSON)で、再入の扱いは段ごとに宣言する(レトロは `Recheck`、wrap-up inbox の判定部は `Quiet`)。Stop のたびにネットワークを呼ぶ(#991) | 読んだ: `crates/session-wrapup/src/lib.rs:37-51`、`crates/session-retrospective/src/lib.rs:349`、`crates/issue-inbox/src/lib.rs:887` |
 | main-checkout-guard(stop) | Stop | 残す | 条件 1 に反する(Stop の `StopOutcome`)。再入は `Reentry::Quiet`(立っていたら黙る)。事後検出で、触れた checkout の状態差分を取る | 読んだ: `crates/main-checkout-guard/src/main.rs:71`。ほかは #991 |
-| agent-turn-log | Stop・UserPromptSubmit | 残す | ツール呼び出しに付かない(`tool_name` が無い)ので、`Tools` で絞る対象ではない。ルータの存在理由(ツール名の `matcher` の書き間違いで素通りになる事故)が当たらない | `agents.nix` の宣言(`matcher` なし) |
+| agent-turn-log | Stop・UserPromptSubmit | 残す | ツール呼び出しに付かない(`tool_name` がない)ので、`Tools` で絞る対象ではない。ルータの存在理由(ツール名の `matcher` の書き間違いで素通りになる事故)が当たらない | `agents.nix` の宣言(`matcher` なし) |
 | SessionStart の検査すべて(個別の名前は書かない。`pipeline-map.toml` の `lane = "session-start"` の node が正本) | SessionStart | 残す | ツール呼び出しに付かない。ルータの `Event` は PreToolUse と PostToolUse の 2 つだけで、SessionStart の規則を載せる口を持たない(条件 1 に反する。SessionStart の出力の形そのものは `Reply::render` が持つ)。`gpg-prewarm` は対話的で、`timeout` が 120 秒(条件 3 に反する)。`worktree-base-sync` は worktree を `git merge --ff-only` で動かす(条件 2 に反する) | 読んだ: `docs/agents/gpg-prewarm.md:145`、`docs/agents/plan-fresh-gate.md:12-14`(worktree-base-sync の動き)、`agents.nix` の宣言 |
 | herdr-agent-metadata | SessionStart・UserPromptSubmit・PreToolUse・Stop・SessionEnd | 残す | herdr の hook は、pane ごとの状態と環境変数に依存する(この crate ではなく、herdr の側が持つ契約) | #991。`agents.nix` の宣言(5 イベント) |
 | bleep | PreToolUse(`Bash|mcp__.*`) | 残す | 外部ツール(上流 `tarotene/bleep`、ADR-0009)。この crate の `hook` 関数に切り出せない | `agents.nix` の宣言、ADR-0009 |
@@ -104,7 +104,7 @@ Amendment ではなく、別の ADR を立てる。
 - **出力の書式**: 描画は `agent-session` の `Reply::render` が持つ(`jq .` と同じ整形、キーは挿入順、末尾に改行)。
   ルータが書式を持たないので、standalone の bin と同じ形の出力になる。`equivalence.rs` は、ルータの標準出力と
   旧 bin の fixture の標準出力を、バイト単位で比べる。
-- **判定できない入力**(JSON でない、`tool_name` が無い)は素通す。
+- **判定できない入力**(JSON でない、`tool_name` がない)は素通しにする。
 
 各検査の判定は、それぞれの crate の `hook` 関数(`main` が標準入力を読んだあとの処理)で、`main` とルータの
 両方が同じ関数を呼ぶ。standalone の bin の出力も `Reply::render` が描くので、ルータと同じ形(`jq .` の整形)になる。
@@ -117,24 +117,24 @@ Amendment ではなく、別の ADR を立てる。
 
 - **複合 matcher `Bash|mcp__.*`**(attribution-guard・stack-base-guard・pr-title-guard・pr-followup-guard・
   decision-colocation-guard・repo-create-guard): `gh pr create` などの外向きの操作は、Bash でも MCP の GitHub
-  ツールでも起こりうる。Bash 単体の matcher だと、MCP 接続の瞬間に無検査になる。→ `Tools::BashOrMcp`。
+  ツールでも起こる可能性がある。Bash 単体の matcher だと、MCP 接続の瞬間に無検査になる。→ `Tools::BashOrMcp`。
 - **`mcp__.*` だけ**(external-send-guard): Gmail・Slack の送信系 MCP ツールだけが対象で、Bash 経由の送信は
   原理的に検出できない。→ `Tools::Mcp`。
 - **`BashOrMcp` は、規則を呼ぶ範囲の宣言である。** MCP を実際に判定するかは各 `hook` が決める(判定しない規則は
   `None` を返す)。`attribution-guard` などは MCP も判定し、`repo-create-guard`・`pr-title-guard`・`pr-followup-guard`・
-  `decision-colocation-guard` は、MCP の判定が未実装(意図あり。GitHub の MCP が接続されたら足す)である。
+  `decision-colocation-guard` は、MCP の判定が未実装(意図あり。GitHub の MCP が接続されたら追加する)である。
 - **広い matcher + 規則内部の判定**(routines-write-guard、new-tool-guard、record-layer-guard): `RemoteTrigger` や `Write` は Bash では
   ないので、`Bash(...)` の `if` 構文が使えない。対象外の呼び出しは、規則自身が `None` を返して素通りにする。
   → `Tools::Named(&["RemoteTrigger"])`、`Tools::Named(&["Write"])`。record-layer-guard(#1310)は、宣言
-  (`.config/record-layers.toml`)のあるリポジトリだけで発火し、無ければ素通りにする([record-layers.md](record-layers.md))。
+  (`.config/record-layers.toml`)のあるリポジトリだけで発火し、なければ素通りにする([record-layers.md](record-layers.md))。
 - **`ExitPlanMode` の matcher**(plan-scope-gate・plan-precedent-gate、#991): 旧登録は、ほかの ExitPlanMode の
   検査(copilot-plan-review・plan-view・plan-fresh-gate)と同じ matcher の別エントリで、Claude Code が並列に
-  走らせていた。→ `Tools::Named(&["ExitPlanMode"])`。Codex には ExitPlanMode のツール呼び出しが無い
+  走らせていた。→ `Tools::Named(&["ExitPlanMode"])`。Codex には ExitPlanMode のツール呼び出しがない
   ([codex-plan-gate.md](../claude/codex-plan-gate.md))ので、`pre --agent codex` では当たらない。
 - **timeout**: gh の往復を持たないもの(attribution-guard・pr-title-guard・pr-followup-guard・external-send-guard・
   plan-precedent-gate ほか)は 10 秒。`gh pr list` や git の走査を含む stack-base-guard・decision-colocation-guard、
   `gh api graphql` を呼ぶ plan-scope-gate は 20 秒、repo-create-guard は 15 秒。→ `Rule::budget` に同じ値。ルータ自身の `timeout` は、最大の 20 秒に起動と出力の
-  余裕を足した 30 秒。
+  余裕を加えた 30 秒。
 
 ## agent-prompt-guard(F55)
 
@@ -143,9 +143,9 @@ Amendment ではなく、別の ADR を立てる。
 `{{RANGE}}` を置いたまま送り、担当が範囲を知らずに 1 件も書かずに止まった。穴を埋め忘れる誤りは、送る前に文字列として検出できる。
 
 - 穴の形: `{{` と `}}` の間が、大文字の英字で始まる大文字・数字・`_` だけの名前(2〜40 字。`{{RANGE}}`・`{{ TARGET_FILE }}`)。
-  `{{ .Values.x }}`(Helm)や `{{name}}`(小文字)は、依頼の対象の本文として正当に書かれうるので、止めない。
+  `{{ .Values.x }}`(Helm)や `{{name}}`(小文字)は、依頼の対象の本文として正当に書かれる可能性があるため、止めない。
 - 逃げ道は設けない。意図した文字列なら、波括弧の間に空白を入れて書き、穴の形にしない(拒否文が案内する)。
-- 旧登録は無い(新しい規則)。判定は prompt の文字列だけで、外部の呼び出しは無い。
+- 旧登録はない(新しい規則)。判定は prompt の文字列だけで、外部の呼び出しはない。
 
 ## `if` を外した影響(より厳しくなる向き)
 
@@ -158,29 +158,28 @@ Amendment ではなく、別の ADR を立てる。
 | rulesets-write-guard | `Bash(gh *)` | 厳しい語分割(`command_inspection::simple_shell::split`)は、複合コマンドを「判定できない」として素通りにする。旧と同じで、より緩くはならない |
 | feedback-target-guard | `Bash(gh *)` | `command_inspection::shell` の複合コマンド対応の解析なので、`cd x && gh issue create --label feedback …` のような呼び出しを新しく検出する |
 
-どれも、規則の判定そのものは変えず、規則に入る入力が増える(拒否が増えうる)だけで、許可が増える変更は無い。
+どれも、規則の判定そのものは変えず、規則に入る入力が増える(拒否が増える可能性がある)だけで、許可が増える変更はない。
 
 ## 移行
 
-`agent-settings-reconcile` の所有の記録(`docs/agents/agent-settings-reconcile.md`)は、前回書いた登録を消す。記録の無い
-ホスト(記録を入れた直後の最初の switch)は、前の世代が書いた 19 件の旧登録を知らないので、退役の一覧
+`agent-settings-reconcile` の所有の記録(`docs/agents/agent-settings-reconcile.md`)は、前回書いた登録を消す。記録のない
+ホスト(記録を入れた直後の最初の switch)は、前の世代が書いた 19 件の旧登録を把握していないため、退役の一覧
 (`agents.nix` の `retiredHookEntries`)に 19 件を挙げた(初回だけ消す。全ホストに記録ができたら、一覧ごと
-消す、#979)。ExitPlanMode の 2 件(#991)も、同じ理由で、一覧に足した。
+消す、#979)。ExitPlanMode の 2 件(#991)も、同じ理由で、一覧に追加した。
 
-## 規則の足し方
+## 規則の追加方法
 
 1. 検査の crate に `pub fn hook(raw: &str) -> Option<agent_session::Outcome>` を置き、`main` は
-   `agent_session::entry::run(&SPEC, …)` に渡す(標準入力の読み、`--agent`、描画は入口が持つ。手で封筒の文字列を書かない。
-   `repo-structure-check` の `hook_io` の検査が、書いたら落とす)。
-2. `rules.rs` の表に、`node`・`event`・`tools`・`budget`・`run` を持つ `Rule` を足す。`node` は
-   `pipeline-map.toml` のノード id(無ければ足す)。
-3. この文書の「載せるもの」の表の、同じイベントの行に検査名を足す(`doc_table.rs` が、`rules.rs` と同じ集合であることを確かめる)。
-   `node` には `doc` を持たせる(hook のレーンの自動ノードは `doc` が必須。`pipeline-map` の audit が見る)。
+   `agent_session::entry::run(&SPEC, …)` に渡す(標準入力の読み込み、`--agent`、描画は入口が持つ。手で封筒の文字列を書かない。
+   `repo-structure-check` の `hook_io` 検査が、直接書いた crate を失敗させる)。
+2. `rules.rs` の表に `node`・`event`・`tools`・`budget`・`run` を持つ `Rule` を追加する。`node` は
+   `pipeline-map.toml` のノード id とする(なければ追加する)。
+3. この文書の「載せるもの」の表の同じイベントの行に検査名を追加する(`doc_table.rs` が `rules.rs` と同じ集合であることを検証する)。
+   `node` には `doc` を持たせる(hook レーンの自動ノードは `doc` が必須であり、`pipeline-map` の audit が検証する)。
 
-許可(allow)を出す検査や、Stop・SessionStart の検査は、足さない(「載せなかった検査の裁定」の表の理由)。
+許可(allow)を出す検査や Stop・SessionStart の検査は追加しない(「載せなかった検査の裁定」表の理由)。
 
-規則を足したら、判定が設定や状態に依らない(入力の JSON だけで決まる)ものは、canary の fixture
-(`config/agents/hook-router-canary/cases.jsonl`)に 1 行足す(下の「配備した router の canary」)。
+規則を追加したら、判定が設定や状態に依らない(入力 JSON だけで決まる)ものは canary の fixture(`config/agents/hook-router-canary/cases.jsonl`)に 1 行追加する(下の「配備した router の canary」)。
 
 ## 配備した router の canary
 

@@ -23,42 +23,42 @@ CLI で、直さない。直す手順は `stacked-pr` スキル §4「セッシ�
 |---|---|---|
 | `conflict` | base と衝突している | `mergeable = CONFLICTING` |
 | `merged-ancestor` | マージ済みの別の PR に属するコミットを含む(下の段が squash でマージされた後の「汚染 diff」。ADR-0027) | コミットの `associatedPullRequests` に、自分以外の `merged` な PR |
-| `base-gone` | base のブランチが無い | `baseRef = null` |
+| `base-gone` | base ブランチがない | `baseRef = null` |
 | `merge-commit` | 親が 2 つ以上のコミットがある | `parents.totalCount > 1` |
-| `behind` | base に遅れていて、最新化が要る | `mergeStateStatus = BEHIND` |
+| `behind` | base に遅れていて、最新化が必要 | `mergeStateStatus = BEHIND` |
 | `unknown` | 判定できなかった | `mergeable = UNKNOWN` のまま、コミットが 100 を超える、問い合わせの失敗 |
 
-積み上げた PR(同じリポジトリで、ある PR の base が別の PR の head)は、下の段が汚れていれば、上の段に `below`(根の
-原因の PR の番号)を付ける。上の段は、下の段を直すと積み直しが要るので、汚れに数える。出力は、リポジトリ、段の深さ、
-番号の順(下の段から直す順)。
+積み上げた PR(同じリポジトリで、ある PR の base が別の PR の head)は、下の段が汚れていれば上の段に `below`(根本原因となった
+PR の番号)を付ける。上の段は下の段を直すと積み直しが必要になるため、汚れに数える。出力は、リポジトリ、段の深さ、
+番号の順(下の段から直す順)となる。
 
-終了コードは、0 = すべて clean、1 = 汚れあり、2 = 判定できない(確かな汚れが無く、`unknown` だけが残った。持ち主の
+終了コードは、0 = すべて clean、1 = 汚れあり、2 = 判定不能(明確な汚れがなく、`unknown` だけが残った。持ち主の
 表・`gh` の失敗・引数の誤りも 2)。
 
 ## 母集団は、同じ側の持ち主だけで作る
 
 `gh search prs --author @me --state open --archived=false --owner <持ち主>…` の `--owner` に、`repo_scope::Policy::
-same_side_owners()`(この機体の契約の側と同じ側の持ち主。`docs/agents/repo-scope-guard.md`)だけを渡す。別の側の
-持ち主には、拒否に頼らず、最初から問い合わせない。検索が返した結果も、持ち主で絞り直す(絞りが効かなかった場合の
-二重の守り)。`--owner` を指定できるのは、その側の持ち主の中だけで、別の側の持ち主は引数の段階で拒否する。
+same_side_owners()`(この機体の契約と同じ側の持ち主。`docs/agents/repo-scope-guard.md`)だけを渡す。別の側の
+持ち主には拒否に頼らず最初から問い合わせない。検索が返した結果も持ち主で絞り直す(絞りが効かなかった場合の
+二重の防御)。`--owner` を指定できるのはその側の持ち主の中だけで、別の側の持ち主は引数の段階で拒否する。
 
-持ち主の表を配っていない機体は、規則が無いので、指定した持ち主か、ログイン中のアカウント自身(`gh api user`)を使う。
+持ち主の表を配布していない機体は規則がないため、指定した持ち主か、ログイン中のアカウント自身(`gh api user`)を使う。
 
 ## 実装の要点
 
-- 検索 1 回(`--limit 1000`)で PR の一覧を取り、リポジトリごとに GraphQL を 1 回(別名 `p<番号>: pullRequest(number: N)`、
-  最大 40 件ずつ)で構造を読む。コミットは先頭の 100 件、各コミットの `associatedPullRequests` は先頭の 5 件。
-  100 件を超える PR は `unknown`(見ていない分を、clean とは言わない)。
-- `mergeable` は、GitHub が計算するまで `UNKNOWN` で返る(2026-11-15 に、1 回目が `UNKNOWN`、読み直すと `DIRTY` になるのを
-  実測した)。計算中のものだけを、2 秒待って最大 3 回読み直す。
-- `gh` と待ち時間は、`Gh` トレイトと `sleep` の関数として注入できる。判定(分類・積み上げの位置・並び・出力)は純関数で、
-  記録した JSON の fixture で試験する。
+- 検索 1 回(`--limit 1000`)で PR の一覧を取得し、リポジトリごとに GraphQL 1 回(別名 `p<番号>: pullRequest(number: N)`、
+  最大 40 件ずつ)で構造を取得する。コミットは先頭の 100 件、各コミットの `associatedPullRequests` は先頭の 5 件。
+  100 件を超える PR は `unknown`(確認していない分を clean とは言わない)。
+- `mergeable` は、GitHub が計算するまで `UNKNOWN` で返る(2026-11-15 に、1 回目が `UNKNOWN`、再取得すると `DIRTY` になるのを
+  実測した)。計算中のものだけを 2 秒待って最大 3 回再取得する。
+- `gh` と待ち時間は、`Gh` トレイトと `sleep` 関数として注入できる。判定(分類・積み上げの位置・並び・出力)は純関数で、
+  記録した JSON fixture でテストする。
 
 ## 限界
 
 - 閉じた PR・アーカイブ済みリポジトリの PR は見ない。
-- fork から出した PR は、`--author @me` で見つかっても、base 側のリポジトリの持ち主が表に無ければ母集団に入らない。
-- 「直したあとに clean か」は、GitHub の `mergeable` の計算に依る。直した直後は `UNKNOWN` になりうるので、読み直す。
+- fork から出した PR は、`--author @me` で見つかっても、base 側リポジトリの持ち主が表になければ母集団に入らない。
+- 「直したあとに clean か」は、GitHub の `mergeable` の計算に依存する。修正直後は `UNKNOWN` になる可能性があるため再取得する。
 - 汚れの有無だけを言う。意図して開いたままの PR(`DO-NOT-MERGE`・draft)も報告する。直すかは、呼び出し側が本人に聞く。
 
 ## 既存手段と代替

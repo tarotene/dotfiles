@@ -44,7 +44,7 @@ Anthropic は既にこの処方を Claude Code の system prompt に注入して
 ショートカット使用率は 7 種の frontier エージェント平均で 50% 超のまま」と
 報告している——指示文だけでは足りないという文献側の裏取り。
 
-## 先行例と、先行例が無い部分
+## 先行例と、先行例がない部分
 
 OpenAI Codex の Goals 機能が、upstream ソースレベルで最も近い先行実装を持つ
 (`openai/codex`, `codex-rs/ext/goal/templates/goals/continuation.md`、
@@ -93,7 +93,7 @@ Cursor・Aider いずれのドキュメント/upstream にも見つからなか�
 | 「将来/後続」 | 145 (44%) |
 
 しかもその大半は正当。依頼に含まれない隣接事項を非スコープと宣言するのは
-この repo の確立された作法であり(`docs/agents/plan-view.md` の「スコープ外」
+このリポジトリの確立された作法であり(`docs/agents/plan-view.md` の「スコープ外」
 節、`docs/agents/worktree-base-sync.md` の「スコープ外(別 Issue)」節)、
 マーカーは「依頼に含まれていたのに落とした項目」と「依頼に含まれない項目の
 非スコープ宣言」を区別できない。`home/modules/agents.nix` が
@@ -109,7 +109,7 @@ Cursor・Aider いずれのドキュメント/upstream にも見つからなか�
 `Blocked-Upstream:` / `Obsolete:` / `User-Excluded:` の 3 つに絞った。
 検討して落とした案:
 
-- **`Conflicts:`(要求同士が両立しない)**: upstream に対応物が無く、
+- **`Conflicts:`(要求同士が両立しない)**: upstream に対応物がなく、
   「両立しない」は機械検査不能な主張で最も乱用されやすい(「両立しない」と
   言えば何でも落とせる)。要求同士の真の衝突は棄却ではなく、その場で
   `AskUserQuestion` で裁定を取るべき事象——除外した「判断の丸投げで停止」の
@@ -163,7 +163,7 @@ Claude Code のみ。Codex(`~/.codex/`)・Copilot(`~/.copilot/`)には現時点�
 機械検査する hook を追加した。`copilot-plan-review` の critic/judge/oracle
 分離とは違い、この gate は **LLM を一切呼ばない** — jq/grep/gh だけで判定する
 純粋な judge。プランレビューの読み取り専用エージェントには `gh` もネットワークも
-無く元 Issue を読めないため、この判定を lens A へ足すことはできない(前述)。
+なく元 Issue を読めないため、この判定を lens A へ追加することはできない(前述)。
 
 ### 経路A: Issue 起点の実カバレッジ
 
@@ -211,11 +211,11 @@ dotfiles リポジトリ自身では発火しなくなっていく**見込みで
 
 - 処分(段の指定、または `Blocked-Upstream:` / `Obsolete:` / `User-Excluded:`)
   があるか
-- 閉じたタグ集合に無いタグ(例: `Conflicts:`)を使っていないか
+- 閉じたタグ集合にないタグ(例: `Conflicts:`)を使っていないか
 - 同じ `Rn` が複数回処分されていないか
 
 項目は複数行に折り返してよい。`Rn` 行の直後にあるインデントされた継続行
-(次の `Rn` 行・インデントの無い行・空行・見出しの手前まで)は同じ項目として
+(次の `Rn` 行・インデントのない行・空行・見出しの手前まで)は同じ項目として
 読み、処分は継続行にあってもよい(#876)。経路A の「子 `#N` の行に段の指定か
 閉じたタグがあるか」の判定も同じ項目単位で読む。
 
@@ -236,8 +236,8 @@ tracking issue)を使って実測済み: 子番号の欠落検出・全カバー
 
 `ExitPlanMode` の同一 matcher に `plan-review`(300s)・`plan-view`(15s)・
 `plan-scope-gate`(20s)の 3 エントリが並ぶ。Claude Code は同一 matcher の hook を
-並列に走らせるため、3 つが同時に `deny` を返す状況が起こり得る。この repo での
-実地観察はまだ無い——気づいた挙動があればここに追記する。
+並列に走らせるため、3 つが同時に `deny` を返す状況が起こり得る。このリポジトリでの
+実地観察はまだない——気づいた挙動があればここに追記する。
 
 ### deny 収束の実測(2026-09-21)
 

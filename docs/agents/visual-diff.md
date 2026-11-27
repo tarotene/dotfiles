@@ -3,7 +3,7 @@
 実装: `config/agents/skills/pr-description/scripts/visual_diff.py`(`uv run --script`。PEP 723 で `playwright==1.63.0`・`pillow==11.3.0`)
 手順の正本: `config/agents/skills/pr-description/SKILL.md` §5b
 決定: ADR-1698(見た目の変更は、基準の ref から取り出した Before と After を固定の行列で撮り、Diff つきの並べたページで本人に見せる)
-走る場所: 手元は `visual_diff.py capture|diff|page`。CI は `--selftest`(ブラウザ無し)だけを `Escape-hatch dry-run` ジョブが走らせる。撮影を伴う `--selftest --browser` は手元。
+走る場所: 手元は `visual_diff.py capture|diff|page`。CI は `--selftest`(ブラウザなし)だけを `Escape-hatch dry-run` ジョブが走らせる。撮影を伴う `--selftest --browser` は手元。
 
 ## 動機
 
@@ -14,30 +14,30 @@
 
 | サブコマンド | 入力 | 出力 |
 |---|---|---|
-| `capture` | 撮影定義 `visual.toml`、`--ref`(基準の git の ref、または `WORKTREE`) | セル(面 × 状態 × 明暗 × 幅)ごとの PNG と `manifest.json`(遮断した第三者への要求・ページのエラー・横スクロール) |
+| `capture` | 撮影定義 `visual.toml`、`--ref`(基準の git の ref、または `WORKTREE`) | セル(画面 × 状態 × 明暗 × 幅)ごとの PNG と `manifest.json`(遮断した第三者への要求・ページのエラー・横スクロール) |
 | `diff` | Before と After の撮影ディレクトリ | 差があるセルの Before \| After \| Diff の 1 枚(Diff は赤が変わった画素)、高い画像の変更箇所の切り出し、`report.json` |
 | `page` | `report.json` | 本人に見せる並べたページ `index.html`(差のあるセルを先頭、差なしは表) |
 
 - 画面のファイルは `--ref` から `git archive` で取り出す。撮影定義と疑似(stub)は作業ツリーのものを使う。`prepare`(取り出したツリーの中で走る 1 行)で、`build.sh` などの生成を挟める。
 - 配信は Playwright の `route` で、ソケットを使わない。第三者への要求は遮断して、`manifest.json` に残す。時刻は `page.clock` で固定する。
-- 撮影定義のキーは閉じていて、知らないキーは誤り(`load_spec`)。`root` は、リポジトリの中の下位のディレクトリに限る。
+- 撮影定義のキーは閉じていて、未知のキーはエラーになる(`load_spec`)。`root` は、リポジトリの中の下位のディレクトリに限る。
 
 ## audit(ページの型の要件。ADR-1701)
 
 | サブコマンド | 入力 | 出力 |
 |---|---|---|
-| `audit` | 撮影定義(各面の `types`)、`config/web/page-types.toml`、`config/web/structures.toml`(`--structures`) | 面ごとの違反(要件 ID・説明・出たセル)、通った検査、人が見る要件(未検査)。違反があれば終了コード 1。`--json` で JSON も書く |
+| `audit` | 撮影定義(各画面の `types`)、`config/web/page-types.toml`、`config/web/structures.toml`(`--structures`) | 画面ごとの違反(要件 ID・説明・出たセル)、通った検査、人が見る要件(未検査)。違反があれば終了コード 1。`--json` で JSON も書く |
 
-- 検査は 13 個(閉じた語彙 `AUDITS`)。`document`(C1。viewport が拡大を禁じる `user-scalable=no`・2 未満の `maximum-scale` も見る)・`contrast`(C2)・`targets`(C3)・`overflow`(C4。幅 390px のセルだけ)・`third-party`(C9)・`keyboard`(C12)・`hover`(C16。`document.styleSheets` を入れ子まで読み、`@media (hover: hover)` の外にある `:hover` の規則を数える。読めないシートは数えない)・`input-size`(C17。`input`・`select`・`textarea` の計算後の文字が 16px 未満。幅 390px のセルだけ)・`main-button`(F1)・`default-choice`(F2。初期状態だけ)・`confirm`(F4。開いたダイアログと、スクリプトの静的な検出)・`links`(D7)・`structure`(F10。`<meta name="page-structure">` が在ること、`structures.toml` の語彙にあること、構造が `viewport-fit` を約束するとき(`step`)は、ページ全体が縦にスクロールしないこと。軸の整合は `repo-structure-check` の `web_structures` が検査する)。最悪のデータでの描画(C15)は、機械で測れず、人が見る(`visual`)。
+- 検査は 13 個(閉じた語彙 `AUDITS`)。`document`(C1。viewport が拡大を禁じる `user-scalable=no`・2 未満の `maximum-scale` も見る)・`contrast`(C2)・`targets`(C3)・`overflow`(C4。幅 390px のセルだけ)・`third-party`(C9)・`keyboard`(C12)・`hover`(C16。`document.styleSheets` を入れ子まで読み、`@media (hover: hover)` の外にある `:hover` の規則を数える。読めないシートは数えない)・`input-size`(C17。`input`・`select`・`textarea` の計算後の文字が 16px 未満。幅 390px のセルだけ)・`main-button`(F1)・`default-choice`(F2。初期状態だけ)・`confirm`(F4。開いたダイアログと、スクリプトの静的な検出)・`links`(D7)・`structure`(F10。`<meta name="page-structure">` があること、`structures.toml` の語彙にあること、構造が `viewport-fit` を約束するとき(`step`)は、ページ全体が縦にスクロールしないこと。軸の整合は `repo-structure-check` の `web_structures` が検査する)。最悪のデータでの描画(C15)は、機械で測れず、人が見る(`visual`)。
 - 測定(`AUDIT_JS`)は、撮影と同じ行列の各セルで、描画した状態のページの中で走る。コントラストは、文字を持つ要素ごとに、祖先をたどって重ねた背景色から WCAG 2.2 の式で出す。`keyboard` は、撮影定義の状態ごとに、先頭の 4 ボタンにフォーカスして Enter・Space を押し、押されるかを見る(明・幅 1280px で、状態を開き直して)。
-- 測定から違反を作る部分(`cell_findings`)は、ブラウザ無しで試験できる純粋関数。要件の読み込み(`load_types`)も、種別と検査の名前が閉語彙で、結びつかない検査を落とす。
-- 各要件は、`principles`(`config/web/principles.toml` の原則の ID の、空でない配列)を持つ(ADR-1708)。`load_types` は形(ID の形・空でない・重複なし)を見る。実在する原則を指すことは `repo-structure-check` の `web_principles` が落とす。違反の出力には、要件の ID に続けて原則の ID が付く(`違反 C3[wcag-2-5-8]: …`。`--json` では、違反ごとの `principles`)。
+- 測定から違反を作る部分(`cell_findings`)は、ブラウザなしでテストできる純粋関数。要件の読み込み(`load_types`)も、種別と検査の名前が閉語彙で、結びつかない検査を拒否する。
+- 各要件は、`principles`(`config/web/principles.toml` の原則の ID の、空でない配列)を持つ(ADR-1708)。`load_types` は形(ID の形・空でない・重複なし)を見る。実在する原則を指すことは `repo-structure-check` の `web_principles` が検証する。違反の出力には、要件の ID に続けて原則の ID が付く(`違反 C3[wcag-2-5-8]: …`。`--json` では、違反ごとの `principles`)。
 - 機械で測れない要件(`walkthrough`・`visual`)は、出力の「未検査」に ID と種別で並ぶ。通ったことにしない。
-- 限界: ラベルに結びついたラジオ・チェックボックスは、ラベルの大きさで測る。`keyboard` は、状態の操作で現れるボタンの全部ではなく、先頭の 4 つ。`audit` は CI では走らない(ブラウザが要る。`--selftest` は走る)。
+- 限界: ラベルに結びついたラジオ・チェックボックスは、ラベルの大きさで測る。`keyboard` は、状態の操作で現れるボタンの全部ではなく、先頭の 4 つ。`audit` は CI では走らない(ブラウザが必要。`--selftest` は走る)。
 
 ## 限界
 
-- 差が意味を持つのは、同じ機体で撮った Before と After の間だけ。機体をまたぐと、書体の有無で全画素が変わりうる(未確認)。
+- 差が意味を持つのは、同じ機体で撮った Before と After の間だけ。機体をまたぐと、書体の有無で全画素が変わる可能性がある(未確認)。
 - 画素の差は、見た目が良いかを判定しない。本人が見る。許容差は既定 8/255(同じ機体の 2 回の撮影は画素単位で一致する)。
-- 撮影できる面は、撮影定義を持つ面だけ。最初の撮影定義は裁定ページ(`reference/verdict-page/visual/`)。
-- 遮断した第三者への要求は、本番の表示とずれる(読み込めない書体は、機体の書体に落ちる)。ADR-1677 D6 が第三者の書体を禁じているので、守られた面では差が出ない。
+- 撮影できる画面は、撮影定義を持つ画面だけ。最初の撮影定義は裁定ページ(`reference/verdict-page/visual/`)。
+- 遮断した第三者への要求は、本番の表示とずれる(読み込めない書体は、機体の書体にフォールバックする)。ADR-1677 D6 が第三者の書体を禁じているので、守られた画面では差が出ない。

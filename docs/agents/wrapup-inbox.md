@@ -13,7 +13,7 @@ inbox の全行を Issue にさせていたため、些細な気づきの Issue 
 (ADR-1136 の背景)。
 
 inbox に流すのは、現在進行中の変更と依存関係(`stacked-pr` スキル §1 の判定条件)が
-無い気づきに限る。依存があれば stacked PR の追加提案段として受ける選択肢が先に
+ない気づきに限る。依存があれば stacked PR の追加提案段として受ける選択肢が先に
 出るため、この文書が扱うのは「stack せず inbox に落ち着いた」気づきの以降の経路
 (SessionStart 注入・保存・裁定)である。振り分け自体の設計根拠は
 `docs/agents/stacked-pr.md`「スコープ外発見を stack の一段として受ける入口」を
@@ -22,23 +22,23 @@ inbox に流すのは、現在進行中の変更と依存関係(`stacked-pr` ス
 | 部品 | イベント | 役割 |
 |------|----------|------|
 | `wrapup-session-start` | SessionStart | 「気づきは inbox に `--add` で追記せよ。Issue にはしない」を `additionalContext` で注入。未裁定の件数も掲示し、溜まったときは `/my-cleanup` の提案も指示する |
-| `wrapup-stop-gate` | Stop | jsonl に残った行を vault へ移す。更新した feedback memory に `#N` が無ければ指示する。**気づきの起票は求めない** |
+| `wrapup-stop-gate` | Stop | jsonl に残った行を vault へ移す。更新した feedback memory に `#N` がなければ指示する。**気づきの起票は求めない** |
 | `/my-cleanup` | 手動 | vault の open な気づきを集め、本人が裁定し、直せるものは PR で直す(スキルは[`my-cleanup.md`](my-cleanup.md)) |
 
 配備は `home/modules/agents.nix`(スクリプトは `home.file`、`~/.claude/settings.json`
 への登録は activation 時の冪等 jq マージ)。全ホスト共通。vault の場所の宣言は
 `home/hosts/vega/obsidian.nix` が置くマーカー 1 つ(下の「行き先」)。
 
-## 行き先: vault のノート、vault の無い機体では jsonl
+## 行き先: vault のノート、vault のない機体では jsonl
 
 `--add` は、vault を宣言している機体では vault のノートに書き、宣言していない機体では従来どおり
 機体の jsonl に溜める。**どちらも Issue にはしない**。機体によって Issue が増えたり増えなかったりしないよう、
 規則は全機体で同じにしてある。
 
-vault の宣言は hub-resolve の `OBSIDIAN_VAULT`(環境変数、無ければ
+vault の宣言は hub-resolve の `OBSIDIAN_VAULT`(環境変数、なければ
 `${XDG_CONFIG_HOME:-$HOME/.config}/dotfiles/obsidian-vault` の 1 行目。worklog と同じ単一の正本)で、
 実値は `home/hosts/vega/obsidian.nix` の 1 か所だけにある(ADR-0034)。宣言があるのに読めないとき
-(パスが無い、`.obsidian/app.json` が無い)は、理由を 1 行出して jsonl に退避する。黙って捨てない。
+(パスがない、`.obsidian/app.json` がない)は、理由を 1 行出して jsonl に退避する。黙って捨てない。
 
 全機体を vault に寄せることは**未実装(意図あり)**で、いまは vault を持つ機体だけが対象である
 (後続の Issue に残す)。
@@ -69,19 +69,19 @@ drop_reason: ""                 # dropped にしたときの閉じた理由(下)
 ```
 
 - `signal`・`mechanism`・`existing` は、retro の `codify` などの行(`--retro-add`)が `--add` に構造のまま渡す。
-  空の欄はノートに書かない(旧い気づきのノートの形は変わらない)。`signal` は語彙
+  空の欄はノートに書かない(古い気づきのノートの形は変わらない)。`signal` は語彙
   (`config/agents/codify-signals/vocabulary.json`)の id だけを受け付ける。再発しても最初の値を保つ。
 - `signal` を持つノートを `dropped` にするには、閉じた理由 `--reason`(`semantic-judgment` / `unobservable` /
-  `preference` / `one-off` / `existing-suffices` / `misread-signal` / `moved`)が要る。`moved` は、直す場所が別の
+  `preference` / `one-off` / `existing-suffices` / `misread-signal` / `moved`)が必要。`moved` は、直す場所が別の
   リポジトリなので、そのリポジトリの inbox へ `--add` して移したときの理由で、採用でも却下でもないので、日次の較正は数えない。ノートの `drop_reason` に残り、
   再発して `open` に戻ると消える。兆候ごとの採用・却下と理由は、日次の較正が数える(段 6)。
 
-- 再発は本文に 1 行足す(`O_APPEND`)。同じ日に同じ内容の行は足さない(冪等)。
+- 再発は本文に 1 行追記する(`O_APPEND`)。同じ日に同じ内容の行は追記しない(冪等)。
 - `fixed`・`dropped`・`lapsed` のノートに再発の行が付くと、`status` を `open` に戻す(直したはずのものが
   再発した合図)。`issued` は動かさない(Issue 側で扱う)。書き直しは、状態が変わるときだけで、
   一時ファイル + rename(`vault-note::Locked::replace`)。内容が同じなら書かない。
 - 値は JSON の二重引用符文字列で書く(YAML としても正しい)。Obsidian の Properties で引用符なしに
-  書き直されても読める。キーの順と、知らないキーは保つ。
+  書き直されても読める。キーの順と、未知のキーは保つ。
 - 排他ロックは vault の**外**(`<state>/vault.lock`)に置く。rename でノートの inode が変わるので、
   ノート自体にかけた flock では排他にならない。
 
@@ -106,10 +106,10 @@ SessionEnd で何かを起票させる案は、ドキュメント上の制約で
 | スコープ | user グローバル(`~/.claude/settings.json`) | 気づきの記録はプロジェクト非依存。home-manager 配備で全ホストに自動展開 |
 | 粒度 | ターン単位・session_id フィルタなし | 気づいた直後の記録が最も文脈が濃い。残骸はどのセッションでも自己修復的に回収される |
 | 収集指示の経路 | SessionStart `additionalContext` 注入 | グローバル CLAUDE.md を store symlink にすると `#` メモリ追記が壊れる。skill は受動的ルールの担い手として発火が不確実 |
-| 起票 | しない(裁定は `/my-cleanup`) | 毎セッションの起票は些細な Issue を増やし、本当に大事な開発タスクを埋もれさせた。Issue にするのは、本人が選んだ大物・本人の作業が要るものだけ |
-| `go: ask` の行 | `go` は読まない | 起票前の確認を行に持たせる必要が無くなった(裁定は `/my-cleanup`) |
-| 縮退 | vault 無し・使えない → jsonl。gh 不在 / git repo 外 / GitHub remote 不在 → feedback の指示を出さない | ADR-0005 の binary-existence gating。記録は残り、条件が揃う環境・セッションで回収される |
-| jsonl のスキーマ | 最小 JSONL `{"ts", "title", "detail"}`、任意で `repo` | vault の無い機体の保存形式。題名の無い行は vault に書けず jsonl に残る |
+| 起票 | しない(裁定は `/my-cleanup`) | 毎セッションの起票は些細な Issue を増やし、本当に大事な開発タスクを埋もれさせた。Issue にするのは、本人が選んだ大物・本人の作業が必要なものだけ |
+| `go: ask` の行 | `go` は読まない | 起票前の確認を行に持たせる必要がなくなった(裁定は `/my-cleanup`) |
+| 縮退 | vault なし・使えない → jsonl。gh 不在 / git repo 外 / GitHub remote 不在 → feedback の指示を出さない | ADR-0005 の binary-existence gating。記録は残り、条件が揃う環境・セッションで回収される |
+| jsonl のスキーマ | 最小 JSONL `{"ts", "title", "detail"}`、任意で `repo` | vault のない機体の保存形式。題名のない行は vault に書けず jsonl に残る |
 | jsonl の置き場所 | `${XDG_STATE_HOME:-~/.local/state}/claude/wrapup/<slug>.jsonl` | user グローバル機構が任意のリポジトリ(会社リポジトリ含む)の作業ツリーに未追跡ファイルを生やすのは誤コミットリスク |
 | slug のキー | 原則リポジトリ単位(`remote.origin.url` の正規化)。remote なし・git repo 外はプロジェクト絶対パスの `/` `.` → `-` 置換にフォールバック | 旧・絶対パス slug は同一リポジトリでも worktree ごとに inbox が分散し、worktree 削除後は orphan 化していた。remote URL 単位に正規化すれば worktree 間で inbox を共有できる |
 | repo(ノートの `repo`) | 行の `repo` → 作業中プロジェクトの `origin` の `owner/repo` → jsonl のファイル名(slug) | 同じ題名が別のリポジトリで出ても、別のノートにする |
@@ -121,16 +121,16 @@ SessionEnd で何かを起票させる案は、ドキュメント上の制約で
 
 - `--add <inbox> <json1行>` — JSON 検証 + 追記。vault を宣言していればノートへ(上記)。書けなかった行は
   jsonl に退避する(`mkdir -p` + flock 追記)。初回利用時のディレクトリ不在で沈黙する事故を防ぐ。
-  **`ts` は省略できる。** `title` を持つ行に `ts` が無い(無い・null・空文字)とき、機械が今の時刻
-  (JST の ISO 8601、`YYYY-MM-DDTHH:MM:SS+09:00`)を先頭に足す。渡された `ts` はそのまま残す。
+  **`ts` は省略できる。** `title` を持つ行に `ts` がない(ない・null・空文字)とき、機械が今の時刻
+  (JST の ISO 8601、`YYYY-MM-DDTHH:MM:SS+09:00`)を先頭に追加する。渡された `ts` はそのまま残す。
   `{"title","detail"}` だけを渡せばよく、`$(date -Iseconds)` を手で埋め込まない(`$(…)` は
-  sandbox の除外パターンにも合わない)。`title` の無い値は、従来どおり `jq -ce .` 相当で通す。
-  **余分な引数は止める。** `--add` は `<inbox> <json>` の 2 つだけを取る。`--repo owner/repo` などを後ろに足すと、
+  sandbox の除外パターンにも合わない)。`title` のない値は、従来どおり `jq -ce .` 相当で通す。
+  **余分な引数は止める。** `--add` は `<inbox> <json>` の 2 つだけを取る。`--repo owner/repo` などを後ろに追加すると、
   終了コード 64 で止まり、何も書かない(以前は黙って捨て、cwd のリポジトリのノートに追記された。2026-11-16)。
   行き先のリポジトリは、JSON の `"repo"` に書く(`--repo` を受け取るのは `--list-open`・`--collect`・`--set-status` など)。
-- `--list-open [--repo R] [--json]` — 状態が open の気づきを、再発の行数の多い順に出す。vault が無い
+- `--list-open [--repo R] [--json]` — 状態が open の気づきを、再発の行数の多い順に出す。vault がない
   機体では jsonl の行を同じ形で出す。vault の絶対パスは出さない。`/my-cleanup` の唯一の収集口。
-  `--json` には `signal`・`mechanism`・`existing`(無ければ空文字)も出る。
+  `--json` には `signal`・`mechanism`・`existing`(なければ空文字)も出る。
 - `--collect <dir> [--repo R]` — `/my-cleanup` の収集(#1421)。除外ラベル(`blocked-by-upstream`)を除いた open な Issue
   (番号・題・更新日時)を `<dir>/population.json` に、open な気づき(`--list-open --json` と同じ形)を `<dir>/findings.json` に
   保存する。open な PR(番号・題・head・更新日時・変えるファイル)も `<dir>/prs.json` に保存する(#1561)。`gh issue list` が
@@ -139,20 +139,20 @@ SessionEnd で何かを起票させる案は、ドキュメント上の制約で
   `~` 更新日時が変わった、気づきは再発の回数の変化。open な PR は `PR #N` つきで、増減と、更新日時か変えるファイルの変化)。
   `--touches` は、計画が触るファイルかディレクトリ(`docs/agents/` のように、その下のすべてに当たる。繰り返せる)で、それを変える
   open な PR を `! PR #N …が、計画の触るファイルを変える: <ファイル>` の行で出す。別のセッションが、計画の根拠にした文書を書き換える
-  PR を出していても、Issue の更新日時にも default branch の先頭にも現れない(まだ入っていない)ので、その見落としを防ぐ。差分が無ければ
-  `no changes`(終了コード 0)、あれば差分の行(1)、取得の失敗・`--touches` の値が無いのは 2。保存した結果は書き換えない
-  (`prs.json` が無い保存では、PR の増減は出さず、重なりだけを見る)。`--adjudication-items <dir> [--classify <file>] [--rec <file>] [--label L]` は、保存した 2 つの JSON から、
+  PR を出していても、Issue の更新日時にも default branch の先頭にも現れない(まだ入っていない)ので、その見落としを防ぐ。差分がなければ
+  `no changes`(終了コード 0)、あれば差分の行(1)、取得の失敗・`--touches` の値がないのは 2。保存した結果は書き換えない
+  (`prs.json` がない保存では、PR の増減は出さず、重なりだけを見る)。`--adjudication-items <dir> [--classify <file>] [--rec <file>] [--label L]` は、保存した 2 つの JSON から、
   裁定ページの入力(`<dir>/items.json`。`reference/verdict-page/` の `build.sh --data` に渡す)を作る。推奨・根拠は、
   `--classify`(在庫の分類。項目の id → `{disposition, automatable?, bundle?, why?, when?}`)か、`--rec`(項目の id →
   `{rec_option, rec, why, when}` を直接)で渡す。`--classify` の処分は閉じた語彙で、`implement`(`automatable: true` は
   `do-agent`、`false` は `do-me`)・`drop`・`later`・`other` が、裁定ページの `task` の選択肢(`options.json`)の id に
-  写る(`crates/issue-inbox/src/collect.rs` の `recs_from_classification`)。語彙の外の処分と、`automatable` の無い
+  写る(`crates/issue-inbox/src/collect.rs` の `recs_from_classification`)。語彙の外の処分と、`automatable` のない
   `implement` は、`other` に黙って落とさず誤りにする(終了コード 1、`items.json` は書かない)。両方を渡すと、同じ id では
   `--rec` が勝つ(分類から作った推奨を、項目ごとに手で直せる)。
 - `--list-lapsed [--repo R] [--json]` — 状態が `lapsed`(`open` の放置が失効した)の気づきを、`--list-open` と同じ形・同じ並びで
   出す。`/my-cleanup` は `--list-open` だけを集めるので、失効したものは、ここで見て、`--set-status` で `fixed`・`dropped` に進める
   (再発すれば `--add` が `open` に戻す)。`lapsed` は vault にだけある状態で、jsonl の機体では何も出ない。
-- `--sweep [--dry-run] [--as-of YYYY-MM-DD]` — `open` のまま最後の行から 14 日以上たった気づきを、全 repo について
+- `--sweep [--dry-run] [--as-of YYYY-MM-DD]` — `open` のまま最後の行から 14 日以上たった気づきを、全リポジトリについて
   `lapsed` にする(ADR-1381)。日次の `promotion-detect` が同じ関数を呼ぶ。`--dry-run` は書かずに対象を数える。
   `--as-of` は見積り用で `--dry-run` とだけ使える。冪等(`lapsed` は `open` でないので二重に書かない)。
   vault を宣言していない機体では何もしない。
@@ -160,26 +160,26 @@ SessionEnd で何かを起票させる案は、ドキュメント上の制約で
   書き換える(本文はバイト単位でそのまま残す)。第 1 引数は、題名の完全一致か、`--list-open --json` の `note`
   (vault では `inbox/<名前>.md`、jsonl の機体では `jsonl:<repo と題名から決まる 8 桁のハッシュ>`)、または vault のノート名の末尾の
   ハッシュ `~<8 桁の 16 進(小文字)>`(長い題名のノートの名前の ` ~<hash>.md`。`note` を `jq` で写さずに指せる。F67)。ノート名は題名と
-  衝突時のハッシュで一意になるので、`note` で指せば 1 枚に決まり、長い題名を打ち間違えず、先頭一致の補助も要らない。
+  衝突時のハッシュで一意になるので、`note` で指せば 1 枚に決まり、長い題名を打ち間違えず、先頭一致の補助も不要。
   jsonl の機体では、その行を取り除く(`<inbox>.filed.jsonl` に退避)。`--reason` は `dropped` のときだけで、`signal` を持つノート(as-code 化の候補)では必須。jsonl の
-  機体では行を取り除くので、理由の記録先が無い(較正は vault の機体だけで効く)。
+  機体では行を取り除くので、理由の記録先がない(較正は vault の機体だけで効く)。
 - `--check-dup "<title>" [repo]` — `gh issue list --search` で同名 open Issue を検査する。
   exit 1 = 重複(一致した Issue 番号を stdout に 1 行出す)、exit 3 = 判定不能。Issue を作る前に、
   `/my-cleanup` と promotion-detect が使う。gh は 10 秒でタイムアウトし、プロセスグループごと打ち切る
-  (exit 3。#1129)。Stop で起票を求めていたころの「失敗した照会のあと、変化の無い行を保留する」台帳
-  (`--check-dup --inbox --session-id`、`lookup_failure`)は、保留する相手の指示が無くなったので削除した。
+  (exit 3。#1129)。Stop で起票を求めていたころの「失敗した照会のあと、変化のない行を保留する」台帳
+  (`--check-dup --inbox --session-id`、`lookup_failure`)は、保留する相手の指示がなくなったので削除した。
 - `--mark-filed <inbox> <json1行>` — jsonl の**行全体の完全一致で先頭 1 行だけ**削除
   (`ts` は一意性を保証しないため削除キーにしない)。flock + tmp+mv。削除した行は
-  `<inbox>.filed.jsonl` に tombstone として追記してから mv する(#297)。vault の無い機体の消化手段。
+  `<inbox>.filed.jsonl` に tombstone として追記してから mv する(#297)。vault のない機体の消化手段。
 - `--migrate <project-dir>` — 旧 slug の inbox の回収(下の節)と、jsonl に残った行の vault への移行。
 
 jsonl の flock は `--add` と `--mark-filed` の両方が取る。vault 側は `vault-note` の
 `<state>/vault.lock` が排他する。どちらの経路も、jsonl のロックを取ってから vault のロックを取る順に
-固定してあり、逆順で取る経路が無いのでデッドロックしない。
+固定してあり、逆順で取る経路がないのでデッドロックしない。
 
 削除したサブコマンド: `--procedure`(起票の手順書)、`--chores-begin` / `--chores-end`
 (`/my-cleanup` の実行中に Stop の起票指示を黙らせる印。#820)。Stop が気づきの起票を
-求めなくなったので、黙らせる対象が無い。呼ぶと「削除された」と断って exit 1 する。
+求めなくなったので、黙らせる対象がない。呼ぶと「削除された」と断って exit 1 する。
 
 ## slug のリポジトリ単位化と自己修復マージ
 
@@ -187,7 +187,7 @@ worktree ごとに絶対パスが変わる旧 slug 方式では、同一リポ�
 worktree の数だけ分散し、worktree 削除後は誰も読まない orphan として残り続けた。
 `repo_slug()` は `git config --get remote.origin.url` を正規化して
 `<host>-<owner>-<repo>` 形式の slug を作る(scheme・認証情報・`.git` suffix・
-大文字小文字・https/ssh/scp 表記の差を吸収)。remote が無い、または git repo 外
+大文字小文字・https/ssh/scp 表記の差を吸収)。remote がない、または git repo 外
 なら従来の絶対パス slug にフォールバックする。
 
 過去に書かれた旧 slug の inbox を回収するため、`--migrate <project-dir>`
@@ -231,18 +231,18 @@ wrap-up inbox は「今回のタスクのスコープ外だが記録する価値
 対象外だった。実測(2026-09-23)では、ローカル auto memory の `type: feedback` ファイル 17 件中
 14 件が Issue 化されずローカルに閉じたままだった。
 
-`wrapup-stop-gate` の同じ Stop 本体に、inbox とは独立した検査を足してある: 今セッション中に更新された
-`type: feedback` メモリで `#N`(Issue 番号)参照が無いものを検出して、Issue 化を促す。**今は Stop が出す
+`wrapup-stop-gate` の同じ Stop 本体に、inbox とは独立した検査を追加してある: 今セッション中に更新された
+`type: feedback` メモリで `#N`(Issue 番号)参照がないものを検出して、Issue 化を促す。**今は Stop が出す
 指示は、この 1 つだけ**である(気づきの inbox は指示を出さない)。「今セッション」の境界は
 `wrapup-session-start` が touch する stamp ファイル
 (`~/.claude/wrapup-stop-gate/feedback-session/<session_id>.stamp`)の mtime を基準に `find -newer` で
-判定する。stamp が無い(SessionStart 未実行など)場合は判定不能として何もしない側に倒す(ADR-0005 と
+判定する。stamp がない(SessionStart 未実行など)場合は判定不能として何もしない側に倒す(ADR-0005 と
 同じ fail-open)。
 
 更新時刻だけでは、同じ時間帯に走る別セッションが書いたメモリも「今セッションが更新した」と数える。
 auto memory は frontmatter の `metadata.originSessionId` に書いたセッションの id を持つので、**この欄が
 あって今のセッションの id と違うメモリは除く**(`crates/issue-inbox` の `feedback_memories`。欄は frontmatter
-の中だけを読み、本文中の同じ語は読まない)。欄が無い古いメモリは、従来どおり更新時刻だけで帰属させる。
+の中だけを読み、本文中の同じ語は読まない)。欄がない古いメモリは、従来どおり更新時刻だけで帰属させる。
 限界: セッションを引き継いで id が変わると、前の id で書かれたメモリは「別セッション」になって指示の
 対象から外れる(指示が出ない側に倒れる)。
 
@@ -259,7 +259,7 @@ auto memory 固有の配線は `config/claude/CLAUDE.md` に持つ。
 [`verdict-escalate.md`](verdict-escalate.md)を参照。
 
 この経路が書く行は、最小スキーマに `repo`(任意、`"owner/repo"`: ノートの `repo`)と
-`go`(任意、`"ask"` 固定)を足す。`go` は、以前は「起票前に人間の明示的な GO が要る」印で、Stop の
+`go`(任意、`"ask"` 固定)を追加する。`go` は、以前は「起票前に人間の明示的な GO が必要」という印で、Stop の
 指示が AskUserQuestion で確認させていた(ADR-478 D6)。気づきが起票されなくなったので、
 `go` は読まない — 裁定は `/my-cleanup` で行い、「収集・集約は自動、Issue にするのは人間が
 選んだもののみ」は同じ形で保たれる。
@@ -268,7 +268,7 @@ auto memory 固有の配線は `config/claude/CLAUDE.md` に持つ。
 
 溜まった気づきは、[`my-cleanup` スキル](my-cleanup.md)が `--list-open` で集め、再発の
 回数の多い順に本人が裁定する。直せるものは Issue を経ずに stacked PR で直し(`--set-status fixed`)、
-大物と本人の作業が要るものだけが Issue になる(`--set-status issued`)。捨てるものは `dropped`。
+大物と本人の作業が必要なものだけが Issue になる(`--set-status issued`)。捨てるものは `dropped`。
 **ノートは直接編集しない**(読み書きは `--add` / `--list-open` / `--set-status` を介する)。
 
 ## 状態と再開の規則(語彙 JSON)
@@ -285,10 +285,10 @@ auto memory 固有の配線は `config/claude/CLAUDE.md` に持つ。
 | `issued` | はい | Issue にした。以後は Issue が追い、**再発しても `open` に戻らない** |
 
 - 再開: `fixed`・`dropped`・`lapsed` に再発の行が付くと `open` に戻る(事象 `reopen`、機械が行う)。再発を別の項目にはしない
-  (同じ題名は同じノートで、本文の行数が再発の回数)。`issued` は、行は足すが状態を動かさない。
+  (同じ題名は同じノートで、本文の行数が再発の回数)。`issued` は、行は追記するが状態を動かさない。
 - 失効(ADR-1381。ADR-1297 の「失効の状態は設けない」を改めた): `open` のまま最後の行(初出か再発)から 14 日以上たった気づきは、
   日次の `promotion-detect`(`node:promotion-detect`)が `issue-inbox --sweep` と同じ掃除で `lapsed` にする(事象 `lapse`、機械が行う)。
-  全 repo のノートが対象で、セッションを始めたかどうかに依らない。これが、裁定待ちの項目の性質 P1 を満たす手段
+  全リポジトリのノートが対象で、セッションを始めたかどうかに依らない。これが、裁定待ちの項目の性質 P1 を満たす手段
   (対応表 `config/agents/vocabulary/refinements/inbox-finding.json`。`lapsed` は抽象の `settled` に写る)。
   セッション開始時の hook(`session-wrapup start`、`node:session-wrapup-start`)の「未裁定の気づきが N 件ある」(事象 `remind`)は、
   失効の前の通知として残る。数えるのは作業中のプロジェクトの `open` だけである。
@@ -296,7 +296,7 @@ auto memory 固有の配線は `config/claude/CLAUDE.md` に持つ。
   エージェントに「本人に一言で `/my-cleanup` を提案し、望むときだけ実行する」ことも指示する(`crates/session-wrapup` の
   `should_suggest_cleanup`、しきい値は `CLEANUP_PENDING_THRESHOLD` と `CLEANUP_STALE_DAYS`)。経過日数は
   `issue_inbox::vault::oldest_open_age_days` が、失効(`sweep`)と同じ「最後の行の日付」の時計で求める。前回いつ片付けたかの
-  記録は足さない(書き忘れで壊れる記録を作らず、既存の inbox の記録から導く)。vault の無い機体の jsonl は時計を持たないので、
+  記録は追加しない(書き忘れで壊れる記録を作らず、既存の inbox の記録から導く)。vault のない機体の jsonl は時計を持たないので、
   件数の条件だけで判定する。朝の机の通知役(`daily-desk-reminder`)の「未実施なら提案する」と同じ型である。
 - `lapsed` は `--set-status` で書けない(掃除だけが書く)。`lapsed` から `issued` へは語彙の遷移に含めない(Issue にするには、再発して
   `open` に戻ってから)。

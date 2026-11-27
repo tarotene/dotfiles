@@ -3,13 +3,13 @@
 実装: `crates/test-output-guard`(Rust)。`hook-router` の規則として走る(`crates/hook-router/src/rules.rs`、
 `tools: Bash`)。エージェントの種類は問わない(`ci-wait-guard` と同じく、`Bash` のコマンド文字列だけを見る)。
 Issue: No-Issue(wrap-up の気づき「`cargo test … | head -10` で出力を切って、reconcile の fixtures テストの失敗を
-見落とし、落ちるテストを PR #1199 に載せた」。文章の規範は無く、検査も無かった)
+見落とし、落ちるテストを PR #1199 に載せた」。文章の規範はなく、検査もなかった)
 
 ## 動機
 
 `cargo test -p x 2>&1 | head -10` は、失敗を示す行(`FAILED`・`panicked`)が先頭 10 行の外に出ると見えない。
 `cargo test` は成功したテストも 1 行ずつ出すので、テスト数が多いほど失敗の行は後ろに回る。さらにパイプの終了コードは
-最後のコマンド(`head`)のものなので、失敗がシェルからは成功に見える。2026-10-28 に、これで落ちるテストを
+最後のコマンド(`head`)のものなので、失敗がシェルからは成功に見える。2026-10-28 に、これで失敗するテストを
 PR #1199 に載せ、後で気づいて直して積み直した。
 
 同じ型の事例(文章の規範はあったが、1 セッションで 5 回以上破られた)に、sandbox の外で動かすコマンドの連結
@@ -35,16 +35,16 @@ PR #1199 に載せ、後で気づいて直して積み直した。
 
 ### 限界
 
-- `cargo test` 以外(`cargo build | head`、`pytest | head`)は対象外。再発したら表に足す。
+- `cargo test` 以外(`cargo build | head`、`pytest | head`)は対象外。再発したら表に追加する。
 - `cargo` を別のコマンドが包む形(`nix develop --command cargo test | head`、`make test | head`)は見ない。
 - ダブルクォート内のコマンド置換(`"$(cargo test | head)"`)は見ない。
 - 切る形を書けなくはできない(検出のみ)。実行前に弾いて、読み直す往復を 1 回に抑えるところまでが責務。
 
 ## 逃げ道
 
-切り詰めが要る正当な理由があるときは、コマンドに `TEST_OUTPUT_GUARD_ALLOW=1` の語を足す
-(`TEST_OUTPUT_GUARD_ALLOW=1 cargo test | head`)。値は `1` だけ(呼び出し単位)。コマンドに残るので、
-あとから読める。人は、起動前に環境変数 `SKIP_TEST_OUTPUT_GUARD=1` を設定してもよい(セッション単位)。名前と真偽は
+切り詰めが必要な正当な理由があるときは、コマンドに `TEST_OUTPUT_GUARD_ALLOW=1` を追加する
+(`TEST_OUTPUT_GUARD_ALLOW=1 cargo test | head`)。値は `1` だけ(呼び出し単位)。コマンドに残るため
+後から確認できる。人は、起動前に環境変数 `SKIP_TEST_OUTPUT_GUARD=1` を設定してもよい(セッション単位)。名前と真偽は
 `agent_session::escape` の表が決める。
 
 ## 発火範囲

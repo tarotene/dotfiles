@@ -2,7 +2,7 @@
 
 依頼者が自認していた「クリーンかつ先進的な技術選定を好む傾向」を、抽象的な
 標準指示(「クリーンで先進的にせよ」)にはせず、`precedent-grounding` が
-確立した `## 先行例との対比` 節にトークンを 1 つ足すだけで検証可能にした
+確立した `## 先行例との対比` 節にトークンを 1 つ追加するだけで検証可能にした
 設計記録。決定は `docs/adr/0035-selection-grounding.md`。実装は
 `config/agents/AGENTS.md`(規律の短文)、`config/claude/CLAUDE.md`
 (形式検査の配線)、`config/agents/skills/technology-selection/SKILL.md`
@@ -116,7 +116,7 @@ selftest・本ドキュメント・`docs/adr/0012` の Amendment)に対して、
 
 ## 形式検査(plan-precedent-gate への加算)
 
-新しい gate は作らず、既存の `plan-precedent-gate` に検査項目を足す。
+新しい gate は作らず、既存の `plan-precedent-gate` に検査項目を追加する。
 
 1. `軸:` トークン(`表現不可能|還元|検出のみ`)が各 `Dn` に存在するか。
    `先行例なし:` の枝でも必須 — 還元性の判定は先行例の有無と独立。
@@ -127,7 +127,7 @@ selftest・本ドキュメント・`docs/adr/0012` の Amendment)に対して、
    意味判断であり、decision-theoretic に決定論では解けない。ここは
    precedent-grounding と同じ二層構造(形式は gate、内容は critic)に
    従い、lens A の監査項目に「外部依存の出入りを伴う `Dn` に重い欄が
-   無い」を追加して埋める。
+   ない」を追加して埋める。
 3. 閉語彙のコスト語(書き直しコスト・移行コスト・撤収コスト・波及コスト・
    乗り換えコスト・battle-tested・歴史的経緯 等)が `Dn` ブロックにあれば
    deny(ADR-751)。バッククォートで囲んだ語は引用なので数えない。コストを

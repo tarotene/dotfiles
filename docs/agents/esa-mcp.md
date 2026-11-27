@@ -31,11 +31,11 @@ Claude Code がセッション起動時の環境変数で正しく展開する(�
 - 縮退しない: 以下はすべて stderr に診断を出して **exit 1**。
   | 状況 | 診断 |
   |---|---|
-  | `gpg` が PATH に無い | home-manager 未適用の疑い |
-  | トークンファイルが無い | esa.io でのトークン発行 + `docs/setup.md` 手順への誘導 |
+  | `gpg` が PATH にない | home-manager 未適用の疑い |
+  | トークンファイルがない | esa.io でのトークン発行 + `docs/setup.md` 手順への誘導 |
   | 復号失敗 | on-disk [E] サブ鍵のパスフレーズ・gpg-agent の状態確認を促す(#252 未実施のホストではカード挿入を促す) |
   | 復号結果が空 | トークンファイル自体が壊れている |
-  | `npx` が PATH に無い | mise の node runtime を確認 |
+  | `npx` が PATH にない | mise の node runtime を確認 |
 
   他の Claude Code hook 群(git-worktree-allow・git-stash-guard 等)は
   「対象外なら無出力で exit 0」という ADR-0005 系の silent no-op を守るが、
@@ -45,7 +45,7 @@ Claude Code がセッション起動時の環境変数で正しく展開する(�
   `gpg`/`npx` を PATH 上のスタブ(固定文字列を返す/受け取ったトークンを
   そのまま出力する)にし、旧 `--selftest` の 5 ケース(トークン欠如・復号失敗・
   空トークン・npx 不在・token handoff)をネットワークなしで検査する。診断に
-  トークンを出さないことも固定している。bash 版の `--selftest` 引数は無く、
+  トークンを出さないことも固定している。bash 版の `--selftest` 引数はなく、
   全引数は npx へ素通しする。CI の rust ジョブが毎回実行する。
 
 ## パスフレーズプロンプトについて(#252, ADR-0003 Amendment 4)
@@ -64,8 +64,8 @@ keygrip ごと)であり、同じ文字列のパスフレーズを設定して�
 (`docs/agents/gpg-prewarm.md`)は #252 で [E] にも対応し、[S] とは独立に
 esa MCP の token.gpg を SessionStart 時に先回りして温める(token.gpg が
 存在しないホストでは無音でスキップ)。この結果、ログイン後最初の
-セッションでは [S]・[E] それぞれ独立に最大 1 回ずつパスフレーズを聞かれ
-うるが(2 つの独立した鍵である以上、1 回に統合することはできない)、
+セッションでは [S]・[E] それぞれ独立に最大 1 回ずつパスフレーズを聞かれる可能性が
+あるが(2 つの独立した鍵である以上、1 回に統合することはできない)、
 その同じログイン中の 2 回目以降のセッションでは両方ともキャッシュ済み
 (400日 TTL)で無音になる。
 
@@ -75,9 +75,8 @@ GnuPG は `gpg-agent` の外部パスワードキャッシュ機構(libsecret/gn
 ところ、この host(pinentry-gnome3 + GCR 3.41.2)の pinentry ダイアログには
 保存用の UI(チェックボックス等)が実際には現れず、Secret Service に
 新規エントリも作られなかった(`gdbus` で `org.freedesktop.secrets` を
-複数回の復号の前後で確認)。したがって上記の「ログインに 1 回」が現実的な
-下限であり、これ以上の削減は追加調査(pinentry フレーバーの変更等)が
-要る。詳細は ADR-0003 Amendment 4 を参照。
+複数回の復号の前後で確認)。したがって上記の「ログインに 1 回」が現実的な下限であり、これ以上の削減には追加調査(pinentry フレーバーの変更等)が
+必要である。詳細は ADR-0003 Amendment 4 を参照。
 
 ## 落とし穴: `throw-keyids` との相互作用
 
@@ -101,7 +100,7 @@ all available secret keys must be tried")。鍵束に別カードの secret stub
 <https://www.gnupg.org/documentation/manuals/gnupg/GPG-Esoteric-Options.html>、
 取得 2026-09-20)。token.gpg のような単一ホスト内のローカル保管ファイルは
 そもそも「誰に暗号化したか」を第三者から隠す必要がなく、トレードオフなしで
-外せる。既存の `token.gpg` を直す場合は再暗号化が要る:
+外せる。既存の `token.gpg` を直す場合は再暗号化が必要になる:
 
 ```bash
 tok="$(gpg --decrypt ~/.config/esa/token.gpg)"
@@ -109,7 +108,7 @@ printf '%s' "$tok" | gpg --encrypt --no-throw-keyids \
   --recipient 1DCDC49510DCC9BF58C89751B7D596E9AA6F36E8 \
   --output ~/.config/esa/token.gpg.new
 # ラウンドトリップが一致してから置換すること(先に decrypt が失敗すると
-# 空データの暗号文で元ファイルを潰しうる)
+# 空データの暗号文で元ファイルを上書きしてしまう可能性がある)
 [ "$(gpg --quiet --batch --decrypt ~/.config/esa/token.gpg.new)" = "$tok" ] && \
   mv ~/.config/esa/token.gpg.new ~/.config/esa/token.gpg
 unset tok
@@ -123,11 +122,7 @@ unset tok
 
 ## `~/.claude.json` への登録
 
-`home/identities/personal/esa.nix` は `dotfiles.agents.mcpServers.esa` に値を populate
-するだけで、`~/.claude.json` への冪等 jq merge の仕組み自体は持たない —
-その仕組みは `home/modules/claude-mcp-servers.nix` が一元的に持つ共通の
-「口」で、`docs/claude/claude-mcp-servers.md` が設計を記録している。esa は
-この「口」の最初の実populate例になる。
+`home/identities/personal/esa.nix` は `dotfiles.agents.mcpServers.esa` に値を設定するだけで、`~/.claude.json` への冪等 jq merge の仕組み自体は持たない — その仕組みは `home/modules/claude-mcp-servers.nix` が一元的に持つ共通の「口」であり、`docs/claude/claude-mcp-servers.md` が設計を記録している。esa はこの「口」の最初の実適用例になる。
 
 ## なぜ personal identity 層限定か
 

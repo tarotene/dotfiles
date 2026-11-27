@@ -33,9 +33,9 @@ client 側の作成時 deny・サーバ側の CI red・監査側の drift 検出
   `cargo build` して呼ぶ(`.github/actions/pr-title/action.yml`、他
   リポジトリ向けの reusable workflow `pr-title.yml` の `check` job も同じ)。
   `/Cargo.toml` と `/crates/pr-title-check/` だけを sparse-checkout する —
-  `crates/*` は glob メンバーなので他のクレートが無くても workspace は
+  `crates/*` は glob メンバーなので他のクレートがなくても workspace は
   解決でき、`pr-title-check` は依存ゼロなので registry にも出ない。
-  cargo が無い runner では黙って検査を飛ばさず、明示的に落とす。
+  cargo がない runner では黙って検査を飛ばさず、明示的に失敗させる。
 - 検証は `cargo test -p pr-title-check`(bash 版 `--selftest` 全 20 ケースの
   trycmd fixture + 入出力経路)と `cargo test -p pr-title-guard`。
 
@@ -58,7 +58,7 @@ type(scope)?!?: subject
 `git remote get-url origin` から解決。解決不能なら fail-open)。
 
 - owner が `tarotene` のリポジトリ。
-- **いま居るリポジトリ自身が**契約の workflow(`.github/workflows/pr-title.yml`)を
+- **いまいるリポジトリ自身が**契約の workflow(`.github/workflows/pr-title.yml`)を
   持つ場合(2026-10-13 の追補)。`-R` が別のリポジトリを指しているときは、その
   中身を見られないので、この条件では発火しない。
 
@@ -99,14 +99,14 @@ symlink で共有)は `check` job に `name: PR Title` を固定するため、�
 「PR title」1 context だけでなく、呼び出し元リポジトリの
 `.github/rulesets/quality.json` 宣言および live な required_status_checks
 の全 context を対象に一般化されている。run のたびに、head の
-`.github/workflows/` 配下の**全 workflow**から読んだ job 名(`name:`、無ければ job id。
+`.github/workflows/` 配下の**全 workflow**から読んだ job 名(`name:`、なければ job id。
 matrix・式・reusable workflow の呼び出しは取りうる名前に展開)と、宣言・live の双方を
 静的に突き合わせ、一致しなければ CI を red にする。以前は実行中の job 名が報告される
 まで最大 1200 秒待っていたが、`CI passed` が重い job の完了まで報告されないため、遅い PR
 で誤検知し(#1014)、毎回 3〜4 分かかっていた(#1065)。今は待たない(ADR-503 の Amendment
 2026-10-27)。required context は `CI passed`(`ci.yml`)と `PR title`(別 workflow の
 `pr-title.yml`)の 2 つの workflow にまたがるので、`ci.yml` だけを読むと正常な PR でも
-必ず落ちる。`PR title` の job は、この検査を走らせている job 自身である。存在するが
+必ず失敗する。`PR title` の job は、この検査を走らせている job 自身である。存在するが
 PR で走らない job(trigger の条件)は静的には分からない — 報告の実測は
 `apply-rulesets` と `github-audit` が担う。読み切れない workflow(フロー形式の `jobs:` など)
 があって context が見つからないときは、fail でなく warning にする。
@@ -128,7 +128,7 @@ type に改題してから merge する運用とする(例:
   事故で (b) だけでは検出できなかった盲点を埋める)。
 - 見ない: open PR 個々のタイトルの適合。CI(required check)と client
   guard がその役割を担う。audit まで実測すると三層の判定が重複し、
-  「audit は drift と言うが CI は green」のような不整合が起きうる。
+  「audit は drift と言うが CI は green」のような不整合が起きる可能性がある。
 - CI を持たないリポジトリ(workflows なし)は `not-applicable`
   (`renovate` ドメインと同じ扱い、ADR-0020 の grandfathering 型)。
 
@@ -150,7 +150,7 @@ commit_title=PR_TITLE` / `squash_merge_commit_message=BLANK` / squash-only)
 バイパスされる。`github-audit settings` ドメインはこの drift を検出できる
 が、監査は手動実行のため「検出」であって「防止」ではない — 実際に
 PRIVATE リポジトリ 2 件(実名は ADR-0034 により省略)が drift し、うち
-1 リポは直近 25 PR すべてで契約が無声にバイパスされていた実例がある
+1 リポジトリは直近 25 PR すべてで契約が無声にバイパスされていた実例がある
 (ADR-0031 Amendment 参照)。
 
 これを required check(`pr-title.yml`)に同居させ、drift した状態での
@@ -166,7 +166,7 @@ API 取得に失敗した場合は fail-closed(red)にする — client guard
 - Issue タイトルの書式強制 — 「変更」ではなく「世界の状態」を記述する
   別ジャンルであり、squash commit と無関係(ADR-0031 D6)。
 - ブランチ上の commit メッセージの書式強制 — squash で `main` の履歴
-  からは破棄される(同上)。実測(2026-09-23/24、squash 運用 4 リポの
+  からは破棄される(同上)。実測(2026-09-23/24、squash 運用 4 リポジトリの
   直近 25 PR・ブランチ commit 計 109 件)では非適合 1 件のみ(適合率
   99.1%)で、その 1 件も上記の merge 設定 drift を経由してしか
   `main` に漏れなかった(ADR-0031 Amendment 参照)。
@@ -174,17 +174,17 @@ API 取得に失敗した場合は fail-closed(red)にする — client guard
 - **既存の非適合 commit のバックフィル(履歴の書き換えと再署名)は実施しない**
   (ADR-0031 Amendment 2026-10-21、D7 の第二の縮小、#338)。#337 の完了日
   (2026-10-01)より前に `main` へ入った commit は、書き換えず、契約の対象外として
-  許容する。2026-10-21 の実測で非適合は 21 件・9 リポ(merge commit 9、root commit
+  許容する。2026-10-21 の実測で非適合は 21 件・9 リポジトリ(merge commit 9、root commit
   5、通常 7)で、書き換えは Security ruleset の一時解除、force push、YubiKey の
   タッチ約 150〜180 回を払って、検出にも強制にも効かない過去の subject を整えるだけに
   なる。サーバ側の検査(`pr-title-check`)は PR タイトルだけを入力にするので、許容した
-  commit が無関係な PR を落とすことは無く、その性質は
+  commit が無関係な PR を失敗させることはなく、その性質は
   `crates/pr-title-check/tests/title_only.rs` が固定している。
 
 ## 無料プランの非公開リポジトリ
 
 自動マージと rulesets が使えない環境(無料プランの非公開リポジトリ)では、required check の
 前提検査(`pr-merge-settings-check` の `auto-merge-disabled`、`rulesets-context-check` の live
-照合)が構造的に満たせない。トピック `plan-free-private` で宣言すると、この 2 つだけが外れ、
+照合)が構造的に満たせない。トピック `plan-free-private` で宣言すると、この 2 つだけが除外され、
 タイトルの文法・squash のみの設定・宣言ファイルの context の報告は引き続き検査される。
 詳細と Team 切替の手順は `docs/agents/free-plan-declaration.md`。

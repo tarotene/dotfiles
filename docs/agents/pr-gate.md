@@ -1,19 +1,19 @@
 # PR completion barrier — Stop の 1 点だけで CI 待ち・push 忘れを弾く
 
 herdr の並行 worktree セッションで起きる事故のうち、ローカル hook で扱える 6 つ
-（CI 待ちのまま完了を宣言する／push し忘れたまま完了する／push 済みなのに PR を
+(CI 待ちのまま完了を宣言する／push し忘れたまま完了する／push 済みなのに PR を
 作らないまま終わる／PR を Issue に繋がないまま終わる／見た目の変更なのに視覚証跡が
-無いまま終わる／stacked PR チェーンを GitHub 上の stack にリンクしないまま終わる)を
+ないまま終わる／stacked PR チェーンを GitHub 上の stack にリンクしないまま終わる)を
 Stop hook で hard gate する仕組みの設計記録。実装は
 `crates/pr-gate`(Rust。旧 `config/claude/hooks/pr-gate.sh` を #415 /
 ADR-0024 Stage 4a で移植)、デプロイは
-`home/modules/agents.nix`。main が進んだことに気づかない件と未コミット変更は
+`home/modules/agents.nix`。main ブランチが進んだことに気づかない点と未コミット変更は
 advisory に留める。
 
-「push し忘れたまま完了する」は PR が既にある前提の判定（`G_push`）だけでは、
+「push し忘れたまま完了する」は PR が既にある前提の判定(`G_push`)だけでは、
 **PR を作る前**という最も起きやすい場面を素通ししていた。`G_unpushed` がその領域を
 塞ぐ。同様に base 鮮度・`[gone]` ブランチ・残骸 worktree の advisory は、以前は
-「open PR が無ければ SessionStart も完全沈黙」だったため、PR 作成前のセッションでは
+「open PR がなければ SessionStart も完全沈黙」だったため、PR 作成前のセッションでは
 一切表示されなかった。詳細は下の各節。
 
 ## 強制力はどこに置くか
@@ -30,15 +30,15 @@ Stop                    … 「完了しよう」とした瞬間に弾く
 
 ### `PreToolUse(git push)` を採らない理由
 
-この choke point には既に `config/git/hooks/pre-push`（home-manager がグローバル配備、
-`core.hooksPath` で全リポジトリに適用）があり、worktree からの push を全面ブロックしている。
+この choke point には既に `config/git/hooks/pre-push`(home-manager がグローバル配備、
+`core.hooksPath` で全リポジトリに適用)があり、worktree からの push を全面ブロックしている。
 除外を試みた PR #21 は CLOSED で終わっており、運用は「`--no-verify` で通す・都度ユーザーに
 確認する」に定着している。ここに 3 枚目の push ガードを重ねると、`--no-verify` の判断が
 「pre-push 用」「pr-gate 用」のどちらへの回答か曖昧になる。
 
 stale base や `--force` を弾く発想自体も採らない。理由は次の「G_base を弾かない理由」と同じ
-——履歴改変の安全境界は既存の道具（会社側の別リポジトリで運用している専用の
-rebase ツール）に委譲する。
+——履歴改変の安全境界は既存のツール(会社側の別リポジトリで運用している専用の
+rebase ツール)に委譲する。
 
 ### `PostToolUse` の async CI watcher を採らない理由
 
@@ -57,77 +57,77 @@ Claude が「完了しました」と言おうとする瞬間は、CI・push・b
 stale をどう扱うか」をすでに決着させている:
 
 > 検出は決定的な shell script、Hook は adapter。script がやるのは inspect と `git fetch`
-> まで。ローカル履歴の改変（rebase）・リモートへの force-push は人間が明示起動する
+> まで。ローカル履歴の改変(rebase)・リモートへの force-push は人間が明示起動する
 > `/aocs-rebase` に委譲する。
 
-`G_base`（origin/base に対する ahead/behind）を block にすると、Claude は rebase →
+`G_base`(origin/base に対する ahead/behind)を block にすると、Claude は rebase →
 force-push という履歴改変に入る。この環境では `pre-push` + `--no-verify` の判断が絡む上、
 squash merge のみで linear history は自動的に保たれるため、merge-time の実害は限定的
-（並行 PR がぶつかるのは base の差分をレビューで見落とすリスクだけで、GitHub 側が
-conflict を検出したらそもそも merge できない）。同じ理由で `G_worktree`（未コミット変更）も
-block にしない —— PR があるブランチで WIP を残して終わるセッションを全部止める価値は無い。
+(並行 PR がぶつかるのは base の差分をレビューで見落とすリスクだけで、GitHub 側が
+conflict を検出したらそもそも merge できない)。同じ理由で `G_worktree`(未コミット変更)も
+block にしない —— PR があるブランチで WIP を残して終わるセッションを全部止める価値はない。
 
-どちらも **advisory**（block するときだけ相乗りで伝える。単独では終了を止めない）に留めた。
+どちらも **advisory**(block するときだけ相乗りで伝える。単独では終了を止めない)に留めた。
 この決定そのものは変えていない —— 下の「SessionStart は PR の有無を問わず advisory を出す」
 は Stop の block 判定には一切影響しない、別の話である。
 
 ## SessionStart は PR の有無を問わず advisory を出す
 
-`cmd_session_start` は当初「open PR が無ければ完全沈黙」だった。この判断は
+`cmd_session_start` は当初「open PR がなければ完全沈黙」だった。この判断は
 `cmd_stop` の「advisory は他の block への相乗りに限る」という設計とは別物のはずが、
 実装上は同じ形の早期 `exit 0` になっていた。結果、**PR をまだ作っていないセッションは
 base がどれだけ遅れていても、`[gone]` ブランチが何本溜まっていても一切知らされない**。
 
-実測でこれが起きた: このリポジトリの worktree（`worktree/lucky-field-2794`）は
+実測でこれが起きた: このリポジトリの worktree(`worktree/lucky-field-2794`)は
 origin/main から 4 コミット遅れ、ローカルブランチ 30 本中 21 本が `[gone]` の状態で
-新しいセッションを開いたが、pr-gate は無言だった —— PR が無いという理由だけで。
+新しいセッションを開いたが、pr-gate は無言だった —— PR がないという理由だけで。
 
 Stop の advisory が「他の block への相乗り」に留まるのは正しい判断のままにした
-（`G_base` / `G_wt` を単独 block にしない理由は上のとおり、履歴改変を自動化しない）。
-だが SessionStart には元々 block/pass の概念が無く、「単独発火のコストが無い」——
+(`G_base` / `G_wt` を単独 block にしない理由は上のとおり、履歴改変を自動化しない)。
+だが SessionStart には元々 block/pass の概念がなく、「単独発火のコストがない」——
 Stop と違って「単独では終了を止めない」という制約自体が意味を持たない場所だった。
 そこで SessionStart だけ、PR の有無を問わず 3 つの hygiene advisory を計算し、
 材料があれば単独で出すようにした:
 
-- **stale base**（`stale_base_line`）: PR があれば `baseRefName`、無ければ
+- **stale base**(`stale_base_line`): PR があれば `baseRefName`、なければ
   `refs/remotes/origin/HEAD` の default branch に対する behind 数
-- **`[gone]` ブランチ本数**（`gone_branches_line`）: `git prune-branches`（後述）が
+- **`[gone]` ブランチ本数**(`gone_branches_line`): `git prune-branches`(後述)が
   対応できる残骸の量
-- **残骸 worktree 数**（`stale_worktrees_line`）: `[gone]` かつ未変更の worktree。
-  dirty な worktree は本物の作業中の可能性があるので数えない（false positive を
-  出さない側に倒す）
+- **残骸 worktree 数**(`stale_worktrees_line`): `[gone]` かつ未変更の worktree。
+  dirty な worktree は本物の作業中の可能性があるので数えない(false positive を
+  出さない側に倒す)
 
 いずれも API を叩かず git だけで求まるので、縮退表・allowlist・fetch TTL には影響しない。
-材料が無ければ(以前と同じく)完全沈黙する。
+材料がなければ(以前と同じく)完全沈黙する。
 
 ## G_unpushed — G_push が届かない領域
 
-`G_push` は open PR の `headRefOid` とローカル `HEAD` を比較するので、**PR がまだ無い
-セッションでは比較対象が無く、判定できずに完全沈黙していた**。これは「push し忘れたまま
+`G_push` は open PR の `headRefOid` とローカル `HEAD` を比較するので、**PR がまだない
+セッションでは比較対象がなく、判定できずに完全沈黙していた**。これは「push し忘れたまま
 完了する」という当初からの対象事故そのものが、PR 作成前という最も起きやすい場面では
 素通しになっていたことを意味する。
 
 `G_unpushed` はこの領域だけを塞ぐ。PR を作るべきかには踏み込まず、「積んだコミットが
-1 個もリモートに無い」という事実だけを見る（upstream → `origin/<branch>` →
-`origin/<default_branch>` の順で比較対象を探し、どれも無ければ判定を諦めて何もしない
-——判定できないことを断定に変えない、という他の advisory と同じ姿勢）。0 件なら通す。
-1 件以上なら block し、解消は `git push` 1 回で済む（`home/modules/git.nix` の
+1 個もリモートにない」という事実だけを見る(upstream → `origin/<branch>` →
+`origin/<default_branch>` の順で比較対象を探し、どれもなければ判定を諦めて何もしない
+——判定できないことを断定に変えない、という他の advisory と同じ姿勢)。0 件なら通す。
+1 件以上なら block し、解消は `git push` 1 回で済む(`home/modules/git.nix` の
 `push.autoSetupRemote` が upstream を自動で張るので `--set-upstream` の指定は不要
-——履歴改変は一切伴わない）。
+——履歴改変は一切伴わない)。
 
 PR がある場合は既存の `G_push` がより正確に見るので、`G_unpushed` は
 `pr_num` が空のときだけ動く。二重に block することはない。
 
 **squash マージのあとの誤検知を避ける。** PR を squash マージすると、default branch には別の SHA の
 commit が入り、ローカルには元の commit が残る。upstream が `origin/<default>` のブランチでは、
-その commit が差として数えられ、「未 push・PR 無し」と block していた（2026-11-15 に同じセッションで
-3 回。そのたびに `git rebase origin/main` で重複を外す往復が要った）。そこで、いまの `HEAD` が、
-同じ head ブランチでマージ済みの PR の `headRefOid`（`gh pr list --state merged`、新しい順に最大
-10 件）のどれかと同じなら、push するものは無いので数えない。`gh` が失敗したときは、判定できないので
-従来どおり数える。以前の PR の head と今の `HEAD` が違えば（同じ名前のブランチに新しい commit を
-積んだとき）、従来どおり block する。
+その commit が差として数えられ、「未 push・PR なし」と block していた(2026-11-15 に同じセッションで
+3 回。そのたびに `git rebase origin/main` で重複を外す往復が必要だった)。そこで、いまの `HEAD` が、
+同じ head ブランチでマージ済みの PR の `headRefOid`(`gh pr list --state merged`、新しい順に最大
+10 件)のどれかと同じなら、push するものはないので数えない。`gh` が失敗したときは、判定できないので
+従来どおり数える。以前の PR の head と今の `HEAD` が違えば(同じ名前のブランチに新しい commit を
+積んだとき)、従来どおり block する。
 
-この「PR を作るべきかには踏み込まない」という判断は、`G_pr`（次節）の導入で
+この「PR を作るべきかには踏み込まない」という判断は、`G_pr`(次節)の導入で
 上書きした。`G_unpushed` はそのまま残し、push の事実だけを見る役割に留める。
 
 ## G_pr — なぜ「PR を作るべきか」に踏み込むことにしたか
@@ -155,11 +155,11 @@ advisory と同じ姿勢):
 - `unpushed` が `?`(upstream が特定できない)
 - `default_br` が空(`origin/HEAD` が未設定)
 - ローカルブランチが default branch そのもの(PR フロー外の直接作業)
-- `origin/<default_br>` に対する ahead が非数値(比較対象が手元に無い)か `0`
-  (PR に値する commit が無い)
+- `origin/<default_br>` に対する ahead が非数値(比較対象が手元にない)か `0`
+  (PR に値する commit がない)
 - 同じ head ブランチの PR が既に **merged/closed** で存在する(`gh pr list
   --state all` で 1 本だけ追加確認する。squash merge 後もローカルブランチは
-  ahead>0 のまま残るため、この検査が無いと merge 済みブランチを block して
+  ahead>0 のまま残るため、この検査がないと merge 済みブランチを block して
   しまう。この追加 API 呼び出しが失敗した場合は fail-open——空応答と
   API 失敗を区別せず、どちらも「分からないので止めない」に倒す)
 
@@ -177,7 +177,7 @@ pr-description スキルの 5 節スケルトンに従わせるよう案内す�
 ### `MAX_BLOCKS` の引き上げ(4 → 5)
 
 `G_pr` を挟むぶん、最悪の正当チェーン(push → `G_pr` → 本文修正 → CI 待ち)が
-4 回まで block しうる。4 のままだと最後の 1 回が escalate に化ける——`G_link`
+4 回まで block する可能性がある。4 のままだと最後の 1 回が escalate に化ける——`G_link`
 追加時に 3 から 4 に上げたのと同じ論法(「上限は最悪ケースで決める」)。
 `G_unpushed` の block メッセージ自体を「push し、そのまま `gh pr create` まで」
 に改めて 1 往復へ圧縮したため、この最悪連鎖は実際には起きにくい。
@@ -187,27 +187,27 @@ pr-description スキルの 5 節スケルトンに従わせるよう案内す�
 ### 直そうとしている事故
 
 2026-08-31 に open Issue 17 件を棚卸ししたところ、**実質解決済みなのに open のまま
-残っていたものが 2 件**あった（#28 jq、#29 pandoc）。どちらも `home/modules/packages.nix`
+残っていたものが 2 件**あった(#28 jq、#29 pandoc)。どちらも `home/modules/packages.nix`
 が既に宣言していて、`command -v` は nix 側を返す。作業は終わっていた。閉じていなかっただけ。
 
-原因は単純で、解決した PR の本文に closing keyword が無く、マージが Issue に伝播しなかった。
-merged PR 21 本のうち `Closes #N` を持つのは 4 本（**19%**）。
+原因は単純で、解決した PR の本文に closing keyword がなく、マージが Issue に伝播しなかった。
+merged PR 21 本のうち `Closes #N` を持つのは 4 本(**19%**)。
 
 この事故の性質は、`G_push` や `G_CI` が扱うものと違う。CI 待ちや push 忘れは
 **その場で**壊れる。リンク忘れは**その場では何も壊れない** —— PR はマージされ、コードは
-正しく入る。コストが出るのは数か月後、誰かが Issue 一覧を見て「これは終わっているのか？」と
+正しく入る。コストが出るのは数か月後、誰かが Issue 一覧を見て「これは終わっているのか?」と
 一件ずつ実測して回る時。遅延して現れる沈黙だ。
 
-### なぜ Stop hook なのか（PR テンプレートでも CI でもなく）
+### なぜ Stop hook なのか(PR テンプレートでも CI でもなく)
 
 **`.github/pull_request_template.md` は効かない。** このリポジトリの PR は全て
 `gh pr create --body …` で作られており、`--body` を渡した時点でテンプレートは読まれない。
-テンプレートが効くのは「本文を空で作った人間」だけで、実際の発生源（エージェント）に
+テンプレートが効くのは「本文を空で作った人間」だけで、実際の発生源(エージェント)に
 一切当たらない。置いた瞬間から死に設定になる —— #33 で削った `enableSshSupport` と
 同じ種類の負債を新設することになる。
 
 **CI job にすると粒度が合わない。** `G_CI` は CI 全体の緑を完了条件にしているので、
-本文チェックの job もその期待集合に入る。すると「本文に 1 行足す」で直る話に、
+本文チェックの job もその期待集合に入る。すると「本文に 1 行追加する」で直る話に、
 push → check 出現待ち → 再判定という CI ラウンドトリップを丸ごと 1 回払わせることになる。
 
 Stop hook なら `gh pr edit --body` で即座に直り、`pr-gate` が既に持っている
@@ -223,19 +223,19 @@ CLAUDE.md も膨らまない。
 
 ### `No-Issue:` という逃がし方
 
-対応 Issue が本当に無い PR は多い。実際、merged PR の大半はセッション中に生まれた
+対応 Issue が本当にない PR は多い。実際、merged PR の大半はセッション中に生まれた
 feature 作業で、閉じるべき Issue が存在しない。ここで「毎回 Issue を先に立てろ」に
-すると、このリポジトリの実際の流れ（wrap-up inbox が**事後に** Issue を生む）と逆走し、
+すると、このリポジトリの実際の流れ(wrap-up inbox が**事後に** Issue を生む)と逆走し、
 「PR を出すために形式的な Issue を 1 枚立てる」が常態化してトラッカーの信号が薄まる。
 
 そこで本文に `No-Issue: <理由>` があれば通す。狙いは**沈黙を決定に変えること**で、
-書く手間はほぼゼロだが、書く瞬間に「本当に対応 Issue は無いか」を一度だけ考えることになる。
+書く手間はほぼゼロだが、書く瞬間に「本当に対応 Issue はないか」を一度だけ考えることになる。
 #28/#29 は、その一考があれば残らなかった。
 
 副次的だが重要な性質として、`No-Issue:` は **grep 可能な監査可能痕跡**を残す。advisory の
-警告は流れて消えるが、これは後から「Issue 無しと宣言した PR」を数えられる。
+警告は流れて消えるが、これは後から「Issue なしと宣言した PR」を数えられる。
 
-理由の無い裸の `No-Issue:` は受理しない。それを通すと、ただのおまじないになって狙いが消える。
+理由のない裸の `No-Issue:` は受理しない。それを通すと、ただのおまじないになって狙いが消える。
 
 ### keyword の後ろに番号を並べた本文も block する(#722)
 
@@ -251,9 +251,9 @@ GitHub が閉じるのは keyword 直後の 1 件だけで、残りは黙って 
 (こちらは検出のみ。ワークフローは GitHub の規則に合わせて、並んだ番号を閉じる
 側には広げない)。
 
-### 「言及はあるが keyword が無い」だけを見ない理由
+### 「言及はあるが keyword がない」だけを見ない理由
 
-一見すると「本文が `#N` に言及しているのに closing keyword が無い」ケースだけを弾くのが
+一見すると「本文が `#N` に言及しているのに closing keyword がない」ケースだけを弾くのが
 穏当に見える。採らなかった。**#28/#29 を実質解決した PR は Issue に一切言及していない。**
 その形の判定は、観測された失敗そのものを通してしまう。設計として、実際に起きた事例を
 素通しするゲートを入れる意味はない。
@@ -262,8 +262,8 @@ GitHub が閉じるのは keyword 直後の 1 件だけで、残りは黙って 
 
 GitHub は **コード内の closing keyword を解釈しない**。fenced code block の中も、
 `` `Closes #30` `` のようなインラインのコードスパンの中も無視される。判定前に両方
-落としておかないと、ゲートが「閉じないのに LINKED」と読む —— つまり `G_link` が防ごうと
-しているまさにその事故（マージしても Issue が open のまま）を、**ゲート自身が見逃す側に
+取り除いておかないと、ゲートが「閉じないのに LINKED」と読む —— つまり `G_link` が防ごうと
+しているまさにその事故(マージしても Issue が open のまま)を、**ゲート自身が見逃す側に
 倒れる**。
 
 これは机上の懸念ではない。`G_link` を入れた PR #46 の本文が「本文に
@@ -274,18 +274,18 @@ GitHub は **コード内の closing keyword を解釈しない**。fenced code 
 判定基準は「GitHub がどう読むか」であって「人がどう書いたつもりか」ではない。ゲートが
 GitHub より緩くても厳しくても、どちらも嘘になる。
 
-実 PR 6 本を ground truth（`gh pr view --json closingIssuesReferences`）と突き合わせて
+実 PR 6 本を ground truth(`gh pr view --json closingIssuesReferences`)と突き合わせて
 一致を確認している:
 
 | PR | `judge_link` | GitHub の実リンク |
 |---|---|---|
 | #45 | `LINKED` | `10, 11, 30, 33, 34` |
-| #46 | `NO_ISSUE` | （なし） |
-| #40 / #32 / #37 / #27 | `MISSING` | （なし） |
+| #46 | `NO_ISSUE` | (なし) |
+| #40 / #32 / #37 / #27 | `MISSING` | (なし) |
 
-なお HTML コメント（`<!-- … -->`）は落としていない。GitHub はそこも解釈しないが、この
-リポジトリは PR テンプレートを使わない（使えない — 上記のとおり `--body` がテンプレートを
-読まない）ので、コメントに keyword が紛れ込む経路が無い。踏んだら足す。
+なお HTML コメント(`<!-- … -->`)は取り除いていない。GitHub はそこも解釈しないが、この
+リポジトリは PR テンプレートを使わない(使えない — 上記のとおり `--body` がテンプレートを
+読まない)ので、コメントに keyword が紛れ込む経路がない。見つかったら追加する。
 
 ### required job が job-level `if:` で skipped になる場合
 
@@ -320,8 +320,8 @@ GitHub 側も同じ理由(job-level skip は `success`/`skipped`/`neutral` の
 ### base が default branch でない場合を advisory にする理由
 
 GitHub の仕様上、closing keyword は **default branch を狙う PR でのみ**解釈される
-（[公式ドキュメント](https://docs.github.com/en/issues/tracking-your-work-with-issues/using-issues/linking-a-pull-request-to-an-issue)
-は "If the pull request targets any other branch, then these keywords are ignored" と明記）。
+([公式ドキュメント](https://docs.github.com/en/issues/tracking-your-work-with-issues/using-issues/linking-a-pull-request-to-an-issue)
+は "If the pull request targets any other branch, then these keywords are ignored" と明記)。
 つまり stacked PR では、本文に `Closes #N` と書いてマージしても Issue は閉じない ——
 **この設計が直そうとしている事故と同型の沈黙**が、書いたつもりの側で起きる。
 
@@ -337,28 +337,28 @@ API 呼び出しが 1 本増えると下の縮退表がその分太る。`origin
 `Closes #43` と書いて実は #34 のつもり、という誤りは正規表現では素通りする。では
 `gh issue view` で実在確認するか、というと採らない。捕まえられるのは「存在しない番号」
 だけで、**より起きやすい「存在するが別の Issue」は捕まえられない**。検出力が低い一方で
-API 呼び出しが 1 本増え、縮退経路（未ログイン・API 失敗時の fail-open）も 1 本増える。
+API 呼び出しが 1 本増え、縮退経路(未ログイン・API 失敗時の fail-open)も 1 本増える。
 `pr-gate` は縮退の一覧を明示して不変条件を守っている作りなので、利得の小さい判定の
 ために縮退表を太らせるのは割に合わない。
 
 ### block の位置と `MAX_BLOCKS` の引き上げ
 
 `G_link` は判定だけ先に済ませ、**block は最後に回す**。`G_push` / `G_CI` が止める場面では、
-その block メッセージに相乗りさせる（実装中の `rider()`）。本文の修正は CI を待たずに
-済むので、単独で 1 往復を消費させる理由がない。ただし `G_stack`（`gh stack link` の
-案内）は相乗りさせない。リンクは CI が緑になってから 1 回だけ行う手順
-（stacked-pr スキル、github/gh-stack#319）なので、CI 待ちの block で案内すると手順書と
-食い違う。`G_stack` は CI が通った後の単独 block だけが担う（wrap-up inbox の気づき。
+その block メッセージに相乗りさせる(実装中の `rider()`)。本文の修正は CI を待たずに
+済むので、単独で 1 往復を消費させる理由がない。ただし `G_stack`(`gh stack link` の
+案内)は相乗りさせない。リンクは CI が緑になってから 1 回だけ行う手順
+(stacked-pr スキル、github/gh-stack#319)なので、CI 待ちの block で案内すると手順書と
+食い違う。`G_stack` は CI が通った後の単独 block だけが担う(wrap-up inbox の気づき。
 `rider()` の順序は link → visual → prior、単独 block の順序は link → visual → stack →
-prior のまま）。block の回数の数え方は変わらない — `G_stack` は元から最悪の連鎖に 1 回分
-数えてあり（下の「`MAX_BLOCKS` を 5 から 6 に上げた理由」）、相乗りを外しても連鎖の
+prior のまま)。block の回数の数え方は変わらない — `G_stack` は元から最悪の連鎖に 1 回分
+数えてあり(下の「`MAX_BLOCKS` を 5 から 6 に上げた理由」)、相乗りを外しても連鎖の
 最大長は増えない。
 
 単独で block するのは push も CI も通った後 —— 「あとは終わるだけ」の一点で、まさに
 リンクが忘れられる瞬間だ。
 
 judgement が 1 つ増えたぶん、`PR_GATE_MAX_BLOCKS` の既定を 3 から **4** に上げた。
-最悪の連鎖（push → 本文修正 → CI 待ち）が正当に 3 回 block しうるので、3 のままだと
+最悪の連鎖(push → 本文修正 → CI 待ち)が正当に 3 回 block する可能性があるため、3 のままだと
 最後の 1 回が escalate に化ける。相乗りのおかげでこの連鎖は実際には起きにくいが、
 上限は最悪ケースで決める。
 
@@ -380,7 +380,7 @@ block され続ける。
 - `G_CI`: `EMPTY`/`MISSING`/`FAILED`/`PENDING`/`API_FAILURE` のいずれでも
   block せず、`G_CI_STATUS` を advisory の rider に載せるだけにする。
 
-判定の 3 点のいずれかが取得できない(isDraft 不明、Handoff 行が無い、
+判定の 3 点のいずれかが取得できない(isDraft 不明、Handoff 行がない、
 参照先 Issue が closed または取得失敗)ときは、緩めずに従来どおりの判定に
 落ちる(fail-closed)。全ゲートを外す `~/.claude/pr-gate/skip` の代替として
 使われることを防ぐため。
@@ -421,7 +421,7 @@ advisory に落とす(`stop.rs` の `waiting_on_background`)。
   `FAILED`・`API_FAILURE` は緩めない(赤は待っても直らない)。
 - 検出が漏れる場合: Stop の時点で transcript が現在のターンの最新を含まないことがある
   (Claude Code 公式 hooks 文書)。同じターンで起動した直後は検出できず、従来どおり
-  block に倒れる。transcript が無い・読めないときも従来どおり。
+  block に倒れる。transcript がない・読めないときも従来どおり。
 - この advisory のターンでは、単独 block に stack の案内(`gh stack link`)を載せない。
   CI が緑でないうちの案内は手順書と食い違うため(上の「block の位置」)。
 
@@ -430,7 +430,7 @@ advisory に落とす(`stop.rs` の `waiting_on_background`)。
 ### 直そうとしている事故
 
 `G_link` と同じ形の事故。見た目に影響する変更(GUI/Web に限らずターミナル/TUI の
-見た目も含む)を merge した PR の本文に、変更前後がどう見えたかの証跡が一切無いと、
+見た目も含む)を merge した PR の本文に、変更前後がどう見えたかの証跡が一切ないと、
 その場では何も壊れない。壊れるのは数か月後 —— 別のレビュアーや将来の自分がコードの
 履歴を追ったとき、コードを読んでも「実際どう見えていたか」は再現できない。`G_link`
 の「遅延コストの沈黙」とまったく同じ構造なので、advisory では構造がそのまま
@@ -453,7 +453,7 @@ advisory に落とす(`stop.rs` の `waiting_on_background`)。
 
 ローカルパスのままの画像記法(`![x](./a.png)`)はアップロードの証拠にならないので
 数えない。`gh --attach` は実行後に本文の画像記法を user-attachments の URL へ
-書き換える(既存の記法があればその場で、無ければ末尾に追記)ため、アップロード済みか
+書き換える(既存の記法があればその場で、なければ末尾に追記)ため、アップロード済みか
 どうかは本文の記法だけから機械的に判定できる。
 
 ### 検査しないこと
@@ -473,7 +473,7 @@ block する。しかも **`G_link` と同じ block メッセージに合流さ�
 不備は 2 種類あっても、修正は `gh pr edit` 1 回で両方直せるので、2 往復を消費
 させる理由がない。
 
-この合流のおかげで、`G_visual` を足しても `PR_GATE_MAX_BLOCKS` は 4 のまま
+この合流のおかげで、`G_visual` を追加しても `PR_GATE_MAX_BLOCKS` は 4 のまま
 据え置いた。最悪の正当チェーン(push → 本文修正 → CI 待ち = 3)の長さ自体は
 変わらない —— 本文修正のステップに直す項目が 1 つ増えるだけで、chain の段数は
 増えないため。
@@ -546,13 +546,13 @@ orphan PR(base 宣言の不整合)自体は発生しない —— base チェー
 `G_link`/`G_visual` と同じ「あとは終わるだけ」の一点で、同じ block
 メッセージに合流させる(いずれも CI を再走させない修正のため)。案内文は
 **ブランチ名ではなく PR 番号**を bottom→top で示す —— `gh stack link` は
-ブランチ名を渡すと、そのブランチに PR が無い場合に新規 PR を自動作成する
+ブランチ名を渡すと、そのブランチに PR がない場合に新規 PR を自動作成する
 副作用があり(実機確認)、意図しない PR 生成を避けるため。
 
 ### `MAX_BLOCKS` を 5 から 6 に上げた理由
 
 最悪の正当チェーン(push → G_pr → 本文修正 → stack link → CI 待ち)が
-正当に 5 回 block しうるようになった(`G_stack` の追加分 1 回)。5 のまま
+正当に 5 回 block するようになった(`G_stack` の追加分 1 回)。5 のまま
 だと最後の 1 回が escalate に化けるため、4→5 に上げた `G_pr` 追加時と
 同じ論法で 6 に上げた。
 
@@ -566,7 +566,7 @@ orphan PR(base 宣言の不整合)自体は発生しない —— base チェー
 Plan mode を経ない作業(直接編集・小修正)は `plan-precedent-gate` の
 チェックを一切通らないため、Plan を経由しない新設コードが無審査のまま
 PR に載る経路が残る。`G_prior` はその最後の関門として、PR に**新しい
-道具・単位**が追加されているのに本文へ `既存手段:` の記載が無い状態を
+道具・単位**が追加されているのに本文へ `既存手段:` の記載がない状態を
 「あとは終わるだけ」の一点で block する。
 
 ### 判定エンジンは `new-tool-guard` の `is_new_tool_unit` を単一正本にする
@@ -579,20 +579,20 @@ Write 時の hook(`new-tool-guard` 自身、着手の瞬間の前倒し gate)・
 使う。`repo::added_files()` が `origin/<base>...HEAD` の merge-base diff から
 追加ファイル(`--diff-filter=A`)だけを取り出し、`gates::prior` が
 `is_new_tool_unit` を直接呼んで判定する(bash 版は `new-tool-guard classify`
-を外部コマンドとして呼び、バイナリが無ければ非該当にしていた。Rust 版は
-同じクレートをリンクするのでこの縮退は無い)。base の ref が手元に無い(fetch
+を外部コマンドとして呼び、バイナリがなければ非該当にしていた。Rust 版は
+同じクレートをリンクするのでこの縮退はない)。base の ref が手元にない(fetch
 に失敗する)場合は判定不能として完全に沈黙する(断定に変えない —
 `default_branch()` が origin/HEAD 未設定を空で返すのと同じ縮退)。
 
-### ledger のキーは書き込み先の toplevel、パスは repo 相対(#661)
+### ledger のキーは書き込み先の toplevel、パスはリポジトリ相対(#661)
 
 Write 時の hook は ledger のキーに `CLAUDE_PROJECT_DIR` ではなく、書き込み
 先ファイルが属する worktree の git toplevel を使う。並列 worktree
 (`.claude/worktrees/agent-*`)のサブエージェントでは `CLAUDE_PROJECT_DIR`
-が親のリポジトリを指しうるので、cwd の toplevel をキーにする `register`
+が親のリポジトリを指す可能性があるため、cwd の toplevel をキーにする `register`
 と別の ledger を見てしまい、register 済みの Write を拒否していた。
 照合はレコードのパスも Write のパスも toplevel からの相対に正規化して
-比べる(`G_prior` が repo 相対で照合するのと同じ書式)ので、絶対パスで
+比べる(`G_prior` がリポジトリ相対で照合するのと同じ書式)ので、絶対パスで
 register しても相対パスで register しても一致する。
 
 Bash の `printf >` や heredoc でファイルを作る経路は検出しない。これは
@@ -626,22 +626,22 @@ block メッセージに合流させる。案内文は `## 解決策` 節への 
 block は、終了コード 0 の標準出力の JSON(`{"decision": "block", "reason": …}`)で出す。以前は終了コード 2 と標準エラーで
 出していた。Stop の結果は `agent_session::StopOutcome` に型があり、描画は `Reply::render`(Stop)の 1 か所が持つ
 (`docs/agents/agent-libraries.md`)。素通りで出す advisory は、診断として標準エラーに残す。モデルへ渡る文は同じ
-(標準エラーの文字列と JSON の `reason` は同一)で、利用者への表示のラベルが変わりうる(未確認。後続の実機確認で見る)。
+(標準エラーの文字列と JSON の `reason` は同一)で、利用者への表示のラベルが変わる可能性がある(未確認。後続の実機確認で見る)。
 
 ## `stop_hook_active` を見ない理由
 
 既存の `wrapup-stop-gate` は `stop_hook_active == true` を見て即 `exit 0` する
-（無限ループガード）。pr-gate に同じ形を持ち込むと、1 回目の block（例: 未 push）で
+(無限ループガード)。pr-gate に同じ形を持ち込むと、1 回目の block(例: 未 push)で
 Claude が push した直後の 2 回目の呼び出しが `stop_hook_active=true` で即座に素通りし、
 **CI の判定に一度も到達しない**。
 
-これは `docs/agents/copilot-plan-review.md` の「第二次の非収束」（最終ラウンドに carry-over 判定の
-機会が無く、`open set = ∅` が原理的に到達不能だった話）と同型の穴である。pr-gate は
-`stop_hook_active` を無視し(型では `Reentry::Recheck`。`stop::REENTRY`)、**独自カウンタ**（`state/<sid>.count`）で上限を持つ。
+これは `docs/agents/copilot-plan-review.md` の「第二次の非収束」(最終ラウンドに carry-over 判定の
+機会がなく、`open set = ∅` が原理的に到達不能だった話)と同型の穴である。pr-gate は
+`stop_hook_active` を無視し(型では `Reentry::Recheck`。`stop::REENTRY`)、**独自カウンタ**(`state/<sid>.count`)で上限を持つ。
 `count == MAX_BLOCKS` に達したら 1 回だけ escalate 文言を返して
 `state/<sid>.escalated` を touch し、以後そのセッションは無条件で素通る。
-`escalated` のチェックは上限判定より**前**に置く（`docs/agents/copilot-plan-review.md` の closer /
-escalated と同じ置き方）。block cap（Claude Code 側の「連続 8 回で打ち切り」）の消費は
+`escalated` のチェックは上限判定より**前**に置く(`docs/agents/copilot-plan-review.md` の closer /
+escalated と同じ置き方)。block cap(Claude Code 側の「連続 8 回で打ち切り」)の消費は
 wrapup 側と合わせて最大 5 回に収まる。
 
 **同じ文面の block が続いたときは、上限を待たずに escalate する**(F9、`PR_GATE_SAME_BLOCK_LIMIT`、既定 2、0 で無効)。
@@ -652,30 +652,30 @@ block し、`AskUserQuestion` の GO/NO-GO まで抜けられなかった)。文
 再実行を起動済みの古い失敗は、block に数えない(2026-11-12、`e890057a`)ので、この規則は、最新の run の赤が同じ原因で
 残り続ける場合の手当てである。
 
-## required check が無いと、ゲートは空振りする
+## required check がないと、ゲートは空振りする
 
 `gh pr checks --required` は required status check が 1 件も設定されていないと
 `no required checks reported` を出して **exit 0** する。つまり ruleset を先に直さないと、
 pr-gate の CI ゲートは「常に緑」を返す no-op になる。実装順序:
 
 1. `.github/workflows/{ci,nix}.yml` の `pull_request` から path / branch フィルタを外す
-   （required check は「報告されない = 満たされない」ので、フィルタで報告漏れがあると
-   その PR は永久に block されたままになる）— 完了。
-2. `Ephemeral Initial` ruleset（id `19799324`）に `required_status_checks` を追加する
+   (required check は「報告されない = 満たされない」ので、フィルタで報告漏れがあると
+   その PR は永久に block されたままになる)— 完了。
+2. `Ephemeral Initial` ruleset(id `19799324`)に `required_status_checks` を追加する
    — 2026-09-09、#129 で完了。6 job の check run 名
    (`Shell script validation` / `Escape-hatch dry-run` / `nix flake check` /
    `build personal-pop` / `build company-pop-old` / `build company-pop-new`)を
    そのまま登録した。
 
-ruleset は `~DEFAULT_BRANCH` スコープのままにした（stacked PR まで対象を
+ruleset は `~DEFAULT_BRANCH` スコープのままにした(stacked PR まで対象を
 広げると、同じ ruleset に同居する `pull_request` / `non_fast_forward` が全ブランチに
-掛かってしまい作業不能になる）。stacked PR のマージ先 feature branch は自身が `main` への
+掛かってしまい作業不能になる)。stacked PR のマージ先 feature branch は自身が `main` への
 PR を持ち、そちらが ruleset の対象なので、`main` への merge-time safety はそれで保たれる。
 
 **ruleset のスコープ(適用対象)と CI の報告(発火するかどうか)は別軸** —
 `~DEFAULT_BRANCH` スコープなので非 default branch の PR には
 `required_status_checks` は適用されないが、両 workflow の `pull_request`
-にブランチフィルタが無い(手順 1)ため CI 自体は base を問わず走り、
+にブランチフィルタがない(手順 1)ため CI 自体は base を問わず走り、
 チェックは報告される。stacked PR で quiesce モードに縮退するのは
 「チェックが報告されない」からではなく「required 集合 E が空」だからで
 ある、という区別は #133 で再検証済み(`docs/stacked-pr-github-native.md`
@@ -684,14 +684,14 @@ PR を持ち、そちらが ruleset の対象なので、`main` への merge-tim
 ## 中心不変条件: 「揃っていない集合を緑と読まない」
 
 pr-gate の G_CI を実装するときに Codex plan-review で 3 回連続して指摘された欠陥は、
-すべて同じ形をしている——**「チェックが無い/揃っていない」を `gh` がそのまま exit 0
+すべて同じ形をしている——**「チェックがない/揃っていない」を `gh` がそのまま exit 0
 で返してくる 3 つの経路**を、素通りの理由にしてしまうことだった。
 
 | # | 経路 | 何が起きるか |
 |---|---|---|
-| 1 | push 直後 | check run がまだ GitHub の API に現れていない（[cli/cli#7401]） |
+| 1 | push 直後 | check run がまだ GitHub の API に現れていない([cli/cli#7401]) |
 | 2 | stacked PR | ruleset の対象外(base が `main` 以外)で required が 0 件(CI 自体は base を問わず報告される。「対象外」は E が空になることを言っており「報告されない」ことではない) |
-| 3 | 部分出現 | 6 件のうち一部だけが現れ、その部分集合が pass した時点で `--watch` が早期終了する（[cli/cli#9973]） |
+| 3 | 部分出現 | 6 件のうち一部だけが現れ、その部分集合が pass した時点で `--watch` が早期終了する([cli/cli#9973]) |
 
 [cli/cli#7401]: https://github.com/cli/cli/issues/7401
 [cli/cli#9973]: https://github.com/cli/cli/issues/9973
@@ -707,28 +707,28 @@ acceptance criterion を確率的な写像に任せない」と同じ論理を�
 1. **期待集合 E をサーバから取る** — `gh api repos/<nwo>/rules/branches/<base>` の
    `required_status_checks[].context`。単一の真実をサーバと共有することで
    「何件揃えば良いか」を推測しない。この API 呼び出しには本質的に異なる
-   3 状態がある: (a) ruleset に `required_status_checks` が無い、(b) `base`
+   3 状態がある: (a) ruleset に `required_status_checks` がない、(b) `base`
    が ruleset の対象外(スコープ外のブランチ、stacked PR で起きる想定内の
    経路)、(c) API 呼び出し自体の失敗、または応答のパース失敗。(a)/(b) は
-   区別不要 — どちらも「required 無し」として quiesce(3.)で近似する。(c) は
-   一時的な API 障害を「required 無し」と誤読しうる経路で、required が実在
+   区別不要 — どちらも「required なし」として quiesce(3.)で近似する。(c) は
+   一時的な API 障害を「required なし」と誤読する可能性がある経路で、required が実在
    する状態のほうが誤読の害が大きいため、`expected_contexts()`
    (`crates/pr-gate/src/gates/ci.rs`)は (c) を `Err` で区別し、
    `ci::run()` は quiesce に縮退させず `Status::ApiFailure` として
    block する(#135)。
-2. E が非空なら、報告集合 R が `E ⊆ R` になるまでポーリングして待つ（出現待ち）
-3. E が空（stacked PR）なら、E の代わりに **quiescence**（報告件数が一定時間増えない）
+2. E が非空なら、報告集合 R が `E ⊆ R` になるまでポーリングして待つ(出現待ち)
+3. E が空(stacked PR)なら、E の代わりに **quiescence**(報告件数が一定時間増えない)
    で「揃った」を近似する
 4. `--json` を `PR_GATE_POLL_INTERVAL` ごとに取り直して `ci::decide` に通す
-   （`gh pr checks --watch` は呼ばない。pending のとき gh が exit 8 を返しても、標準出力が
-   配列なら読む）
+   (`gh pr checks --watch` は呼ばない。pending のとき gh が exit 8 を返しても、標準出力が
+   配列なら読む)
 5. **判定は 2 つの集合に分ける**(下の「待ち方」節): 報告された全チェックに fail/cancel が
    1 件でもあれば即 FAILED。E ⊆ R かつ E の全件が pass/skipping なら即 PASS
-   （E 外の pending は待たない）
+   (E 外の pending は待たない)
 
 どの経路でも「0 件」も「部分集合」も PASS には落ちない。stacked PR で required が
 取れないときも「緑」と主張せず、報告された全チェックで判定したことを注記した上で判定する
-（`docs/agents/issue-index.md` の「嘘の正確な数字を出さない」と同じ立場）。
+(`docs/agents/issue-index.md` の「嘘の正確な数字を出さない」と同じ立場)。
 
 ## 待ち方: 早期 NG・早期 OK(`pr-checks-wait`)
 
@@ -738,7 +738,7 @@ acceptance criterion を確率的な写像に任せない」と同じ論理を�
 - `--required --watch --fail-fast`: 失敗を見る集合と OK を判定する集合が同じ(required)。
   required の `CI passed` は集約ジョブ(`.github/workflows/ci.yml` の
   `needs: [...]` + `if: always()`)で、**全ジョブの完了後にしか結果を出さない**。
-  30 秒で落ちたジョブの NG が、最も遅い build の完了まで報告されない。
+  30 秒で失敗したジョブの NG が、最も遅い build の完了まで報告されない。
 - `--watch --fail-fast`(`--required` なし): 赤は早く見えるが、required でない
   チェック(`Build altair` など)の完了まで OK が出ない。
 
@@ -755,7 +755,7 @@ Stop の G_CI と待ちの CLI `pr-checks-wait` が同じ関数を使う(判定�
 同じ workflow に複数の run があれば、`link` の run ID が最大(最新)のものだけを判定に使う。同じ head に run が
 重なると、先の run は concurrency で cancel され、その集約ジョブ(`CI passed`)は fail で報告される。新しい run の
 同名のチェックがまだ作られていない間、その古い fail を NG と読むと誤報になる(#1157 で実際に起きた)。re-run は
-同じ run ID のままなので、これで落ちない。run ID の無いチェック(外部の status context)は残す。
+同じ run ID のままなので、これで失敗しない。run ID のないチェック(外部の status context)は残す。
 
 `cancel` は即時 NG にしない。同じ head の後続の run に置き換えられた(concurrency の `cancel-in-progress`)だけのことがあり、
 #1157 では先の run の `cancel` を赤と読んで誤って NG を返した。E が全緑なら OK、pending が残る間は待ち、pending が 0 に
@@ -764,17 +764,17 @@ Stop の G_CI と待ちの CLI `pr-checks-wait` が同じ関数を使う(判定�
 強制 push の直後は、新しい run のチェックがまだ現れず、古い run の取消(と、その集約ジョブの失敗)だけが見える。失敗・取消が、
 すべて「取り消された run」(run の conclusion が `cancelled`。`repos/<nwo>/actions/runs/<id>` を 1 回引く)のものなら、
 `PR_GATE_CANCEL_GRACE`(既定 120 秒)のあいだ、新しい run を待つ(`failures_are_only_cancelled_runs`)。猶予を過ぎても新しい run が
-来なければ、本当の NG とする。失敗の中に run の無いもの(外部の status)が混じるときと、run の conclusion が `cancelled` でない
+来なければ、本当の NG とする。失敗の中に run のないもの(外部の status)が混じるときと、run の conclusion が `cancelled` でない
 ときは、待たずに NG のままである。
 
-置き換えられた古い run の required は、2 つの扱いを足す。(1) 古い run の required が pending(`gh run rerun --failed` の再実行中)の
+置き換えられた古い run の required は、2 つの扱いを追加する。(1) 古い run の required が pending(`gh run rerun --failed` の再実行中)の
 あいだは、新しい run が全緑でも OK にしない(`decide` が Wait を返す)。(2) 古い run に失敗した required が残っていて、全緑で OK のときは、
 OK の下に注記を出す(`stale_failure_note`。run の ID と `gh run rerun --failed <run>`)。NG にしないのは、GitHub のマージ API が
 古い run の失敗でどの条件で拒否するかを文書で確かめていないため(2026-11-11 に、11 段の stack で `merge-async` が
 「Required status check CI passed is failing」で拒否した 1 件の実測だけ)。
 
 required の未出現は、他のチェックが pending の間は出現待ちの上限(`PR_GATE_CHECK_APPEAR_TIMEOUT`)で打ち切らない。
-報告が 1 件も無い間も同じで、出現待ちの上限では確定せず、全体の時間切れまで待つ(F77、2026-11-18。PR を作った直後に
+報告が 1 件もない間も同じで、出現待ちの上限では確定せず、全体の時間切れまで待つ(F77、2026-11-18。PR を作った直後に
 `pr-checks-wait` を実行して、workflow が 1 つも登録される前に判定不能(exit 2)で終わった。直後に読むと全緑だった)。
 報告が 1 件以上あり、pending が 0 のまま required だけが出ないときは、起動していないと見て、上限で `Missing` にする
 (base が既定ブランチでない stacked PR で、required の workflow が `branches` を既定ブランチだけに絞っていると起動しない。
@@ -809,17 +809,17 @@ pr-checks-wait [<PR>] [-R OWNER/REPO] [--timeout SECS]   # 既定 1500 秒
 | 0 | OK(E が全緑) |
 | 1 | NG(赤 1 件以上。失敗ジョブ名・link・`gh run view … --log-failed` を出す) |
 | 8 | 時間切れで pending(gh の pending と同じ値) |
-| 2 | 判定不能(チェックが揃わない・required が 0 件・API 失敗・引数の誤り)。required が 0 件のときは、報告が静止して pending が無くても成功にしない(#1343)。PR が base と衝突(`mergeable: CONFLICTING`)していて CI が起動していないときは、その旨を注記する(GitHub は衝突した PR の `pull_request` CI を起動しない) |
+| 2 | 判定不能(チェックが揃わない・required が 0 件・API 失敗・引数の誤り)。required が 0 件のときは、報告が静止して pending がなくても成功にしない(#1343)。PR が base と衝突(`mergeable: CONFLICTING`)していて CI が起動していないときは、その旨を注記する(GitHub は衝突した PR の `pull_request` CI を起動しない) |
 
 結果は stdout の 1〜数行で、`run_in_background` の完了通知にそのまま載る。エージェントは
 `gh pr checks --watch` や `until` のポーリングでなく、これを背景で実行して完了通知を待つ。
 
 ## 発火範囲
 
-`~/.claude/pr-gate-repos`（1 行 1 nwo）にある repo だけで判定する。他ホスト・他リポジトリ
-（特に会社の他リポジトリ群）ではスクリプト自体は無条件配備されているが、allowlist に無ければ
+`~/.claude/pr-gate-repos`(1 行 1 nwo)にあるリポジトリだけで判定する。他ホスト・他リポジトリ
+(特に会社の他リポジトリ群)ではスクリプト自体は無条件配備されているが、allowlist になければ
 `git remote -v` で nwo を取った直後に完全沈黙する。会社リポジトリ側にはすでに
-「検査ではなく道具を配る」（ADR 0011）という別の合意があり、その領域を無断で広げない。
+「検査ではなくツールを配る」(ADR 0011)という別の合意があり、その領域を無断で広げない。
 
 ## 運用
 
@@ -830,7 +830,7 @@ pr-checks-wait [<PR>] [-R OWNER/REPO] [--timeout SECS]   # 既定 1500 秒
 | `PR_GATE_DIR` | `~/.claude/pr-gate` | state の置き場所 |
 | `PR_GATE_ALLOWLIST` | `~/.claude/pr-gate-repos` | 判定対象 nwo の一覧 |
 | `PR_GATE_SAME_BLOCK_LIMIT` | `2` | 直前の block と同じ文面が連続した回数がこれに達したら、`PR_GATE_MAX_BLOCKS` を待たず escalate(0 で無効。F9) |
-| `PR_GATE_MAX_BLOCKS` | `6` | escalate までの block 回数（G_link 追加時に 3→4、G_pr 追加時に 4→5、G_stack 追加時に 5→6 に引き上げ。G_visual は G_link と同じ block に合流するので据え置き。下記参照） |
+| `PR_GATE_MAX_BLOCKS` | `6` | escalate までの block 回数(G_link 追加時に 3→4、G_pr 追加時に 4→5、G_stack 追加時に 5→6 に引き上げ。G_visual は G_link と同じ block に合流するので据え置き。下記参照) |
 | `PR_GATE_CI_TIMEOUT` | `300` | Stop で CI の判定を待つ上限(秒)。`pr-checks-wait` は `--timeout`(既定 1500) |
 | `PR_GATE_POLL_INTERVAL` | `10` | 判定のためにチェックを取り直す間隔(秒、小数可) |
 | `PR_GATE_CHECK_APPEAR_TIMEOUT` | `60` | 期待集合の出現待ち上限(秒) |
@@ -862,19 +862,19 @@ cargo test -p pr-gate
 hook 経路を end-to-end に駆動する。旧 `pr-gate.sh --selftest` の 111 件の check を
 `tests/{stop,session_start}.rs` と unit test に 1 対 1 で移してある。回帰テストとして特に重要なのは:
 
-- **PASS 経路が到達可能であること**（`docs/agents/copilot-plan-review.md` の「第二次の非収束」と
-  同種の穴——ゲートが弾くだけで一度も通さない実装になっていないかの検査）
+- **PASS 経路が到達可能であること**(`docs/agents/copilot-plan-review.md` の「第二次の非収束」と
+  同種の穴——ゲートが弾くだけで一度も通さない実装になっていないかの検査)
 - **`--watch` を呼ばず、その exit code に依存していないこと** — stub の `--watch` は
-  exit 97 で落ちる設計にし、`--json` が部分 pending / fail を返すケースで block されること、
-  呼び出しログに `--watch` が現れないこと（上記「部分出現」の回帰テスト）
+  exit 97 で失敗する設計にし、`--json` が部分 pending / fail を返すケースで block されること、
+  呼び出しログに `--watch` が現れないこと(上記「部分出現」の回帰テスト)
 - **早期 NG・早期 OK**(`tests/stop.rs` の `g_ci_*`、`tests/checks_wait.rs`) — required が
   pending のまま E 外が赤なら即 block / NG、E が全緑なら E 外 pending を待たずに OK、
   stacked PR は既定ブランチの required で判定、取り直しながら待って緑に変わるケース
 - **チェック 0 件・部分出現・stacked PR フォールバックのそれぞれで block/pass が
   正しく分岐すること**
-- **`G_unpushed`**: PR 無し + 未 push commit あり(block)/ PR 無し + 0 件(完全沈黙)
+- **`G_unpushed`**: PR なし + 未 push commit あり(block)/ PR なし + 0 件(完全沈黙)
   の両方
-- **`G_pr`**: push 済み・PR 無し・ahead>0 で block、merged/closed PR が既にある
+- **`G_pr`**: push 済み・PR なし・ahead>0 で block、merged/closed PR が既にある
   ときは block しない、`origin/HEAD` 不明のときは block しない、ahead 0 のときは
   block しない
 - **`G_visual`**: 画像・fence・No-Visual: のいずれかで PASS すること、fence は

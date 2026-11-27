@@ -38,12 +38,12 @@ crate・timer という可動部品を持つことになる。スキルは登録
 ## 先行例との関係
 
 - **todocheck**(<https://github.com/preslavmihaylov/todocheck>, 2026-09-20 取得)
-  は `TODO(#N)` の参照先が閉じていたら lint を落とす
+  は `TODO(#N)` の参照先が閉じていたら lint を失敗させる
 - **ory/closed-reference-notifier**(<https://github.com/ory/closed-reference-notifier>,
   2026-09-20 取得)は参照先が閉じたらローカル issue を起票する
 
-どちらも「閉じた」ことだけで機械的に終端する。このスキルは終端を機械判定に
-しない。completed と not planned では次の手が逆になるため、裁定を読んでから
+どちらも「閉じた」ことだけで機械的に完了とみなす。このスキルでは機械的な完了判定を行わない。
+completed と not planned では次の手順が逆になるため、裁定内容を確認してから
 言及元を書き直す(SKILL.md §4)。
 
 - **Homebrew Formula Cookbook**(<https://docs.brew.sh/Formula-Cookbook>,

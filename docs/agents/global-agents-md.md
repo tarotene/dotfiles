@@ -10,7 +10,7 @@ Claude の固有指示は `~/.agents/AGENTS.md` を import する。決定の経
 `global-claude-md.md` が記録するとおり、`~/.claude/CLAUDE.md` は「Claude
 Code が全セッションに常時読み込む唯一の経路」という理由で作られた。この
 時点(#252 系)では Codex CLI・Copilot CLI にグローバル指示ファイルを
-配備する仕組みが無く、比較対象が存在しなかったため「グローバル指示 =
+配備する仕組みがなく、比較対象が存在しなかったため「グローバル指示 =
 Claude 専用ファイル」という前提が疑われないまま定着した。
 
 一方でリポジトリ単位の指示ファイルは ADR-0016 で「AGENTS.md が AI 向け
@@ -60,7 +60,7 @@ Code 固有」。例えば stacked PR(ADR-0027)は「同一セッションの複
 2026-09-22 取得)では未規定(リポジトリ内配置のみを規定)で、各 CLI の
 独自拡張である。一次情報を確認した結果:
 
-- **Codex CLI**: `~/.codex/AGENTS.md` をネイティブに読む。global → repo
+- **Codex CLI**: `~/.codex/AGENTS.md` をネイティブに読む。global → リポジトリ
   root → cwd の順で連結し後勝ち、合計 32 KiB 上限(OpenAI 公式 "Custom
   instructions with AGENTS.md"
   https://developers.openai.com/codex/guides/agents-md、2026-09-22 取得)。

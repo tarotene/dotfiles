@@ -11,7 +11,7 @@ README/CONTRIBUTING → GitHub メタデータ反映 → governance 播種)を�
 
 ## なぜ必要だったか
 
-`gh repo create` 自体には作成直後に走るフック機構が無く、作成時の強制点は
+`gh repo create` 自体には作成直後に走るフック機構がなく、作成時の強制点は
 `repo-charter` スキルという散文的手順のみだった(ADR-0013 Decision 2)。
 ある private リポジトリの新規作成セッションで、`repo-charter` SKILL.md §8
 の `core` 型手順が `apply-repo-settings.sh`(squash-only 化・delete-
@@ -21,7 +21,7 @@ branch-on-merge 等の repository settings 適用)の呼び出しを欠いたま
 
 手順書き漏れそのものは `repo-charter` SKILL.md 側の修正(§8 `core` 型に
 `apply-repo-settings.sh` の呼び出しを追加)で直したが、「散文的手順を
-読み飛ばせば常に起こりうる」という構造は残る。`gh repo create` の存在
+読み飛ばせば常に起こり得る」という構造は残る。`gh repo create` の存在
 そのものは、意味判断を要さず存在チェック(コマンド位置一致)だけで機械的に
 deny できるため、ADR-0013 が「意味判断が絡み LLM なしでは無理」として
 見送った Issue 起票時照合とは別種の判断であり、今回は作成時点だけ機械
@@ -29,7 +29,7 @@ deny できるため、ADR-0013 が「意味判断が絡み LLM なしでは無�
 
 ## 判定
 
-1コマンド文字列から、対象コマンド(`gh repo create ...` または `gh api
+コマンド文字列から、対象コマンド(`gh repo create ...` または `gh api
 ...`)を**コマンド位置**で検出し、範囲ごとに判定する。コマンド文字列全体を
 正規表現で見ない理由は `attribution-guard.sh`(`docs/claude/attribution-
 guard.md`)と同じ — docs やコミットメッセージに例として書いただけで誤発火
@@ -86,7 +86,7 @@ auto モードの分類器がそれを safety bypass と判定して拒否した
 
 `gh` 経由の作成は deny できるが、`curl` で直接 `api.github.com/user/repos`
 を叩く経路や GitHub の Web UI からの作成はこの hook の対象外(そこまで
-塞ぐには GitHub 側の仕組みが要る)。軸: 検出のみ — ADR-543 D1 の
+塞ぐには GitHub 側の仕組みが必要)。軸: 検出のみ — ADR-543 D1 の
 「フルスクラッチ自体は表現不可能にできない」と同型の限界。
 
 ## 検査
@@ -95,7 +95,7 @@ auto モードの分類器がそれを safety bypass と判定して拒否した
   と播種スクリプトに対して、閉語彙チェックの合否・topic 必須・既存リポジトリの再開・
   `--dry-run` で `gh` を呼ばないこと等を固定。ci.yml が実行する)。
 - `crates/repo-create-guard/tests/cli.rs` が、bash 版 `--selftest` の全 9 ケースを
-  ネットワーク無しに実バイナリへ固定している(`cargo test --workspace`、ci.yml の
+  ネットワークなしに実バイナリへ固定している(`cargo test --workspace`、ci.yml の
   rust ジョブ)。
 
 ## 登録形
@@ -104,4 +104,4 @@ hook-router の規則の表(`crates/hook-router/src/rules.rs`、node `repo-creat
 予算 15 秒で載っている([hook-router.md](hook-router.md))。GitHub の MCP が接続されたとき、Bash 単体の登録だと
 無検査になるため、`attribution-guard` と同じ範囲にしてある。ただし MCP の判定は未実装(意図あり)で、`hook` は
 Bash 以外(MCP を含む)を判定せず通す(`ToolCall::bash_command()` が `None`)。GitHub の MCP が接続されたら、
-`attribution-guard` の `decide_mcp` と同じ形で足す。判定は文字列処理のみで gh API 往復を持たない。
+`attribution-guard` の `decide_mcp` と同じ形で追加する。判定は文字列処理のみで gh API 往復を持たない。
