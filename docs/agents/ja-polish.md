@@ -161,6 +161,10 @@ ja-polish bench crates/ja-polish/bench/samples.txt [--variants model[@level],…
   (質は、用語の置き換え・全角括弧の増減・変更行の割合と、差分を読むことで見る)。
   参照つきの見本は `crates/ja-polish/bench/needs-fix.txt`(PR #1738 の base と head。head は `git fetch origin pull/1738/head` で取れる):
   `ja-polish bench crates/ja-polish/bench/needs-fix.txt --variants …`。
+- **用語の置き換えを測る見本**(ADR-1387 の D21): `crates/ja-polish/bench/terms.txt` は、`WATCHED_SWAPS` の語(主のモデル・予備のモデル・
+  時間切れ・送り先など)を多く含む文書で、参照は付けない。`needs-fix.txt` の見本にはこれらの語がほとんどなく、「用語の置き換え」の列が
+  機能しない(D20 の測定で 0 と出たのはそのため)。指示文を変更した際は、`needs-fix.txt`(直す量)と `terms.txt`(置き換え)の両方で測定する。
+  一方だけを見ると、置き換えを減らしつつ直す量も減らしてしまう案(D21 で試して不採用とした案)が良く見えてしまう。
 - 1 組ごとに数十秒〜数分かかる。見本を入れ替えたときと、モデルが変わったときに、測り直す。
 
 ## 記録
