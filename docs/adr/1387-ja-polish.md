@@ -202,6 +202,10 @@ D15 の物差し(時間・書き直しの件数・括弧・用語の置き換え
 - 4 つの Python パッケージを固定するので、nixpkgs の追従を見て外す作業が残る。
 - 各機体で `llm keys set gemini` の手作業が一度要る。
 - 会社の機体では、送り先の要件を確かめて enable を立てるまで有効にならない(#1385)。
+- `crates/ja-polish/src/llm.rs` — 観点の点検を求める指示文(`system_prompt`、D20)
+- `crates/ja-polish/src/config.rs` — 既定のモデル・予備・思考量(`DEFAULT_MODEL`・`DEFAULT_FALLBACK_MODEL`・`DEFAULT_THINKING_LEVEL`、D19)
+- `home/modules/ja-polish.nix` — 設定ファイルの既定のモデル・予備・思考量(D19)
+- `crates/ja-polish/src/main.rs` — bench の既定の組(`default_variants`、D19)
 - 混雑・時間切れでは、予備のモデルの分だけ、1 つの束の待ちが延びる。時間切れは、同じモデルで待ち直さないので、最悪が 45 秒 + 予備の 45 秒 = 90 秒で、以前の 120 秒より長くならない。混雑の拒否は、すぐ返るのが普通なので、再依頼の待ち(2 秒 + 6 秒)と予備の 45 秒までで 1 分に満たない。拒否が毎回遅く返るときは、この見積りを超える(未観測)。
 
 ## 執行点
