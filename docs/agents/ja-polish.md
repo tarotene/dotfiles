@@ -164,6 +164,10 @@ ja-polish bench crates/ja-polish/bench/samples.txt [--variants model[@level],…
 
 - `sha`: 段落の**最終の**本文(空白をそろえてから)。書き直した段落は書き直した後の本文、素通しの段落は元の本文。
 - `state`: `polished`(書き直した、または直す必要が無いと確かめた)か `skipped`(素通し。`reason` つき)。
+- `changed`: 書き直した段落で、モデル(と後段の textlint)が、前段の直しのあとの本文を変えたか(`true`・`false`)。
+  素通しの記録と古い記録には無い。`polished` は「変えずに返した」段落も含むので、劣化したモデルが何も直さずに
+  返しても通った段落に数えられる。この印と `model` から、予備のモデルが答えた割合と、変えずに返した割合を数え
+  (`records::quality_rate`)、予備の割合が高いときはセッションの冒頭で知らせる(`gate-failopen-advisory`、ADR-1387 の D17)。
 - 関所(投稿の PreToolUse = 「投稿の関所」、文書ファイルの Stop = 「文書ファイルの関所」)は state を区別せず、`sha` があれば通したとみなす。
   素通しで止めないための設計で、素通しは次の gate イベントが知らせる。
 

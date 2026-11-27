@@ -130,6 +130,19 @@ D11 の「測って決める」を、コマンドにする。`ja-polish bench <�
 先行例なし: この ADR の D9・D12・D14 と、`docs/agents/ja-polish.md`、`crates/ja-polish/src/{blocks,polish,records}.rs` を読んだ。割合の閾値を持つ対象判定は、リポジトリの中に見つからなかった(`ratio` を探して、当たったのは `bench.rs` の集計だけ)。外部には、同じ形の先行例を探していない。
 軸: 検出のみ — 関所の誤爆を減らすだけで、整形されていない文書を表現不可能にはしない。
 
+### D17: 書き直しの記録に「変更の有無」を残し、予備のモデルが答えた割合をセッションの冒頭で知らせる
+
+2026-11-27 に、直近 7 日の記録(vega)を集計した。書き直した(`polished`)5,009 段落のうち 4,470 段落(89%)は、予備のモデル `gemini-flash-lite-latest` が答えたものだった。主のモデル `gemini-3.6-flash` は、無料枠の 1 日の上限(D16 の前提。1 モデルあたり 1 日 20 回)にすぐ届き、その後の依頼はすべて予備に流れる。予備が何も直さずに返した段落も `polished` として記録され、関所を通る。その結果、直すべき日本語が直らないまま通った(PR #1738 の、`ja-polish` を通した後の `docs/agents` の文書に、エージェントが +1,874 行・−2,403 行の書き直しを入れた)。
+
+D14 の知らせ(`billing_line`)は素通しの率しか見ないので、この劣化には反応しない。素通しにならず、予備が答えて通るためである。
+
+- 記録の `Entry` に、`changed`(モデルと後段の textlint が、前段の直しのあとの本文を変えたか)を足す。`Option<bool>`: 古い記録と素通しの記録には無く、率は印のある記録だけで数える。
+- `records::quality_rate` が、期間内の書き直しのうち、主のモデル以外が答えた割合と、変更なしで返した割合を数える。
+- `gate-failopen-advisory` が、予備が答えた割合が 10% を超えたら(件数の下限は D14 と同じ 20)、セッションの冒頭で 1 行知らせる。閾値は環境変数 `JA_POLISH_FALLBACK_ADVISORY_PERCENT`。
+
+先行例: `crates/gate-failopen-advisory` の `billing_line`(ADR-1387 D14、取得 2026-11-27)。差分: 異なる — 素通しの率でなく、通ったが予備のモデルが答えた段落の率を、同じ期間・同じ下限で数える。
+軸: 検出のみ — 質の劣化を見えるようにするだけで、防がない(防ぐのは、送り先を直す別の段)。
+
 ### 執行点
 
 - `crates/ja-polish/src/llm.rs` — 失敗の 3 種(`FailureKind`)と、標準エラーからの判定(`classify_stderr`)、`-o thinking_level` の受け渡し
@@ -145,6 +158,9 @@ D11 の「測って決める」を、コマンドにする。`ja-polish bench <�
 - `crates/ja-polish/src/blocks.rs` — 日本語の割合(`MIN_JP_SHARE`・`jp_share`、D16)
 - `crates/ja-polish/src/polish.rs` — 対象の判定に割合を足す(`is_japanese`)、1 日の上限の素通しに印を渡す(`Skip`、D16)
 - `crates/ja-polish/src/records.rs` — 1 日の上限の印(`daily_limit`)と、それを見る「動けない」の判定(`unavailable`、D16)
+- `crates/ja-polish/src/records.rs` — 変更の有無の印(`changed`)と、予備が答えた割合・変更なしの割合(`quality_rate`、D17)
+- `crates/ja-polish/src/polish.rs` — 書き直した段落に `changed` を渡す(D17)
+- `crates/gate-failopen-advisory/src/main.rs` — 予備のモデルが答えた割合の知らせ(`fallback_line`、D17)
 - `crates/ja-polish/src/bench.rs` — 見本の測定(`measure`・`render_table`、D15)
 - `crates/ja-polish/bench/samples.txt` — 固定の見本の一覧(D15)
 
@@ -203,4 +219,5 @@ D11 の「測って決める」を、コマンドにする。`ja-polish bench <�
 - D12: 素通しの段落を、`ja-polish` の次の実行で書き直しの対象に戻す。先行例なし: このリポジトリの記録まわりの設計(`docs/agents/ja-polish.md`、`docs/agents/gate-failopen-advisory.md`、取得 2026-11-12)だけを探し、同じ問題の扱いは見つからなかった。外部の例は探していない(未確認)。軸: 還元 — 記録の読み込みを 2 つに分けるだけ。
 - D13: Gemini の前後に textlint の自動修正を挟む。先行例: textlint, "CLI" https://textlint.org/docs/cli/ (取得 2026-11-12、調査の委譲先が `--fix` の説明を逐語で引いたもの)。差分: 一致 — `--fix` の自動修正をそのまま使う。設定は作業ツリーに置かず、ja-polish が実行のたびに作る。既存手段: 採用 — textlint(nixpkgs の固定版 15.7.1)。軸: 還元 — 定型の直しを、決定論の道具へ移す。
 - D14: 一時的な原因の素通しの率が閾値を超えたら、セッションの冒頭で知らせる。先行例: `crates/gate-failopen-advisory`(連続の fail-open を SessionStart で知らせる既存の仕組み、`docs/agents/gate-failopen-advisory.md`、取得 2026-11-12)。差分: 異なる — 連続回数でなく、期間内の率で判定し、件数の下限を持つ。軸: 検出のみ — 課金の判断は本人に残す。
+- D17: 書き直しの記録に変更の有無を残し、予備のモデルが答えた割合を知らせる。先行例: `crates/gate-failopen-advisory` の `billing_line`(ADR-1387 D14、`docs/agents/gate-failopen-advisory.md`、取得 2026-11-27)。差分: 異なる — 素通しの率でなく、通ったが予備のモデルが答えた段落の率を数える。軸: 検出のみ — 質の劣化を見えるようにするだけで、防がない。
 - D15: 思考量とモデルを、固定の見本の測定で決める。先行例なし: Nejumi Leaderboard 4・Japanese MT-Bench を探した(2026-11-12、本文は取得できず、未確認)。書き直しの前後を、規則の指摘数と括弧の幅で比べる先行例は見つからなかった。軸: 検出のみ — 品質の低下を測るだけで、防がない。
