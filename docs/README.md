@@ -173,7 +173,7 @@ What runs automatically, when, and on which stack: see the [pipeline map](pipeli
 <!-- BEGIN GENERATED: docs-index agents -->
 - [`agents/adr-numbering.md`](agents/adr-numbering.md) — adr-numbering — ADR 番号をローカル連番でなく導入 PR の番号にする
 - [`agents/agent-libraries.md`](agents/agent-libraries.md) — エージェント向け共通ライブラリ
-- [`agents/agent-permissions.md`](agents/agent-permissions.md) — Claude と Codex はそれぞれの native 権限設定を使う
+- [`agents/agent-permissions.md`](agents/agent-permissions.md) — Claude・Codex・Antigravity はそれぞれの native 権限設定を使う
 - [`agents/agent-settings-reconcile.md`](agents/agent-settings-reconcile.md) — agent-settings-reconcile — 宣言を settings 系ファイルへ反映する
 - [`agents/agent-tooling-authoring.md`](agents/agent-tooling-authoring.md) — agent-tooling-authoring スキル
 - [`agents/attribution-guard.md`](agents/attribution-guard.md) — attribution-guard — AI 生成テキストに attribution を強制する PreToolUse hook

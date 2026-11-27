@@ -207,6 +207,22 @@ let
 in
 {
   options.dotfiles.claudePermissions = {
+    allowRules = lib.mkOption {
+      type = lib.types.listOf lib.types.str;
+      readOnly = true;
+      default = permissionRules;
+      description = ''
+        The native `permissions.allow` rules declared for Claude (the narrow Bash prefixes plus
+        `extraAllow`). Read-only: another agent's module (home/modules/antigravity.nix) converts
+        these into its own rule syntax, so the list has one source.
+      '';
+    };
+    askRules = lib.mkOption {
+      type = lib.types.listOf lib.types.str;
+      readOnly = true;
+      default = askRules;
+      description = "The native `permissions.ask` rules declared for Claude. Read-only, same use as `allowRules`.";
+    };
     extraAllow = lib.mkOption {
       type = lib.types.listOf lib.types.str;
       default = config.dotfiles.agentPermissions.mcp_allow ++ [

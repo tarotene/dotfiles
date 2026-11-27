@@ -15,13 +15,15 @@
 //! agent-settings-reconcile claude-statusline  <settings.json> <spec-json>
 //! agent-settings-reconcile claude-mcp-servers <claude.json>   <servers-json>
 //! agent-settings-reconcile codex-config       <config.toml>   <spec-json>
+//! agent-settings-reconcile antigravity-permissions <settings.json> <spec-json>
 //! ```
 //!
 //! spec の JSON スキーマは `hooks::HooksSpec` / `settings::PermissionsSpec` /
-//! `settings::StatusLineSpec`(`codex-config` は `codex_config` のドキュメント)。
-//! nix 側は `builtins.toJSON` で作って引数で渡す。
+//! `settings::StatusLineSpec` / `antigravity::AntigravitySpec`(`codex-config` は
+//! `codex_config` のドキュメント)。nix 側は `builtins.toJSON` で作って引数で渡す。
 
 pub mod agent_permissions;
+pub mod antigravity;
 pub mod codex_config;
 pub mod hooks;
 pub mod json;
@@ -61,7 +63,8 @@ usage: agent-settings-reconcile <subcommand> <file> ...
   claude-statusline <settings.json> <spec-json>
   claude-mcp-servers <claude.json> <servers-json>
   codex-config <config.toml> <spec-json>
-  codex-permissions <config.toml> <{settings: object, mcp_allow: array}>";
+  codex-permissions <config.toml> <{settings: object, mcp_allow: array}>
+  antigravity-permissions <settings.json> <spec-json>";
 
 pub fn run(args: &[String]) -> Result<(), Failure> {
     let Some(sub) = args.first() else {
@@ -72,6 +75,7 @@ pub fn run(args: &[String]) -> Result<(), Failure> {
         "claude-hooks" | "codex-hooks-spec" => hooks_spec(rest, Flavor::Nested),
         "copilot-hooks-spec" => hooks_spec(rest, Flavor::Flat),
         "claude-permissions" => claude_permissions(rest),
+        "antigravity-permissions" => antigravity_permissions(rest),
         "claude-statusline" => with_json_spec(rest, |root, spec| settings::statusline(root, &spec)),
         "claude-mcp-servers" => mcp_servers(rest),
         "codex-config" | "codex-permissions" => {
@@ -147,6 +151,27 @@ fn claude_permissions(rest: &[String]) -> Result<(), Failure> {
     })?;
     if let Some(path) = state {
         managed::store_if_changed(path, previous.as_ref(), &settings::declared_allow(&spec))
+            .map_err(fail)?;
+    }
+    Ok(())
+}
+
+/// `antigravity-permissions <settings.json> <spec-json>`。`claude_permissions` と同じ手順で、
+/// 所有の記録(`state`)は設定ファイルの書き込みが成功したあとにだけ更新する。
+/// 規則の書式の誤りは、ファイルを書く前に実行時エラー(exit 1)で止める。
+fn antigravity_permissions(rest: &[String]) -> Result<(), Failure> {
+    let [file, spec] = rest else {
+        return Err(usage(USAGE));
+    };
+    let spec: antigravity::AntigravitySpec =
+        serde_json::from_str(spec).map_err(|e| usage(format!("spec-json: {e}")))?;
+    let state = spec.state.as_deref().map(Path::new);
+    let previous = state.and_then(managed::load);
+    edit(Path::new(file), |root| {
+        antigravity::apply(root, &spec, previous.as_ref())
+    })?;
+    if let Some(path) = state {
+        managed::store_if_changed(path, previous.as_ref(), &antigravity::declared(&spec))
             .map_err(fail)?;
     }
     Ok(())

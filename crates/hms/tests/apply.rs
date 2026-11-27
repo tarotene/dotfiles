@@ -1166,7 +1166,11 @@ fn a_child_that_outlives_hms_does_not_hold_the_lock() {
 // 自動追従 `hms --follow`(D1〜D6)
 // ---------------------------------------------------------------------------
 
-const NATIVE_SPECS: [&str; 2] = ["claude-permissions.json", "codex-permissions.json"];
+const NATIVE_SPECS: [&str; 3] = [
+    "claude-permissions.json",
+    "codex-permissions.json",
+    "antigravity-permissions.json",
+];
 
 const OLD_REV: &str = "aaaaaaa0000000000000000000000000000000aa";
 const NEW_REV: &str = "bbbbbbb1111111111111111111111111111111bb";
@@ -1515,6 +1519,11 @@ fn follow_compares_each_complete_native_spec_including_app_approvals() {
             r#"{"apps":{"_default":{"default_tools_approval_mode":"prompt"}}}"#,
             r#"{"apps":{"_default":{"default_tools_approval_mode":"approve"}}}"#,
         ),
+        (
+            "antigravity-permissions.json",
+            r#"{"enable":true,"spec":{"deny":["read_file(/home/u/.ssh)"]}}"#,
+            r#"{"enable":true,"spec":{"deny":[]}}"#,
+        ),
     ] {
         let t = T::new();
         followable(&t, "{}");
@@ -1590,6 +1599,10 @@ fn follow_applies_identical_complete_native_specs_ignoring_retired_shared_policy
         (
             "codex-permissions.json",
             r#"{"default_permissions":"native","permissions":{"native":{"extends":":workspace"}},"apps":{"_default":{"default_tools_approval_mode":"prompt"},"individual":{"tools":{"lookup":{"approval_mode":"approve"}}}}}"#,
+        ),
+        (
+            "antigravity-permissions.json",
+            r#"{"enable":true,"spec":{"allow":["command(git status)"],"deny":["read_file(/home/u/.ssh)"],"enable_terminal_sandbox":true}}"#,
         ),
     ] {
         fs::write(t.home().join(".config/agent-native").join(name), settings).unwrap();

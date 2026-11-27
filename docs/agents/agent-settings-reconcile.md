@@ -1,11 +1,11 @@
 # agent-settings-reconcile — 宣言を settings 系ファイルへ反映する
 
 `~/.claude/settings.json`・`~/.codex/hooks.json`・`~/.copilot/settings.json`・
-`~/.claude.json` はツール自身が実行時に書き換えるので、store symlink にできない。
+`~/.claude.json`・`~/.gemini/antigravity-cli/settings.json` はツール自身が実行時に書き換えるため、store symlink にできない。
 home-manager は activation のたびに、**宣言したものだけ**をこれらへ冪等に反映する。
-実装は `crates/agent-settings-reconcile`(Rust、ADR-0024、#414)で、かつて
+実装は `crates/agent-settings-reconcile`(Rust、ADR-0024、#414)であり、かつて
 `home/modules/claude.nix` 等の `writeShellScript` に埋め込んだ jq と
-`scripts/register-{codex,copilot}-hooks` に分かれていた 6 本を 1 つにまとめたもの。
+`scripts/register-{codex,copilot}-hooks` に分かれていた 6 本を 1 つにまとめたものである。
 
 | サブコマンド | 書き先 | 宣言の渡し方 |
 |---|---|---|
@@ -15,6 +15,9 @@ home-manager は activation のたびに、**宣言したものだけ**をこれ
 | `claude-mcp-servers` | `~/.claude.json` の `.mcpServers` | `dotfiles.claude.mcpServers` の JSON |
 | `codex-hooks-spec` | `~/.codex/hooks.json` | spec(`codexHookDeclarations` + 退役の一覧 + `state`) |
 | `copilot-hooks-spec` | `~/.copilot/settings.json` | spec(`copilotHookDeclarations` + 退役の一覧 + `state`) |
+| `codex-config` | `~/.codex/config.toml` | spec(`home/modules/codex.nix` の `codexConfigSpec`) |
+| `codex-permissions` | 同 `default_permissions` の権限 profile と MCP 許可 | `{settings, mcp_allow, state}` |
+| `antigravity-permissions` | `~/.gemini/antigravity-cli/settings.json` の `.permissions.{allow,ask,deny}`・`.toolPermission`・`.enableTerminalSandbox` | spec(`home/modules/antigravity.nix`。`state` は 3 種の規則を記録) |
 
 ## hook は宣言を正とする
 

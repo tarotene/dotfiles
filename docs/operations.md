@@ -166,8 +166,10 @@ all of these hold:
    generation was made by a bare `hms` and nothing switched it since. Only
    after these checks may its recorded public revision establish that main
    is already applied; foreign or explicit records cannot do so;
-3. both native permission specs, `agent-native/claude-permissions.json` and
-   `agent-native/codex-permissions.json`, exist and can be read in both the new
+3. the three native permission specs, `agent-native/claude-permissions.json`,
+   `agent-native/codex-permissions.json` and
+   `agent-native/antigravity-permissions.json` (written on every host, applied
+   only where Antigravity is enabled), exist and can be read in both the new
    generation's `home-files/.config/` and the deployed config directory
    (`$XDG_CONFIG_HOME`, or `~/.config`). Each complete file must be byte-identical
    to its deployed counterpart. Any difference, missing file, or read error
@@ -184,7 +186,7 @@ journal / log):
 | 一度 hms を当ててください | no record for this generation (it predates the record) | run `hms` once |
 | 世代の不一致 | the generation is not the one `hms` recorded (a rollback, or a switch that bypassed `hms`) | run `hms` |
 | 検証用の世代 | the generation came from `hms .`, `hms <path>`, `hms <ref>` or `--public-only` | run `hms` when done verifying |
-| 許可ポリシーの変更 | either native permission spec differs, is missing, or cannot be read | review the Claude and Codex native settings, then run `hms` manually (`docs/agents/agent-permissions.md`) |
+| 許可ポリシーの変更 | any native permission spec differs, is missing, or cannot be read | review the Claude, Codex and Antigravity native settings, then run `hms` manually (`docs/agents/agent-permissions.md`) |
 | 自動追従に失敗しました | the apply failed (exit code in the toast) | read the journal: `journalctl --user -u hms-follow` |
 
 A toast is repeated only when its cause changes (a different generation, or a

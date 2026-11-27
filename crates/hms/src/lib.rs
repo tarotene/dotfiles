@@ -1541,7 +1541,15 @@ pub fn policy_changed(new: Option<&[u8]>, deployed: Option<&[u8]>) -> bool {
     new.is_none() || deployed.is_none() || new != deployed
 }
 
-/// switch の直前に Claude と Codex の完全なネイティブ権限設定を比較する。
+/// 比較する宣言の名前(`home/modules/{claude,codex,antigravity}.nix` が `agent-native/` に出す)。
+/// 機体が適用しない agent の宣言も、全ホストが出す(欠落は変化と数えて止まるため)。
+const NATIVE_SPECS: [&str; 3] = [
+    "claude-permissions.json",
+    "codex-permissions.json",
+    "antigravity-permissions.json",
+];
+
+/// switch の直前に Claude・Codex・Antigravity の完全なネイティブ権限設定を比較する。
 /// 拡大・縮小を分類せず、差分・欠如・読み取りエラーがあれば本人の確認に戻す。
 /// 設定の意味や所有権を hms で再実装しない。
 fn policy_preflight(p: &Prepared) -> Result<(), PreflightStop> {
@@ -1563,7 +1571,7 @@ fn policy_preflight(p: &Prepared) -> Result<(), PreflightStop> {
         eprintln!("Error: nix build が store path を返しませんでした");
         return Err(PreflightStop::BuildFailed(1));
     };
-    for name in ["claude-permissions.json", "codex-permissions.json"] {
+    for name in NATIVE_SPECS {
         let candidate = Path::new(package)
             .join("home-files/.config/agent-native")
             .join(name);
