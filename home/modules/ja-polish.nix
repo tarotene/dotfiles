@@ -47,26 +47,24 @@ in
     };
     model = lib.mkOption {
       type = lib.types.str;
-      # 暫定: 3.7・3.8 は、無料枠のキーで応答が返らない(2026-11-12 に vega で `llm prompt -m …` を
-      # 直接実行。3.8・3.7 は 60〜120 秒待っても無応答、ja-polish 経由では `high demand`。3.6 は即座に
-      # 応答)。AI Studio の状態ページは All Systems Operational で、無料枠は「優先して切り捨てられる枠」と
-      # 明記されている(https://aistudio.google.com/status、取得 2026-11-12)。
-      # 戻す条件: `llm prompt -m gemini-3.8-flash -n --no-stream 'こんにちは'` が 30 秒以内に応答すること。
-      default = "gemini-3.6-flash";
+      # 有料枠のキーを前提にした既定(docs/adr/1387-ja-polish.md の D19)。無料枠では、3.8 は混雑で応答が
+      # 返らず(2026-11-12)、モデルごとの 1 日の上限(20 回)のあと、予備の軽量モデルに流れて、直すべき日本語が
+      # 直らないまま通った(D17)。固定の見本の測定(2026-11-28、`ja-polish bench`)で、3.8 + 思考量 low が、
+      # 取りこぼしが少なく、時間切れも少なかった。無料枠のキーに戻すときは、3.6 に替える。
+      default = "gemini-3.8-flash";
       description = ''
-        The model name passed to `llm -m`. A general-purpose model that the free tier of the Gemini
-        API allows (Google, "Gemini API Pricing", https://aistudio.google.com/docs/pricing,
-        retrieved 2026-11-08) and that answers on the free tier right now (see the comment above
-        for why it is not the newest one). It must be one that the pinned llm-gemini
-        (nix/ja-polish-llm.nix) registers: check with `llm models`.
+        The model name passed to `llm -m`. The default assumes a paid-tier Gemini API key: the free tier
+        has a per-day request limit per model, and after it the requests flow to the fallback model.
+        It must be one that the pinned llm-gemini (nix/ja-polish-llm.nix) registers: check with
+        `llm models`.
       '';
     };
     fallbackModel = lib.mkOption {
       type = lib.types.nullOr lib.types.str;
-      # `crates/ja-polish/src/config.rs` の DEFAULT_FALLBACK_MODEL と同じにする。応答が速い軽いモデルで、
-      # 2026-11-12 に vega の無料枠で `llm prompt -m gemini-flash-lite-latest` が即座に応答した
-      # (docs/agents/ja-polish.md「モデルの選択」)。
-      default = "gemini-flash-lite-latest";
+      # `crates/ja-polish/src/config.rs` の DEFAULT_FALLBACK_MODEL と同じにする。軽量モデルは、何も直さずに
+      # 返す劣化が起きたので外した(D17)。測定(2026-11-28)で、直した段落が多く、時間切れが 0 だった
+      # gemini-4-argon にした。単価は高いが、予備は主が混雑・時間切れのときだけ使う(D19)。
+      default = "gemini-4-argon";
       description = ''
         The model that ja-polish tries once when `model` is busy (retries exhausted) or times out.
         `null` turns the fallback off. The thinking level is not passed to it, because a fallback
@@ -82,12 +80,12 @@ in
           "high"
         ]
       );
-      # 既定は null(モデルの既定に任せる。gemini-3.6-flash は medium)。値は、固定の見本で応答時間と
-      # 書き直しの質を測って決める(docs/adr/1387-ja-polish.md の D11)。
-      default = null;
+      # `crates/ja-polish/src/config.rs` の DEFAULT_THINKING_LEVEL と同じにする。gemini-3.8-flash は、既定の
+      # 思考量だと 45 秒の時間切れが多発し(測定 2026-11-28。素通し 37 のうち 32)、low は 102 秒で終わった(D19)。
+      default = "low";
       description = ''
         The thinking level passed to the main model (`llm -o thinking_level`; llm-gemini 0.35
-        accepts these four for gemini-3.6-flash). Lower is faster. `null` leaves it to the model.
+        accepts these four). Lower is faster. `null` leaves it to the model.
       '';
     };
     textlint = {
@@ -136,8 +134,9 @@ in
       timeout_secs = ${toString cfg.timeoutSecs}
       textlint = ${lib.boolToString cfg.textlint.enable}
     ''
-    + lib.optionalString (cfg.thinkingLevel != null) ''
-      thinking_level = "${cfg.thinkingLevel}"
+    # 空の `thinking_level` は「モデルの既定に任せる」(キーを省くと、ja-polish の既定の思考量を使う)。
+    + ''
+      thinking_level = "${lib.optionalString (cfg.thinkingLevel != null) cfg.thinkingLevel}"
     '';
   };
 }
