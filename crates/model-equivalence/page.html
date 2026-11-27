@@ -3,9 +3,9 @@
 <style>
 :root {
   color-scheme: light;
-  --page: #f9f9f7; --surface: #fcfcfb; --ink: #0b0b0b; --ink2: #52514e; --muted: #898781;
+  --page: #f9f9f7; --surface: #fcfcfb; --ink: #0b0b0b; --ink2: #52514e; --muted: #6b6a65;
   --grid: #e1e0d9; --axis: #c3c2b7; --border: rgba(11, 11, 11, 0.10);
-  --blue: #2a78d6; --good: #0ca30c; --crit: #d03b3b; --band: rgba(137, 135, 129, 0.24);
+  --blue: #2468c5; --good: #0a7d0a; --crit: #d03b3b; --band: rgba(137, 135, 129, 0.24);
   --warn-bg: #fff4d6; --warn-ink: #5a3d00;
 }
 @media (prefers-color-scheme: dark) {
@@ -13,7 +13,7 @@
     color-scheme: dark;
     --page: #0d0d0d; --surface: #1a1a19; --ink: #ffffff; --ink2: #c3c2b7; --muted: #898781;
     --grid: #2c2c2a; --axis: #383835; --border: rgba(255, 255, 255, 0.10);
-    --blue: #3987e5; --band: rgba(137, 135, 129, 0.30);
+    --blue: #3987e5; --good: #2fbf4f; --crit: #e5534b; --band: rgba(137, 135, 129, 0.30);
     --warn-bg: #3a2c00; --warn-ink: #ffd98a;
   }
 }
@@ -21,7 +21,7 @@
   color-scheme: dark;
   --page: #0d0d0d; --surface: #1a1a19; --ink: #ffffff; --ink2: #c3c2b7; --muted: #898781;
   --grid: #2c2c2a; --axis: #383835; --border: rgba(255, 255, 255, 0.10);
-  --blue: #3987e5; --band: rgba(137, 135, 129, 0.30);
+  --blue: #3987e5; --good: #2fbf4f; --crit: #e5534b; --band: rgba(137, 135, 129, 0.30);
   --warn-bg: #3a2c00; --warn-ink: #ffd98a;
 }
 * { box-sizing: border-box; }
@@ -38,9 +38,14 @@ section {
   padding: 16px; margin: 16px 0;
 }
 .lead { color: var(--ink2); font-size: 14px; margin: 0 0 12px; }
+.lead, .notes, .why, .sub { max-width: 44em; line-break: strict; text-wrap: pretty; }
+h1, h2, h3 { text-wrap: balance; }
 .row { display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: flex-end; }
 label.f { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--ink2); }
 select, input[type=range], button { font: inherit; color: inherit; }
+input[type=checkbox], input[type=range] { accent-color: var(--blue); }
+#only { width: 24px; height: 24px; margin: 0; }
+input[type=range] { min-height: 24px; }
 select {
   background: var(--page); border: 1px solid var(--axis); border-radius: 8px; padding: 6px 8px; min-width: 200px;
 }
@@ -49,8 +54,12 @@ select {
   background: transparent; border: 0; padding: 8px 14px; cursor: pointer; font-weight: 600; color: var(--ink2);
 }
 .tabs button[aria-selected=true] { background: var(--ink); color: var(--surface); }
+.tabs button:focus-visible { outline-offset: -3px; }
 .ghost { background: transparent; border: 1px solid var(--axis); border-radius: 8px; padding: 6px 10px; cursor: pointer; }
-.ghost:hover { background: var(--grid); }
+@media (hover: hover) {
+  .ghost:hover, button.cell:hover { background: var(--grid); }
+  svg.map .pt:hover .mk { stroke: var(--ink); stroke-width: 2; }
+}
 .val { font-variant-numeric: tabular-nums; color: var(--ink); font-weight: 600; }
 .scroll { overflow-x: auto; }
 table { border-collapse: separate; border-spacing: 0; width: 100%; }
@@ -62,15 +71,14 @@ tbody th[scope=row] { position: sticky; left: 0; background: var(--surface); z-i
 tbody tr.prov th, tbody tr.prov td { font-size: 12px; color: var(--muted); padding-top: 14px; font-weight: 600; letter-spacing: .02em; }
 tbody tr + tr th, tbody tr + tr td { border-top: 1px solid var(--grid); }
 tbody tr.prov + tr th, tbody tr.prov + tr td { border-top: 0; }
-.price { display: block; font-size: 11px; color: var(--muted); font-weight: 400; }
-.tag { display: inline-block; font-size: 11px; border: 1px solid var(--axis); border-radius: 6px; padding: 0 5px; margin-left: 6px; color: var(--ink2); font-weight: 500; }
+.price { display: block; font-size: 12px; color: var(--muted); font-weight: 400; }
+.tag { display: inline-block; font-size: 12px; border: 1px solid var(--axis); border-radius: 6px; padding: 0 5px; margin-left: 6px; color: var(--ink2); font-weight: 500; }
 td.c { text-align: center; padding: 3px; }
 .cell {
   display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--border); background: var(--page);
   border-radius: 8px; padding: 5px 8px; cursor: pointer; min-width: 74px; justify-content: center; font-size: 13px;
   border-left: 3px solid var(--vc, var(--muted));
 }
-.cell:hover { background: var(--grid); }
 .cell[aria-pressed=true] { outline: 2px solid var(--ink); outline-offset: 1px; }
 .cell .ic { color: var(--vc, var(--muted)); font-weight: 700; }
 .cell.base { cursor: default; border-left-color: var(--ink); font-weight: 650; white-space: nowrap; }
@@ -85,14 +93,15 @@ td.c { text-align: center; padding: 3px; }
 .metric h3 { font-size: 14px; margin: 0; font-weight: 600; }
 .metric .small, .small { font-size: 12px; color: var(--ink2); }
 .why { margin: 0; font-size: 13px; color: var(--ink2); }
+.small a { display: inline-block; min-height: 24px; line-height: 24px; }
 svg { display: block; width: 100%; max-width: 420px; height: auto; overflow: visible; }
-svg text { fill: var(--muted); font-size: 10px; font-family: inherit; }
+svg text { fill: var(--muted); font-size: 11px; font-family: inherit; }
 .bar { height: 10px; background: var(--blue); border-radius: 0 4px 4px 0; }
 .hist { display: grid; grid-template-columns: minmax(80px, 150px) minmax(0, 1fr); gap: 6px 12px; align-items: center; font-size: 14px; }
 .hist > div { min-width: 0; }
 .hist .small { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 2px; }
 .hist .track { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
-.chip { font-size: 11px; border: 1px solid var(--axis); border-radius: 6px; padding: 0 5px; color: var(--ink2); }
+.chip { font-size: 12px; border: 1px solid var(--axis); border-radius: 6px; padding: 0 5px; color: var(--ink2); }
 .warn { background: var(--warn-bg); color: var(--warn-ink); border-radius: 10px; padding: 10px 12px; margin: 12px 0; font-size: 14px; }
 .stale { opacity: .6; }
 .cell.stale { opacity: .55; }
@@ -104,8 +113,9 @@ dl.kv dt { color: var(--muted); }
 dl.kv dd { margin: 0; }
 svg.map { max-width: 600px; margin: 0 auto; overflow: hidden; background: var(--page); border: 1px solid var(--border); border-radius: 10px; touch-action: manipulation; }
 svg.map .pt { cursor: pointer; }
-svg.map .pt:focus { outline: none; }
-svg.map .pt:focus .mk, svg.map .pt:hover .mk { stroke: var(--ink); stroke-width: 2; }
+svg.map .pt:focus:not(:focus-visible) { outline: none; }
+svg.map .pt:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+svg.map .pt:focus .mk { stroke: var(--ink); stroke-width: 2; }
 svg.map text.lbl { fill: var(--ink); paint-order: stroke; stroke: var(--page); stroke-width: 3px; stroke-linejoin: round; font-size: 10px; }
 .notes { margin: 8px 0 0; padding-left: 18px; font-size: 13px; color: var(--ink2); }
 .notes li { margin: 3px 0; }
@@ -117,7 +127,7 @@ svg.map text.lbl { fill: var(--ink); paint-order: stroke; stroke: var(--page); s
   .hist { grid-template-columns: minmax(0, 1fr); }
   .cell { min-width: 36px; min-height: 36px; padding: 5px 6px; }
   .cell .lb { display: none; }
-  select, input[type=search] { min-width: 0; width: 100%; }
+  select, input[type=search] { min-width: 0; width: 100%; font-size: 16px; }
   label.f { width: 100%; }
   th, td { padding: 4px; }
   tbody th { min-width: 112px; font-size: 13px; }
@@ -144,13 +154,13 @@ svg.map text.lbl { fill: var(--ink); paint-order: stroke; stroke: var(--page); s
       <label class="f">速さの許容幅 <span class="val" id="spdv"></span>
         <input type="range" id="spd" min="5" max="100" step="5"></label>
       <label class="f" style="flex-direction:row;align-items:center;gap:6px"><input type="checkbox" id="only"> 基準と同等以上だけを表示</label>
-      <button class="ghost" id="reset" type="button">既定に戻す</button>
+      <button class="ghost" id="reset" type="button">この役の許容幅を既定に戻す</button>
     </div>
     <p class="small" id="role-note"></p>
     <p class="small" id="cap-note"></p>
     <p class="small" id="count"></p>
-    <div class="scroll"><table id="matrix"><caption class="small" style="text-align:left;caption-side:bottom;padding-top:8px">セルは、基準に対する判定。費用は参考(エフォートで使うトークン量が変わるので、1 課題あたりの費用ではない)。</caption></table></div>
     <div class="legend" id="legend"></div>
+    <div class="scroll"><table id="matrix"><caption class="small" style="text-align:left;caption-side:bottom;padding-top:8px">セルは、基準に対する判定。費用は参考(エフォートで使うトークン量が変わるので、1 課題あたりの費用ではない)。</caption></table></div>
   </section>
 
   <section aria-labelledby="h-map">
@@ -167,6 +177,7 @@ svg.map text.lbl { fill: var(--ink); paint-order: stroke; stroke: var(--page); s
 
   <section aria-labelledby="h-detail">
     <h2 id="h-detail">根拠</h2>
+    <p class="small"><a href="#h-matrix">表へ戻る</a>・<a href="#h-map">地図へ戻る</a></p>
     <div id="detail"></div>
   </section>
 
