@@ -186,8 +186,8 @@ D15 の物差し(時間・書き直しの件数・括弧・用語の置き換え
 - **Antigravity CLI(`agy`)** — 感触で外した。非対話での挙動・データの扱いを一次資料で確かめられていない。分析ではない。
 - **Python で `llm` をライブラリとして呼ぶ** — 子プロセスが要らないが、記録の型が関所(Rust の hook-router の規則)と 2 言語に分かれる。
 - **hook で内容を黙って差し替える** — D2 のとおり。
-- **有料の API キー・Vertex AI** — 個人の側は学習に使われてよい、という裁定で不要。会社契約の Gemini の要件を確かめたあと、会社の側の送り先として検討する(#1385)。
-  2026-11-12 の再検討でも、無料のまま続ける(本人の裁定)。有料枠は、送った文面を製品の改善に使わず(Google, Gemini API Additional Terms of Service、2026-03-23 発効、https://aistudio.google.com/docs/terms 、取得 2026-11-12)、切り捨てられにくい。`gemini-3.6-flash` は 100 万トークンあたり入力 $0.75・出力 $3.75(2026 年末まで。2027-01-01 から倍。Google, Gemini API Pricing、https://aistudio.google.com/docs/pricing 、取得 2026-11-12)。月の目安は $30 前後(推定。日本語のトークン換算が粗く、倍半分の幅がある)。**再訪の条件**: 直近 7 日の、一時的な原因による素通しが段落の 5% を超えたら、セッションの冒頭で知らせる(段 4)。
+- **有料の API キー・Vertex AI** — 個人の側は学習に使われてよい、という裁定のため不要。**2026-11-27 に、再訪の条件を満たして採用した(D19)**。以下は採用前(2026-11-12)の検討。会社契約の Gemini の要件を確かめたあと、会社の側の送り先として検討する(#1385)。
+  2026-11-12 の再検討でも、無料のまま続ける(本人の裁定)。有料枠は、送信した文面を製品の改善に使わず(Google, Gemini API Additional Terms of Service、2026-03-23 発効、https://aistudio.google.com/docs/terms、取得 2026-11-12)、切り捨てられにくい。`gemini-3.6-flash` は 100 万トークンあたり入力 $0.75・出力 $3.75(2026 年末まで。2027-01-01 から倍。Google, Gemini API Pricing、https://aistudio.google.com/docs/pricing、取得 2026-11-12)。月の目安は $30 前後(推定。日本語のトークン換算が粗く、倍半分の幅がある)。**再訪の条件**: 直近 7 日の、一時的な原因による素通しが段落の 5% を超えたら、セッションの冒頭で知らせる(段 4)。
 - **OpenRouter の予備モデル列**(`models` 配列、失敗時に次のモデルへ。https://openrouter.ai/docs/guides/routing/model-fallbacks 、取得 2026-11-12) — 送り先が増え、無料のまま使うには `:free` のモデルだけを並べる必要がある。`llm-openrouter` から配列を渡せるかは未確認。**再訪の条件**: D9 の再依頼と予備のモデルを入れても、一時的な原因による素通しの割合が 5% を超え続けるとき。
 - **ローカルのモデル**(llama.cpp の SYCL、vega の Meteor Lake の iGPU) — 送信が無いので、会社の機体(#1385)の送り先の候補になる。llama.cpp の文書(docs/backend/SYCL.md、取得 2026-11-12)は、Meteor Lake の内蔵 GPU で 7B の q4 が毎秒 13〜16 トークンと書く。9 段落(出力 1,500 トークン前後)で 1.5〜2 分の見込み(推定)で、今の Gemini より遅い。日本語の書き直しの質の一次資料は取得できず、未確認。**再訪の条件**: 会社の機体の送り先を決めるとき(#1385)。
 - **ほかの提供元**(Mistral・Groq・Cerebras) — Groq の公式ページは 403 で読めず、Cerebras は試用のみで毎分 5 回(https://inference-docs.cerebras.ai/support/rate-limits 、取得 2026-11-12)。**再訪の条件**: OpenRouter と同じ。
