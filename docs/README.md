@@ -114,9 +114,9 @@ What runs automatically, when, and on which stack: see the [pipeline map](pipeli
 - [ADR-1585](adr/1585-reply-coverage.md) — 相手のいる会話への返信は、会話の全文を読み、相手の未決の依頼すべてに答えた証拠を残してから作る
 - [ADR-1608](adr/1608-repo-scope-by-machine-contract.md) — 個人の契約の機体は、別の側の持ち主の非公開リポジトリを読まない
 - [ADR-1660](adr/1660-personal-web-app-standard.md) — 入力と保存を持つ private な個人用 Web アプリは、Worker + D1 + Access を標準にし、マイグレーションと About の URL を共通 action に載せる
-- [ADR-1677](adr/1677-web-design-baseline.md) — Pages のデザインは、DADS を土台にした自分用の基準に従い、正本は公開のこのリポジトリに置き、第三者からの書体・スタイルの読み込みを禁じる
-- [ADR-1685](adr/1685-web-design-distribution.md) — Pages のデザインの正本は `config/web/` に置き、各面は commit で固定した URL と sha256 で複写を pin し、CI が検査する
-- [ADR-1687](adr/1687-web-components.md) — 共有の部品は正本の役割だけを参照し、主な操作を先に書いて、PC では右端・スマートフォンでは上に置く
+- [ADR-1677](adr/1677-web-design-baseline.md) — Pages のデザインは、DADS を土台にした自分用の基準に従い、正本は公開のこのリポジトリに置き、第三者からの書体・スタイルの読み込みを禁じる (後続: 改訂 ADR-0000)
+- [ADR-1685](adr/1685-web-design-distribution.md) — Pages のデザインの正本は `config/web/` に置き、各面は commit で固定した URL と sha256 で複写を pin し、CI が検査する (後続: 改訂 ADR-0000)
+- [ADR-1687](adr/1687-web-components.md) — 共有の部品は正本の役割だけを参照し、主な操作を先に書いて、PC では右端・スマートフォンでは上に置く (後続: 改訂 ADR-0000)
 - [ADR-1694](adr/1694-image-to-local-window.md) — 本人にその場で見せる図・画像は、Web ページを公開せず、手元の別窓(Chrome の専用窓)に出す
 - [ADR-1698](adr/1698-visual-before-after.md) — 見た目の変更は、基準の ref から取り出した Before と After を固定の行列で撮り、Diff つきの並べたページで本人に見せる
 - [ADR-1700](adr/1700-web-design-system-formalization.md) — デザインの正本は CSS の 1 つのまま、見て確かめる見本ページと、生成した機械可読の値と、1 枚だけの HTML が取り込む区間の pin を足す
@@ -129,7 +129,8 @@ What runs automatically, when, and on which stack: see the [pipeline map](pipeli
 - [ADR-1712](adr/1712-plan-structure-field.md) — 画面の面に触れる計画に、`構造:` の行を要求する(設計の時点の検査)
 - [ADR-1719](adr/1719-impeccable-pinned-skill.md) — 画面のデザインの手順と検出器として、第三者のスキル impeccable を、版を固定して配る
 - [ADR-1722](adr/1722-playwright-chrome-visible.md) — デザインの目視のために、画面に出る使い捨ての Chrome の Playwright を、ログイン用の Firefox と分けて足す
-- [ADR-1723](adr/1723-web-design-world-aircraft-markings.md) — Web の面の全体に通す見た目の世界を「機体のマーキング」に決め、色の役割に `--marker` を足す
+- [ADR-1723](adr/1723-web-design-world-aircraft-markings.md) — Web の面の全体に通す見た目の世界を「機体のマーキング」に決め、色の役割に `--marker` を足す (後続: 改訂 ADR-0000)
+- [ADR-0000](adr/0000-web-no-shared-theme.md) — Web の面は共通のテーマを持たず、共通に残すのは工程・床・状態の色の意味・通信の床だけにする
 <!-- END GENERATED -->
 
 ## 運用・調査・設計(`docs/` 直下)

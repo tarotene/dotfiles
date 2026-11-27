@@ -190,13 +190,13 @@ app の README に、段を宣言する。
 
 ## 画面の作り方(ADR-1677・ADR-1685、dotfiles#1664)
 
-この標準で作る app の画面の既定。閲覧だけの静的サイトの面も、1〜5 は同じである。値(色・書体・尺度)の正本は `config/web/variables.css` で、各面が複写して pin する(ADR-1685)。
-役割と部品の見た目は、見本ページ `config/web/specimen.html` で確かめる。明暗を解いた値の一覧は、生成した `config/web/variables.json`(手で書かない)。
-CSS を HTML の中に持つ 1 枚だけの面(Artifact の雛形)は、正本を HTML の中の印を付けた区間に複写し、`design-pin.toml` の `begin`・`end` でその区間を固定する(ADR-1700)。
+この標準で作る app の画面の既定。閲覧だけの静的サイトの面も、1〜5 は同じである。**面は共通のテーマを持たない**(ADR-0000)。見た目(色・書体・尺度・部品の見た目)は、面の目的から面ごとに決め、面の `PRODUCT.md`・`DESIGN.md` に書く。共通に残すのは、床(`config/web/page-types.toml` の要件と `behavior.js`)・状態の色の意味・通信の床(第三者の配信元から読み込まない)と、工程(下の 10)である。
+出発点として使える値は `config/web/variables.css`(ADR-1685)で、採る面は複写して pin する。採らない面は pin を持たない。役割と部品の見た目は、見本ページ `config/web/specimen.html` で確かめる。明暗を解いた値の一覧は、生成した `config/web/variables.json`(手で書かない)。
+出発点を採る、CSS を HTML の中に持つ 1 枚だけの面(Artifact の雛形)は、HTML の中の印を付けた区間に複写し、`design-pin.toml` の `begin`・`end` でその区間を固定する(ADR-1700)。`behavior.js` は CSS の役割名に依存しない床なので、出発点を採らない面も複写して使える。
 
 1. **CSP `style-src 'self'` の下の書き方。** インラインの `style` を使わない。位置と大きさは、CSS のクラスと SVG の属性で与える。MDN は、`element.style.<名前> =` は止められないが、`setAttribute("style", …)` と `cssText` は止められると書く(MDN, "Content-Security-Policy: style-src directive"、最終更新 2025-12-15。dotfiles#1664 の記載による)。この境目に頼らないよう、静的試験で `.style`・`setAttribute("style"`・`cssText` を禁じる。
-2. **書体とスクリプト。** 第三者の配信元からは読み込まない(ADR-1677 D6。スクリプトを含める方針は ADR-1703 D4 で明確にしており、`web_assets` が検査する)。`font-src` を開けず、機体の書体を使う(`--font-sans`・`--font-mono`。明朝は `serif` に落ちる)。外部スクリプトが必要なときは、同梱して自サイトから配信し、`sha256` を pin する。
-3. **色と尺度。** 役割(`--bg`・`--surface`・`--text`・`--text-muted`・`--border`・`--accent`・`--on-accent`・`--ok`・`--ng`・`--warn` など)だけを使い、16 進を直書きしない。面の主色は、`--accent`・`--on-accent`・`--accent-text`・`--focus` の値だけを上書きする。暗色は OS の設定に追従するだけで、切り替えを置かない。accent の上の文字は `--on-accent` を使い、固定の `#fff` を書かない(暗色で、淡い accent の上の白文字が 2.0〜2.5:1 になる型が、実機の審査で複数の面から見つかった)。正本のコントラストは、明暗の両方で `web_variables` が検査する。面の上書きの値は、この検査の外なので、同じ組(文字 4.5:1・図形 3:1)を自分で計算する。
+2. **書体とスクリプト。** 第三者の配信元からは読み込まない(ADR-1677 D6。スクリプトを含める方針は ADR-1703 D4 で明確にしており、`web_assets` が検査する)。書体の選択は面ごとで、機体の書体を既定にする(出発点の `--font-sans`・`--font-mono`。明朝は `serif` に落ちる)。自前のサイトから配信する Web フォントを使うときは、`font-src 'self'` にして、第三者の配信元を開けない。外部スクリプトが必要なときは、同梱して自サイトから配信し、`sha256` を pin する。
+3. **色と尺度。** 出発点を採る面は、役割(`--bg`・`--surface`・`--text`・`--text-muted`・`--border`・`--accent`・`--on-accent`・`--ok`・`--ng`・`--warn` など)だけを使い、16 進を直書きしない。出発点を採る面の主色は、`--accent`・`--on-accent`・`--accent-text`・`--focus` の値だけを上書きする。採らない面は、自分の語彙で色を決めてよいが、状態の色(成功・誤り・注意)の意味は変えず、コントラストの床(文字 4.5:1・図形 3:1)を明暗の両方で満たす。暗色は OS の設定に追従するだけで、切り替えを置かない。accent の上の文字は `--on-accent` を使い、固定の `#fff` を書かない(暗色で、淡い accent の上の白文字が 2.0〜2.5:1 になる型が、実機の審査で複数の面から見つかった)。正本のコントラストは、明暗の両方で `web_variables` が検査する。面の上書きの値は、この検査の外なので、同じ組(文字 4.5:1・図形 3:1)を自分で計算する。
 4. **狭い画面の表。** 表の要素のまま、CSS で 1 行 1 枚に組み替える。各欄の名前は `data-label` 属性から `::before` で出す。ARIA の role は足さない(Adrian Roselli, "Tables, CSS Display Properties, and ARIA"、更新 2024-01-29。dotfiles#1664 の記載による)。幅の狭い画面で、列を隠さない(隠した列の情報が、スマートフォンで消える)。
 5. **値の導出は build の 1 か所。** 状態語の意味づけ(要対応・済み・対象外など)、表の列の位置、時刻を分にした値は、build が `model.json` に載せる。ページは語や時刻の書式を知らない。CSS に語を複写しない。
 6. **操作。** 次の 3 つは、手書きせず、共有の部品 `config/web/behavior.js`(`window.pageBehavior` の `saver`・`keyguard`・`viewstate`。ADR-1703 D2)を、複写して pin して使う(複数ファイルの面は `design-pin.toml` の `[[file]]`、1 枚だけの HTML は `begin`・`end` の区間 pin)。使い方は、動く見本 `config/web/specimen.js` が示す。
@@ -221,7 +221,7 @@ CSS を HTML の中に持つ 1 枚だけの面(Artifact の雛形)は、正本�
     4. **構造の候補が複数あるときは、同じ架空のデータで並べた練習用の画面を、本人が触って選ぶ。** 選んだ結果と理由を、決定文書に残す。
     5. **検査する。** 宣言は `<meta name="page-structure">`・`<meta name="page-axes">`(HTML の `<head>`)に書く。リポジトリ内のすべての HTML に、`web_structures`(`repo-structure-check`)が宣言を要求する。`visual_diff.py audit` の F10 が、描画したページを宣言に突き合わせる(`step` はページ全体が縦にスクロールしない)。画面を作る・変える計画は、`## 先行例との対比` の中に `構造:` の行を書く(ADR-1711 の続きの規則。`plan-precedent-gate`)。
 
-画面を作る・直すときの、見た目の進め方は、第三者のスキル impeccable(https://github.com/pbakaus/impeccable 、Apache-2.0。配備と使い方: [`impeccable.md`](impeccable.md)、決定: ADR-1719)の手順に従う: `shape`(計画のみ。上の構造の選択が先) → 実装 → `critique`(読み取りだけの評価) → `polish`(磨き上げ) → 撮って比べる(`visual_diff.py`)。次の 4 つは、impeccable の助言より優先する: 基準(ADR-1677)、複写して固定した区間(`design-pin`)、第三者の書体・スクリプトの禁止、構造の宣言。
+画面を作る・直すときの、見た目の進め方は、第三者のスキル impeccable(https://github.com/pbakaus/impeccable 、Apache-2.0。配備と使い方: [`impeccable.md`](impeccable.md)、決定: ADR-1719)の手順に従う: `shape`(計画のみ。上の構造の選択が先) → 実装 → `critique`(読み取りだけの評価) → `polish`(磨き上げ) → 撮って比べる(`visual_diff.py`)。次の 4 つは、impeccable の助言より優先する: 床(`page-types.toml` の要件と `behavior.js`)、状態の色の意味、第三者の書体・スクリプトの禁止、構造の宣言。出発点を採った面では、複写して固定した区間(`design-pin`)も優先する。面の見た目は、面ごとの `PRODUCT.md`・`DESIGN.md` が決め、`new-work` で世界を選ぶ(1 つの root に世界は 1 つなので、面ごとに root を分ける)。
 
 `audit` の検査は、impeccable に置き換えない。最小の違反例と旧版の裁定ページを、`audit` と impeccable の検出器の両方にかけた(2026-11-25)。`keyboard`・`hover`・`input-size`・`targets`・`third-party`・`document` は、impeccable が同じ違反を落とさなかった。`overflow` は、旧版の裁定ページでは当たったが、最小の違反例では当たらなかった。`contrast` は、暗い配色の違反例を impeccable が落とさず、placeholder と `:hover` の状態は impeccable だけが測るので、併用する。`structure` ほかは、上流の 62 ルールに該当するものが見つかっていない(読んだ範囲)。逆に、impeccable の「AI の癖」の 31 ルール(`side-tab`・`nested-cards`・`gradient-text` など)には、手元に該当する検査が無いので、手元の検査との重なりでなく、足りない検査として使う。
 
