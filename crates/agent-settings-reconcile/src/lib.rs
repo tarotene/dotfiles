@@ -17,6 +17,7 @@
 //! agent-settings-reconcile codex-config       <config.toml>   <spec-json>
 //! agent-settings-reconcile antigravity-permissions <settings.json> <spec-json>
 //! agent-settings-reconcile antigravity-hooks <hooks.json> <spec-json>
+//! agent-settings-reconcile antigravity-mcp-servers <mcp_config.json> <spec-json>
 //! ```
 //!
 //! spec の JSON スキーマは `hooks::HooksSpec` / `settings::PermissionsSpec` /
@@ -26,6 +27,7 @@
 pub mod agent_permissions;
 pub mod antigravity;
 pub mod antigravity_hooks;
+pub mod antigravity_mcp;
 pub mod codex_config;
 pub mod hooks;
 pub mod json;
@@ -67,7 +69,8 @@ usage: agent-settings-reconcile <subcommand> <file> ...
   codex-config <config.toml> <spec-json>
   codex-permissions <config.toml> <{settings: object, mcp_allow: array}>
   antigravity-permissions <settings.json> <spec-json>
-  antigravity-hooks <hooks.json> <{name: string, hooks: object}>";
+  antigravity-hooks <hooks.json> <{name: string, hooks: object}>
+  antigravity-mcp-servers <mcp_config.json> <{servers: object, state?: string}>";
 
 pub fn run(args: &[String]) -> Result<(), Failure> {
     let Some(sub) = args.first() else {
@@ -79,6 +82,7 @@ pub fn run(args: &[String]) -> Result<(), Failure> {
         "copilot-hooks-spec" => hooks_spec(rest, Flavor::Flat),
         "claude-permissions" => claude_permissions(rest),
         "antigravity-permissions" => antigravity_permissions(rest),
+        "antigravity-mcp-servers" => antigravity_mcp_servers(rest),
         "antigravity-hooks" => with_json_spec(rest, |root, spec: antigravity_hooks::HooksSpec| {
             antigravity_hooks::apply(root, &spec)
         }),
@@ -178,6 +182,26 @@ fn antigravity_permissions(rest: &[String]) -> Result<(), Failure> {
     })?;
     if let Some(path) = state {
         managed::store_if_changed(path, previous.as_ref(), &antigravity::declared(&spec))
+            .map_err(fail)?;
+    }
+    Ok(())
+}
+
+/// `antigravity-mcp-servers <mcp_config.json> <spec-json>`。所有の記録(`state`)に載せた名前だけを管理する
+/// (`agy mcp add` で本人が足したサーバーは残す)。記録は、書き込みが成功したあとにだけ更新する。
+fn antigravity_mcp_servers(rest: &[String]) -> Result<(), Failure> {
+    let [file, spec] = rest else {
+        return Err(usage(USAGE));
+    };
+    let spec: antigravity_mcp::McpSpec =
+        serde_json::from_str(spec).map_err(|e| usage(format!("spec-json: {e}")))?;
+    let state = spec.state.as_deref().map(Path::new);
+    let previous = state.and_then(managed::load);
+    edit(Path::new(file), |root| {
+        antigravity_mcp::apply(root, &spec, previous.as_ref())
+    })?;
+    if let Some(path) = state {
+        managed::store_if_changed(path, previous.as_ref(), &antigravity_mcp::declared(&spec))
             .map_err(fail)?;
     }
     Ok(())

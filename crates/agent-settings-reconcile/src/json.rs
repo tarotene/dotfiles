@@ -155,7 +155,12 @@ pub fn load(path: &Path) -> Result<J, String> {
         std::fs::write(path, "{}\n").map_err(|e| format!("{}: {e}", path.display()))?;
     }
     let text = std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
-    let v = parse(&text).map_err(|e| format!("{}: {e}", path.display()))?;
+    // 空のファイル(agy が空の `mcp_config.json` を作る)は、空のオブジェクトとして読む。
+    let v = if text.trim().is_empty() {
+        J::Obj(Default::default())
+    } else {
+        parse(&text).map_err(|e| format!("{}: {e}", path.display()))?
+    };
     if v.as_obj().is_none() {
         return Err(format!(
             "{}: トップレベルが JSON オブジェクトではない",

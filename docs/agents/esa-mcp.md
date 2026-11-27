@@ -3,7 +3,7 @@
 esa.io MCP サーバ(`@esaio/esa-mcp-server`)を全セッションから動く状態に保つ
 仕組み。実装は `crates/esa-mcp-launcher`(Rust、旧 `scripts/esa-mcp-launcher` を #414 / ADR-0024 Stage 4e で移植。配備先
 `~/.local/libexec/esa-mcp-launcher`)+ `home/identities/personal/esa.nix` が populate する
-`dotfiles.claude.mcpServers.esa`(登録の仕組み自体は
+`dotfiles.agents.mcpServers.esa`(登録の仕組み自体は
 [`claude-mcp-servers.md`](../claude/claude-mcp-servers.md) の共通機構)。裁定の経緯と
 代替案の比較は `docs/adr/0022-esa-mcp-host-local-gpg-secret.md`。
 
@@ -123,7 +123,7 @@ unset tok
 
 ## `~/.claude.json` への登録
 
-`home/identities/personal/esa.nix` は `dotfiles.claude.mcpServers.esa` に値を populate
+`home/identities/personal/esa.nix` は `dotfiles.agents.mcpServers.esa` に値を populate
 するだけで、`~/.claude.json` への冪等 jq merge の仕組み自体は持たない —
 その仕組みは `home/modules/claude-mcp-servers.nix` が一元的に持つ共通の
 「口」で、`docs/claude/claude-mcp-servers.md` が設計を記録している。esa は

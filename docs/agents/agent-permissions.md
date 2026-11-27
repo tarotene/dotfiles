@@ -61,7 +61,7 @@ Claude の許可・確認の規則から、`home/modules/antigravity.nix` が `~
 |---|---|---|
 | `secret_paths` | `permissions.deny` | `read_file(<絶対パス>)`。`~/` は Nix が `home.homeDirectory` に展開する(`~` の展開は文書に記述なし)。読みの拒否は書きの拒否も含む |
 | `domains` + `raw.githubusercontent.com` | `permissions.allow` | `read_url(<host>)`。sandbox の外向きの許可リストにもなる |
-| `dotfiles.claudePermissions.allowRules` | `permissions.allow` | `Bash(P *)`・`Bash(P)` → `command(P)`(語単位の前方一致)。`mcp__…` は変換しない(agy の MCP は未設定)。`P` に `*` を含む規則は、`noAgyCounterpart` に載せたものだけを落とし、他は評価で失敗する |
+| `dotfiles.claudePermissions.allowRules` | `permissions.allow` | `Bash(P *)`・`Bash(P)` → `command(P)`(語単位の前方一致)。`mcp__…` は変換しない(Claude の許可に、agy へ載せる 3 サーバー — playwright・playwright-chrome・esa — の `mcp__…` が無く、agy は道具ごとに確認する)。`P` に `*` を含む規則は、`noAgyCounterpart` に載せたものだけを落とし、他は評価で失敗する |
 | `dotfiles.claudePermissions.askRules` | `permissions.ask` | 同じ変換 |
 | `sandboxed_shell = "auto"` | `toolPermission` | `proceed-in-sandbox`(`prompt` なら書かない) |
 | (Claude の `sandbox.enabled`) | `enableTerminalSandbox` | `true` |
@@ -70,7 +70,7 @@ Claude の許可・確認の規則から、`home/modules/antigravity.nix` が `~
   本人が承認や `/permissions` で足した規則は、所有の記録(`~/.local/state/dotfiles/managed-permissions-antigravity.json`、種別は
   `allow`・`ask`・`deny`)に無いので残り、宣言から外した規則だけが次の適用で消える。
 - 書かないキー: `agentMode`(既定が `auto`。CLI は既定値のキーを書き直しで消すので、宣言しても毎回の差になる)・
-  `allowNonWorkspaceAccess`・`trustedWorkspaces`・`model`。MCP の許可は変換しない(`~/.gemini/config/mcp_config.json` が空)。
+  `allowNonWorkspaceAccess`・`trustedWorkspaces`・`model`。MCP の許可は変換しない(上のとおり、変換する Claude 側の規則が無い。サーバー自体は `dotfiles.agents.mcpServers` から `~/.gemini/config/mcp_config.json` へ配る)。
 - **広がる範囲**: Claude の `Bash(git push *)` などは分類器(`classifyAllShell`)を後ろに持つが、agy の `command(git push)` の許可は
   確認なしで、sandbox の中でも外でも動く(同ページ "Terminal sandbox" の `git push` の例)。agy の `auto` モードの審査は、許可の規則に
   合うコマンドには効かない。agy の `command(P)` は前方一致なので、Claude の完全一致の `Bash(nix fmt)`・`Bash(npm ci)` は、引数つきも通る。
