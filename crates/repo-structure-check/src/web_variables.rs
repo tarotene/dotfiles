@@ -25,7 +25,8 @@ use crate::manifest::Violation;
 /// 正本のパス(リポジトリの根から)。
 pub const VARIABLES_PATH: &str = "config/web/variables.css";
 
-/// 役割の集合(閉じた語彙)。面ごとのテーマは、この集合に足さず、値だけを上書きする。
+/// 出発点(`config/web/variables.css`)の役割の集合(閉じた語彙)。検査するのは出発点の自己整合だけで、
+/// 面にこの集合を強いない(ADR-1729)。出発点を採る面は、この集合に足さず、値だけを上書きする。
 pub const REQUIRED_ROLES: [&str; 17] = [
     "--bg",
     "--surface",
