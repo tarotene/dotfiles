@@ -1793,7 +1793,8 @@ let
   # 載せないもの(docs/claude/antigravity-hook-parity.md の「agy に同じものが無いもの」):
   # - herdr-agent-metadata: herdr 本体の連携(`herdr integration install antigravity-cli`)が持つ。
   # - agent-turn-log: UserPromptSubmit が agy に無く、ターンの開始を取れない。
-  # - atuin-history: `atuin hook` の対象に agy があるかは未確認で、PostToolUseFailure も無い(段4)。
+  # - atuin-history: atuin 18.15.2 の `atuin hook` が対象にするのは claude-code・codex・pi だけで、agy は無い
+  #   (バイナリ内の「Supported agents」、2026-11-27)。PostToolUseFailure も agy に無い。
   # - git-worktree-allow・gh-edit-allow-judge: `if` つきの allow 判定。agy の hook は matcher が道具名だけで、
   #   Codex でも同じ理由で外している(ネイティブの承認を通す)。
   # - UserPromptSubmit・SessionEnd・PostToolUseFailure のイベント: agy に無い。

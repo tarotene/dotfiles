@@ -47,6 +47,17 @@ agy の hook は、Claude の hook と形が違う(camelCase の入力、`decisi
 | Stop | deny(Claude の block)だけ `{"decision":"continue","reason"}`。他は `{}` |
 | PermissionRequest | 何も出さない(agy に無いイベント) |
 
+## herdr のサイドバー・statusline・モデルの固定
+
+- herdr のサイドバー(ペインの状態): herdr 本体の連携を使う。`home/modules/herdr.nix` の
+  `installHerdrAntigravityIntegration` が `herdr integration install antigravity-cli`(`~/.gemini/config/hooks/herdr-agent-state.sh`
+  と、`hooks.json` への登録)を、`registerAntigravityHooks` の後ろで 1 度だけ呼ぶ。`herdr integration status` は、導入前の
+  antigravity-cli を「not installed」と読んだ(2026-11-27)。`herdr-agent-metadata`(Claude・Codex の permission mode などを送る
+  hook)と `claude-statusline`(Claude の statusLine の値を herdr へ送る)は、agy には登録しない。
+- モデルの固定(`claude-plan-model sync`): Claude の `opusplan` の別名を具体 ID に引き直す機構。agy の `model` は
+  `settings.json` に本人が選んで書く値で、#1726 が「書かないキー」と決めた(宣言しない)。agy に、別名の追従に当たる機構が
+  あるかは未確認(`agy models` は認証が要り、この機体の sandbox からは読めない)。
+
 ## 登録
 
 登録は `home/modules/agents.nix` の `antigravityHookDeclarations` が、Claude の宣言(`claudeHookDeclarations`)から導く
@@ -63,7 +74,7 @@ agy の hook は、Claude の hook と形が違う(camelCase の入力、`decisi
 | timeout | agy 側は、中の timeout に 5 秒足す(中で先に切れて、空の返答を返せるように)。宣言に無ければ 60 秒 |
 
 載せないもの: `herdr-agent-metadata`(herdr 本体の連携が持つ)、`agent-turn-log`(UserPromptSubmit が無く、ターンの開始を
-取れない)、`atuin-history`(`atuin hook` の対象に agy があるか未確認、PostToolUseFailure も無い)、`git-worktree-allow`・
+取れない)、`atuin-history`(下の Blocked-Upstream)、`git-worktree-allow`・
 `gh-edit-allow-judge`(`if` つきの allow 判定。Codex でも、ネイティブの承認を通すために外している)。
 
 **agy の hook は逐次に走る**(文書の「Hooks run synchronously and block the agent loop」、複数の hook は順に実行)。
@@ -89,6 +100,9 @@ agy は全ターンを計画から始めるので、設計判断を含まない�
   (`hooks.md` の「Supported Event Types」の 6 つだけ)。`PreInvocation` は毎回のモデル呼び出しの前で、ターンの開始ではない。
 - Blocked-Upstream: SessionStart の `startup|resume|compact` の絞り込みと、hook の `if` は、agy に無い(matcher は道具名だけ)。
 - Blocked-Upstream: PreToolUse で、判定を伴わない `additionalContext` を返す経路が無い。
+- Blocked-Upstream: atuin の `atuin hook install`・`atuin hook <agent>` は、agy を対象にしない。atuin 18.15.2 のバイナリ内の記述は
+  「Supported agents: claude-code, codex, pi」(2026-11-27)。agy のコマンドの履歴は、atuin に残らない。上流が agy を足したら、
+  `antigravitySkipNodes` から `atuin-history` を外し、`hook-router` に Codex の `atuin` と同じ入口を足す。
 
 ## 未確認(実機の payload で確かめる)
 

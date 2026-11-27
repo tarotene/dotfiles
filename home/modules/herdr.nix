@@ -171,4 +171,18 @@ in
           run ${pkgs.herdr}/bin/herdr integration install copilot || true
         fi
       '';
+
+  # Antigravity CLI(agy)版。herdr 本体の integration(`antigravity-cli`)が、agy のペインの状態を
+  # サイドバーへ報告する hook(~/.gemini/config/hooks/herdr-agent-state.sh)を、agy の hooks.json に足す。
+  # このリポジトリの `herdr-agent-metadata`(Claude・Codex の permission mode などを送る hook)は、agy には
+  # 登録しない: agy の状態は herdr 本体が持つ。hooks.json は自分の名前のキー(`dotfiles`)だけを
+  # `registerAntigravityHooks`(agents.nix)が所有し、herdr の連携のキーとは共存する。lost-update を避けるため、
+  # 上の claude 版と同じく registrar の後ろに置く。個人の identity だけ(`dotfiles.antigravity.enable`)。
+  home.activation.installHerdrAntigravityIntegration = lib.mkIf config.dotfiles.antigravity.enable (
+    lib.hm.dag.entryAfter [ "writeBoundary" "registerAntigravityHooks" ] ''
+      if [ ! -e "$HOME/.gemini/config/hooks/herdr-agent-state.sh" ]; then
+        run ${pkgs.herdr}/bin/herdr integration install antigravity-cli || true
+      fi
+    ''
+  );
 }
