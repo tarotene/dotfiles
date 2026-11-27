@@ -54,6 +54,9 @@ agy の hook は、Claude の hook と形が違う(camelCase の入力、`decisi
   と、`hooks.json` への登録)を、`registerAntigravityHooks` の後ろで 1 度だけ呼ぶ。`herdr integration status` は、導入前の
   antigravity-cli を「not installed」と読んだ(2026-11-27)。`herdr-agent-metadata`(Claude・Codex の permission mode などを送る
   hook)と `claude-statusline`(Claude の statusLine の値を herdr へ送る)は、agy には登録しない。
+  適用後は `current (v4)` で、実機のサイドバーには「agy」の名前が出た(2026-11-27)。herdr の hook(`herdr-agent-state.sh`)は、
+  セッションの報告(再開用)だけを担い、作業中・待ちの状態は herdr 本体の画面検出が持つ(ファイル先頭の記述)ので、状態の表示は
+  こちらの設定では変えられない。
 - モデルの固定(`claude-plan-model sync`): Claude の `opusplan` の別名を具体 ID に引き直す機構。agy の `model` は
   `settings.json` に本人が選んで書く値で、#1726 が「書かないキー」と決めた(宣言しない)。agy に、別名の追従に当たる機構が
   あるかは未確認(`agy models` は認証が要り、この機体の sandbox からは読めない)。
@@ -69,11 +72,11 @@ agy の hook は、Claude の hook と形が違う(camelCase の入力、`decisi
 | Claude の宣言 | agy の登録 |
 |---|---|
 | `hook-router-pre`・`hook-router-post` | `hook-router pre`・`post` に `--agent antigravity`(規則の表を共有) |
-| 規則の表に無い個別の hook(SessionStart・Stop の bin、bleep、plan-view・plan-fresh-gate・copilot-plan-review) | `hook-router wrap '<Claude の command>' --timeout N` |
+| 規則の表に無い個別の hook(SessionStart・Stop の bin、bleep、plan-fresh-gate・copilot-plan-review) | `hook-router wrap '<Claude の command>' --timeout N` |
 | matcher | 道具名を読み替える(`Bash`→`run_command`、`ExitPlanMode`→`exit_plan_mode`、`mcp__.*`→`mcp.*`)。SessionStart の matcher は落とす |
 | timeout | agy 側は、中の timeout に 5 秒足す(中で先に切れて、空の返答を返せるように)。宣言に無ければ 60 秒 |
 
-載せないもの: `herdr-agent-metadata`(herdr 本体の連携が持つ)、`agent-turn-log`(UserPromptSubmit が無く、ターンの開始を
+載せないもの: `plan-view`(下の「計画の関所」)、`herdr-agent-metadata`(herdr 本体の連携が持つ)、`agent-turn-log`(UserPromptSubmit が無く、ターンの開始を
 取れない)、`atuin-history`(下の Blocked-Upstream)、`git-worktree-allow`・
 `gh-edit-allow-judge`(`if` つきの allow 判定。Codex でも、ネイティブの承認を通すために外している)。
 
@@ -86,24 +89,17 @@ Stop の `pr-gate` が最大 600 秒など)。
 `exit_plan_mode` に、PreToolUse で次を掛ける(本人の裁定、2026-11-27: Claude の `ExitPlanMode` と同じ関所を deny で掛ける)。
 
 - `plan-scope-gate`(要求インベントリ)・`plan-precedent-gate`(先行例との対比): `hook-router pre` の規則の表。
-- `plan-fresh-gate`(base の鮮度)・`plan-view`(ブラウザ表示)・`copilot-plan-review`(Copilot のレビュー): `wrap`。
+- `plan-fresh-gate`(base の鮮度)・`copilot-plan-review`(Copilot のレビュー): `wrap`。`plan-view`(ブラウザ表示)は載せない(下記)。
 
 agy は全ターンを計画から始めるので、設計判断を含まない小さな計画は、既存の 1 行の免除
 (`先行例: 該当なし — <理由>`)で通す。実測(手元の `hook-router`、2026-11-27): 節の無い計画は agy の形の deny、
 要求インベントリと免除の 1 行を持つ計画は、何も出さずに通った。
-**ターンごとに `plan-view` が窓を開き、`copilot-plan-review` が Copilot にレビューを頼む**。実測では、小さな計画でも
-`copilot-plan-review` が毎回走り、1 回あたり約 13〜16 秒かかった(下の「実測」)。`plan-view` の窓は未確認。重ければ
-`antigravitySkipNodes` に足して外す(確認の台帳 #1718)。
+**ターンごとに `copilot-plan-review` が Copilot にレビューを頼む。** 実測では、小さな計画でも毎回走り、1 回あたり約
+13〜16 秒かかった(下の「実測」)。重ければ `antigravitySkipNodes` に足して外す(確認の台帳 #1718)。
 
-## agy に同じものが無いもの(Blocked-Upstream)
-
-- Blocked-Upstream: `SessionEnd`・`UserPromptSubmit`・`PostToolUseFailure`・`PermissionRequest` のイベントは、agy の hook に無い
-  (`hooks.md` の「Supported Event Types」の 6 つだけ)。`PreInvocation` は毎回のモデル呼び出しの前で、ターンの開始ではない。
-- Blocked-Upstream: SessionStart の `startup|resume|compact` の絞り込みと、hook の `if` は、agy に無い(matcher は道具名だけ)。
-- Blocked-Upstream: PreToolUse で、判定を伴わない `additionalContext` を返す経路が無い。
-- Blocked-Upstream: atuin の `atuin hook install`・`atuin hook <agent>` は、agy を対象にしない。atuin 18.15.2 のバイナリ内の記述は
-  「Supported agents: claude-code, codex, pi」(2026-11-27)。agy のコマンドの履歴は、atuin に残らない。上流が agy を足したら、
-  `antigravitySkipNodes` から `atuin-history` を外し、`hook-router` に Codex の `atuin` と同じ入口を足す。
+**`plan-view` は agy に載せない**(本人の裁定、2026-11-27)。`plan-view` は Chrome の専用窓を毎回新しく開く。実測で、
+`exit_plan_mode` ごとに HTML(`~/.claude/plan-views/`)が作られた。agy は全ターンを計画から始めるので、小さな追従の
+たびに窓が開き続ける。Claude は、明示的な Plan mode のときだけ開く。
 
 ## 実測(2026-11-27、vega の agy 1.5.17、実際のセッション 1 回)
 
@@ -145,7 +141,6 @@ agy は、自前の LLM 監視(ログの `Monitor sir_flash_lite`)を持つ。�
 - agy の `error` の文面が `exit status N` 以外の形を取るか。
 - Stop の hook(`pr-gate`・`ja-polish`・`main-checkout-guard`・`session-wrapup`)が agy のターンの終わりに走ったか。上のセッションでは、
   状態ファイルに痕跡が残らず、確かめられなかった。Stop の `continue` を返したあとの再入(`continuationActive`)も、同じく未確認。
-- `plan-view` の窓が `exit_plan_mode` ごとに開くか、herdr のサイドバーに agy のペインの状態が出るか(本人の目で確かめる)。
 
 実機での確認は、確認の台帳 #1718 に載せる。
 
