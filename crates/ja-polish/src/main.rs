@@ -255,6 +255,11 @@ fn default_variants(cfg: &config::Config) -> Vec<bench::Variant> {
             model: cfg.model.clone(),
             thinking: cfg.thinking_level.clone(),
         },
+        // 思考量の指定なし(モデルの既定)も、基準として毎回並べる。
+        bench::Variant {
+            model: cfg.model.clone(),
+            thinking: None,
+        },
         bench::Variant {
             model: cfg.model.clone(),
             thinking: Some("minimal".to_string()),
@@ -476,17 +481,17 @@ mod tests {
         assert_eq!(
             d.iter().map(bench::Variant::label).collect::<Vec<_>>(),
             vec![
-                "gemini-3.6-flash@既定",
-                "gemini-3.6-flash@minimal",
-                "gemini-3.6-flash@low",
-                "gemini-flash-lite-latest@既定"
+                "gemini-3.8-flash@low",
+                "gemini-3.8-flash@既定",
+                "gemini-3.8-flash@minimal",
+                "gemini-4-argon@既定"
             ]
         );
         // 設定で既に minimal なら、同じ組を重ねない。
         c.thinking_level = Some("minimal".into());
         c.fallback_model = None;
         let d = default_variants(&c);
-        assert_eq!(d.len(), 2);
+        assert_eq!(d.len(), 3, "minimal・既定・low");
     }
 
     #[test]

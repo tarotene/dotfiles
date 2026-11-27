@@ -141,7 +141,7 @@ ja-polish bench crates/ja-polish/bench/samples.txt [--variants model[@level],…
 ```
 
 - 見本は `crates/ja-polish/bench/samples.txt` の 5 本(`<commit>:<path>`。commit を固定して、文書が変わっても測る対象が
-  動かない)。組の既定は、今の設定のモデルを「思考量の指定なし・minimal・low」で、それに予備のモデルを指定なしで 1 つ。
+  動かない)。組の既定は、今の設定のモデルを「設定の思考量・指定なし・minimal・low」(同じ組は重ねない)で、それに予備のモデルを指定なしで 1 つ。
   `--variants` で、カンマ区切りの `model` か `model@level` を指定できる。
 - 書き直しは記録を使わず(すべて未通過として扱う)、何も書き換えず、記録もしない。予備のモデルと textlint の前後段は
   挟まない(モデル自身の出力を測る)。textlint は、指摘数を数えるためだけに使う(無ければ「未計測」)。
@@ -292,7 +292,7 @@ ja-polish: skip
 | 時間切れ(`Timeout`) | `45 秒以内に応答がありません` | 同じモデルは待ち直さず、すぐ予備のモデルに 1 回 |
 | 恒久(`Permanent`) | `No key found`・`llm が見つかりません`・不明なモデル名 | 再依頼も予備もなし。素通し |
 
-予備のモデル(既定 `gemini-flash-lite-latest`)には、思考量の指定を渡さない。記録の `model` は、実際に答えた
+予備のモデル(既定 `gemini-4-argon`)には、思考量の指定を渡さない。記録の `model` は、実際に答えた
 モデル。混雑・1 日の上限・時間切れで通せなかった素通しの記録には `"transient":true` が付く(キーの未設定や照合の外れには
 付かない。課金の検討を知らせる判定の入力)。1 つの束が失敗しても、ほかの束は書き直す。
 
@@ -333,9 +333,9 @@ ja-polish: skip
 ## 設定とキー
 
 - 設定ファイル: `~/.config/dotfiles/ja-polish.toml`(home-manager が置く)。`model`(既定
-  `gemini-3.6-flash`。暫定で、理由と戻す条件は下の「モデルの選択」)、`fallback_model`(既定
-  `gemini-flash-lite-latest`。空の文字列で使わない)、`thinking_level`(`minimal` `low` `medium` `high`。
-  既定は指定なし)、`timeout_secs`(既定 45)。ほかに `chunk_paras`(8)・`parallel`(3)・`retries`(2)・
+  `gemini-3.8-flash`。有料枠のキーが前提で、理由は下の「モデルの選択」)、`fallback_model`(既定
+  `gemini-4-argon`。空の文字列で使わない)、`thinking_level`(`minimal` `low` `medium` `high`。
+  既定は `low`。空の文字列は、モデルの既定に任せる)、`timeout_secs`(既定 45)。ほかに `chunk_paras`(8)・`parallel`(3)・`retries`(2)・
   `retry_base_ms`(2000)・`textlint`(既定 true)が書けるが、home-manager の option(`dotfiles.jaPolish.fallbackModel`・
   `thinkingLevel`・`timeoutSecs`・`textlint.enable`)があるのは、`chunk_paras`・`parallel`・`retries`・`retry_base_ms` を除く項目だけ。**このファイルの有無が、その機体で有効かどうかの
   唯一の印**。無ければ関所は何も検査しない(置いていない機体では、関所も LLM への送信も起きない)。環境変数 `JA_POLISH_MODEL` か、引数 `--model <名前>`(環境変数の前置が `sandbox-compound-guard` に拒否される場面の代わり。
@@ -346,33 +346,61 @@ ja-polish: skip
   sandbox の中のコマンドと Read ツールから読めない。
 - キーは Google AI Studio で発行する。**無料枠は、送った文面が Google の製品の改善に使われ、人が読み
   うる契約**(Google, Gemini API Additional Terms of Service、更新 2026-03-23、
-  https://aistudio.google.com/docs/terms 、取得 2026-11-08)。個人の側は、それでよいと本人が裁定した。
-  この経路(個人の無料キー)で、勤務先の文書は通さない。会社契約の送り先は、別の経路として要件を
+  https://aistudio.google.com/docs/terms 、取得 2026-11-08)。**有料枠は、そうならない**(Google, "Billing"、
+  https://aistudio.google.com/docs/billing 、取得 2026-11-27。原文: "ensure your prompts and responses are
+  **not** used to improve Google products")。vega のキーは、2026-11-28 に有料枠に上げた(下の「モデルの選択」と
+  「人手の作業」)。キーが属するプロジェクトを課金枠にするので、機体ごとにキーが別なら、機体ごとに上げる。
+  この経路(個人のキー)で、勤務先の文書は通さない。会社契約の送り先は、別の経路として要件を
   確かめてから足す(「横展開」)。
 
-### モデルの選択(暫定)
+### モデルの選択
 
-既定は `gemini-3.6-flash`。最新の `gemini-3.8-flash` は、無料枠のキーで応答が返らなかったため外した。
+既定は `gemini-3.8-flash`、思考量 `low`、予備 `gemini-4-argon`(ADR-1387 の D19)。有料枠のキーが前提で、無料枠のキーに戻すときは
+`model` を `gemini-3.6-flash` に替える(下の「無料枠のとき」)。
 
-- 実測(2026-11-12、vega、`llm prompt -m <モデル> -n --no-stream 'こんにちは、と返してください。'` を直接実行):
-  `gemini-3.6-flash` と `gemini-flash-lite-latest` は即座に応答した。`gemini-3.8-flash` と `gemini-3.7-flash`
-  は 60〜120 秒待っても応答が無く、ja-polish 経由では `This model is currently experiencing high demand`
-  になった。`gemini-2.5-flash` は「新規ユーザーには使えない」と返り、`gemini-3.8-flash` を勧められた。
-- 公表された障害は無かった(Google AI Studio の状態ページ、https://aistudio.google.com/status、取得
-  2026-11-12。All Systems Operational)。同じページに「無料枠のリクエストは優先して切り捨てられる枠を使い、
-  課金枠は優先して守られる」(Free-tier requests use sheddable capacity, while billed-tier requests are
-  protected by critical priority)とある。無料枠の最新モデルが混んでいる、という読みは、この記述からの推論で、
-  混雑の理由そのものは未確認。なお、この引用は後で再確認できていない: 同じ日に状態ページをブラウザで開くと
-  「Failed to list incidents history: authentication error」と出て、本文が読めなかった(ADR-1387 の改訂)。
+- 経緯: 無料枠では、モデルごとに 1 日 20 リクエストの上限があり、使い切ると予備の軽量モデルに流れる。2026-11-27 の集計(vega、
+  直近 7 日)で、書き直した 5,009 段落の 89% を予備(`gemini-flash-lite-latest`)が答え、何も直さずに返した段落も「通した」と
+  記録されていた(D17)。
+- 測定(2026-11-28、vega、`ja-polish bench crates/ja-polish/bench/needs-fix.txt`。PR #1738 の 5 本・227 段落、旧の指示文は D20 の前):
+
+  | 組 | 指示文 | 時間(秒) | 素通し(混雑・時間切れ) | 取りこぼし |
+  |---|---|---:|---:|---:|
+  | 3.6-flash@既定 | 旧 | 343 | 28 (0) | 19/140 (14%) |
+  | 3.8-flash@既定 | 旧 | 334 | 5 (0) | 79/155 (51%) |
+  | 4-argon@既定 | 旧 | 188 | 5 (0) | 70/156 (45%) |
+  | 3.6-flash@既定 | 新 | 337 | 12 (8) | 28/154 (18%) |
+  | 3.8-flash@既定 | 新 | 374 | 20 (16) | 19/143 (13%) |
+  | 4-argon@既定 | 新 | 185 | 4 (0) | 39/156 (25%) |
+  | 3.8-flash@既定(単独で再測定) | 新 | 415 | 37 (32) | 20/130 (15%) |
+  | **3.8-flash@low(単独)** | 新 | **102** | **2 (0)** | 37/158 (23%) |
+
+  用語の置き換えと全角括弧の増減は、どの組も 0。**1 回ずつの測定で、ばらつきは測っていない**(同じ組の 2 回の測定で、素通しが 20 と 37 と
+  動いた)。既定の思考量だと、3.8 は 45 秒の時間切れが多発する(素通し 37 のうち 32)。`low` は 102 秒で終わり、素通しが 2 件に減った。
+  取りこぼしの割合は、答えた段落の中の割合で、素通しの段落(分母に入らない)が多い組ほど、実際の取りこぼしより小さく出る。
+  直した段落の絶対数は、`low`(158 − 37 = 121)が既定(130 − 20 = 110)より多い。`minimal` は測っていない(未測定)。
+- 予備を `4-argon` にした理由: 新しい指示文で、時間切れが 0 件、素通しが 4 件であり、取りこぼしが軽量モデルより少ないため。単価は高い(入力 $2・出力 $10 /
+  100 万トークン。2026-12-01 から $4・$20。Google, Gemini API Pricing、https://aistudio.google.com/docs/pricing 、取得 2026-11-28。
+  原文の一部は要約でしか読めていない)が、予備は主モデルが混雑・時間切れのときだけ使う。
+- 単価(同じページ、取得 2026-11-28): `gemini-3.8-flash` は入力 $0.75・出力 $3.75 / 100 万トークン(2026 年末まで。2027-01-01 から
+  $1.50・$7.50)。思考トークンは出力単価で計算される。月の目安は $30 前後(推定。ADR-1387 の見積もりのまま)。
+
+#### 無料枠のとき
+
+- 無料枠のキーでは、`gemini-3.8-flash` は混雑で応答が返らない(2026-11-12、vega、`llm prompt -m <モデル> -n --no-stream
+  'こんにちは、と返してください。'` を直接実行。3.8・3.7 は 60〜120 秒待っても応答がなく、ja-polish 経由では `high demand`。3.6 と
+  `gemini-flash-lite-latest` は即座に応答した)。Google AI Studio のステータスページは All Systems Operational で、同ページに「無料枠の
+  リクエストは優先して切り捨てられる枠を使い、課金枠は優先して守られる」と記載がある(https://aistudio.google.com/status、取得 2026-11-12。
+  後で再確認できていない: 同日にブラウザで開くと「Failed to list incidents history: authentication error」と表示され、本文が読めなかった)。
+  混雑の理由自体は未確認。
 - 無料枠の 1 日の上限(実測 2026-11-15、vega、`llm prompt -m gemini-3.6-flash -n --no-stream …` を直接実行):
   `You exceeded your current quota … Quota exceeded for metric: generativelanguage.googleapis.com/
   generate_content_free_tier_requests, limit: 20, model: gemini-3.6-flash, description: Generate content
   requests per day limit exceeded on Free Tier. … Please retry in 2h38m48s` が返った。無料枠は、モデルごとに
-  1 日 20 リクエストで、使い切ると、その日は(次の再開まで)そのモデルが使えない。ja-polish は 1 回の実行で
-  段落の束ごとに依頼を送るので、実行を重ねると上限に届く、と読める(依頼の数の内訳は未確認)。上限に当たったときの
+  1 日 20 リクエストで、使い切ると、その日は(次の再開まで)そのモデルが使えない。上限に当たったときの
   `ja-polish` の動きは「失敗したとき」の節を参照。
-- 戻す条件: `llm prompt -m gemini-3.8-flash -n --no-stream 'こんにちは'` が 30 秒以内に応答すること。
-  満たしたら `home/modules/ja-polish.nix` と `crates/ja-polish/src/config.rs` の既定値を戻す。
+- 有料枠にしたあとの確認(2026-11-28、vega): `llm prompt -m gemini-3.8-flash` が 4 秒で応答し、無料枠の上限に当たっていた
+  `gemini-3.6-flash` も応答した(課金の反映が通常 10 分以内、という公式の説明と一致する。API keys ページの「Plan」の欄が `Paid` に
+  なるかは、画面で確かめる)。
 
 ## なぜ Gemini CLI でなく llm か
 
@@ -402,16 +430,38 @@ llm-gemini 0.34 以降)。そのため overlay で、`llm-gemini` 0.35 と、そ
 実装の PR がマージされ `hms` が当たったあと、各機体(vega・altair)で一度だけ。
 
 1. ブラウザで https://aistudio.google.com/api-keys(「API Keys」ページ)を開き、**Create API key** を
-   押す。プロジェクトが一覧に無いときは、Dashboard → Projects の **Import projects** で取り込んでから、
-   もう一度押す(Google, "Using Gemini API keys"、https://aistudio.google.com/docs/api-key 、取得
-   2026-11-12)。2026-11-12 に vega でこの手順で発行でき、画面の表記が違うという報告は無かった。
-   プロジェクトの選択画面の表記は未確認。新しく作るときの名前は、`docs/personal-cloud-projects.md` の
+   押す。プロジェクトが一覧に無い場合は、Dashboard → Projects の **Import projects** で取り込んでから、
+   再度押す(Google, "Using Gemini API keys"、https://aistudio.google.com/docs/api-key、取得
+   2026-11-12)。2026-11-12 に vega でこの手順により発行でき、画面表記が違うという報告は無かった。
+   プロジェクトの選択画面の表記は未確認。新規作成時の名称は、`docs/personal-cloud-projects.md` の
    汎用規則(`<tool>-<github-username>`)を転用して `ja-polish-<github-username>` とする(その規則は
-   OAuth のクライアントを想定した表で、API キーへの適用は転用)。課金先の設定は進めない(無料枠でよい)。
+   OAuth クライアントを想定した表であり、API キーへの適用は転用)。
+   **有料枠にする手順は、下の「有料枠にする」**(2026-11-28 に vega でこの手順を踏んだ)。
 2. `llm keys set gemini` を実行し、プロンプトに貼る。
 3. 端末で `echo '日本語を直すことができる。' > /tmp/t.md && ja-polish /tmp/t.md && ja-polish --check /tmp/t.md`
    を実行する(人の端末なので連結してよい)。確認する値: 書き直した差分が出て、最後に「未通過の日本語の
    段落はありません」と出る。
+
+### 有料枠にする
+
+キーが属するプロジェクトを課金枠に上げる(ADR-1387 の D19)。クレジットカードと事前入金が必要で、入金は返金できず 1 年で失効する
+(戻せない: 外部契約)。画面の表記は、2026-11-28 に vega で見たもの。
+
+1. https://aistudio.google.com/projects を開き、キーのプロジェクトの行の **Billing Tier** 列の **Set up billing** を押す。
+2. 「Cloud 請求先アカウントの設定」で請求先アカウントを選ぶ。既存のアカウントを選ぶと「この請求先アカウントに割り当てられている
+   プロジェクトの数が上限に達しています」(システムエラー)になることがある(実測)。その場合は **新しい請求先アカウントを作成** を選ぶ
+   (**プロジェクトのリンクを解除** は、既存プロジェクトの課金が止まる可能性があるため避ける)。
+3. **AI Studio の画面から作成すると、国の選択欄が出ず、住所が米国形式(市区郡・州・郵便番号)になる**(実測)。そこで入力を進めず、
+   Cloud コンソールの https://console.cloud.google.com/billing から「アカウントを作成」を押す。国を選ぶ欄が表示され、「日本」を選べた(実測)。
+   国と通貨は作成後に変更できない(Google, "Create a new Cloud Billing account"、https://docs.cloud.google.com/billing/docs/how-to/create-billing-account 、
+   取得 2026-11-28)。お支払いプロファイルの種類は「個人」(作成後に変更できない)。
+4. AI Studio に戻り、新しい請求先アカウントで事前入金(Prepay)する。選択できる金額は ¥800(最小。公式の最小額 $5 に相当すると読める)・¥3,200・
+   ¥16,000・その他。**オートチャージは画面の既定が ON(「推奨」)だが、OFF にして単発で支払う**: ON のままだと、不具合などで
+   使用量が増えた際、承認なしでカードに繰り返し請求される。「月間の上限(省略可)」の欄に `¥0.00` が入っており、「上限が無いときは空白」と
+   あるため、`0` が上限なしなのか上限 0 円なのかは画面から判断できない(未確認)。オートチャージを ON にするときは、月の使用量を確認したうえで、
+   月間の上限を明示的な金額に設定する。
+5. 反映は支払いの確定から通常 10 分以内(公式の説明)。確認は、上の「無料枠のとき」の末尾にある `llm prompt` と、API keys ページの「Plan」欄で行う。
+   残高が 0 になるとキーが停止し(HTTP 402)、ja-polish は段落を素通しにして記録する。
 
 ## 後続(意図は決まっていて、未着手)
 

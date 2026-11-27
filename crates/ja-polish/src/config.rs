@@ -8,10 +8,13 @@ use serde::Deserialize;
 use std::path::PathBuf;
 use std::time::Duration;
 
-/// `home/modules/ja-polish.nix` の `model` の既定値と同じにする(暫定の理由と戻す条件はそちらのコメント)。
-pub const DEFAULT_MODEL: &str = "gemini-3.6-flash";
+/// `home/modules/ja-polish.nix` の `model` の既定値と同じにする(選んだ理由は docs/adr/1387-ja-polish.md の D19)。
+pub const DEFAULT_MODEL: &str = "gemini-3.8-flash";
 /// `home/modules/ja-polish.nix` の `fallbackModel` の既定値と同じにする。
-pub const DEFAULT_FALLBACK_MODEL: &str = "gemini-flash-lite-latest";
+pub const DEFAULT_FALLBACK_MODEL: &str = "gemini-4-argon";
+/// 主のモデルの思考量の既定。`home/modules/ja-polish.nix` の `thinkingLevel` と同じにする(D19)。
+/// 既定のままだと 45 秒の時間切れが多発した(`gemini-3.8-flash`、2026-11-28 の測定)。
+pub const DEFAULT_THINKING_LEVEL: &str = "low";
 /// 1 回の依頼の待ち(秒)。応答が返らないモデル(無料枠の混雑)を待ち続けないための値で、
 /// 120 秒だった以前の値から縮めた(docs/adr/1387-ja-polish.md の D9)。
 const DEFAULT_TIMEOUT_SECS: u64 = 45;
@@ -49,7 +52,7 @@ impl Default for Config {
         Config {
             model: DEFAULT_MODEL.to_string(),
             fallback_model: Some(DEFAULT_FALLBACK_MODEL.to_string()),
-            thinking_level: None,
+            thinking_level: Some(DEFAULT_THINKING_LEVEL.to_string()),
             timeout: Duration::from_secs(DEFAULT_TIMEOUT_SECS),
             chunk_paras: DEFAULT_CHUNK_PARAS,
             parallel: DEFAULT_PARALLEL,
@@ -100,10 +103,11 @@ pub fn parse(text: &str) -> Config {
     if let Some(m) = file.fallback_model {
         c.fallback_model = Some(m.trim().to_string()).filter(|m| !m.is_empty());
     }
-    c.thinking_level = file
-        .thinking_level
-        .map(|l| l.trim().to_string())
-        .filter(|l| THINKING_LEVELS.contains(&l.as_str()));
+    // キーが無いときは既定の思考量。空の文字列(や、知らない値)は「モデルの既定に任せる」。
+    if let Some(l) = file.thinking_level {
+        c.thinking_level =
+            Some(l.trim().to_string()).filter(|l| THINKING_LEVELS.contains(&l.as_str()));
+    }
     if let Some(t) = file.timeout_secs.filter(|t| *t > 0) {
         c.timeout = Duration::from_secs(t);
     }
@@ -142,7 +146,17 @@ mod tests {
         let c = parse("");
         assert_eq!(c.timeout, Duration::from_secs(45));
         assert_eq!(c.fallback_model.as_deref(), Some(DEFAULT_FALLBACK_MODEL));
-        assert_eq!(c.thinking_level, None);
+        assert_eq!(c.thinking_level.as_deref(), Some(DEFAULT_THINKING_LEVEL));
+        assert_eq!(
+            parse("thinking_level = \"\"\n").thinking_level,
+            None,
+            "空の文字列は、モデルの既定に任せる"
+        );
+        assert_eq!(
+            parse("thinking_level = \"bogus\"\n").thinking_level,
+            None,
+            "知らない値も、モデルの既定に任せる"
+        );
         assert_eq!((c.chunk_paras, c.parallel, c.retries), (8, 3, 2));
         assert_eq!(c.retry_base, Duration::from_millis(2000));
     }
