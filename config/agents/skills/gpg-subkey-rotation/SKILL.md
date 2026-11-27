@@ -21,7 +21,7 @@ description: GPG の機体ローカル [S]/[E] サブ鍵をローテーション
 1. **rotate**(ハードウェア操作、必ずユーザー): `gpg-subkey rotate --key
    <primary-fpr> [--usage sign|encrypt] --revoke-old`
    カードの `[C]` 権限で新サブ鍵に署名するため YubiKey の挿入・タッチ・PIN
-   入力が要る。LLM エージェントは代行できない(資格情報/ハードウェア操作の
+   入力が必要。LLM エージェントは代行できない(資格情報/ハードウェア操作の
    ブロッキング理由)。`--revoke-old` を付けても **カード紐付けの旧サブ鍵は
    revoke されない**(on-disk 材料だけが revoke 対象 — CLI ヘルプに明記。
    これは意図的な設計であり次ステップの対象ではない)。
@@ -31,12 +31,12 @@ description: GPG の機体ローカル [S]/[E] サブ鍵をローテーション
    その keyid を確認し `gpg-subkey revoke --key <primary-fpr> --subkey
    <keyid>` を実行する。新しい鍵を作らずにこの 1 本だけを revoke する
    standalone コマンド(rotate の `--revoke-old` とは別の入口)。これも
-   カードの `[C]` 権限が要るためユーザー実行必須。card-backed/stub な
+   カードの `[C]` 権限が必要なためユーザー実行必須。card-backed/stub な
    subkey は(ステップ 1 と同じ理由で)拒否される。
 3. **export**: `gpg-subkey export --repo <dotfiles-checkout> --identity
    <personal|company>`
    `keys/<identity>.pub` をローカル鍵束から再エクスポートし、次に nix へ
-   書く新サブ鍵 ID を出力する。変更が無ければ「変更はありません」と出る
+   書く新サブ鍵 ID を出力する。変更がなければ「変更はありません」と出る
    (べき等)。ステップ 2 で revoke しただけでも鍵材料が変わるため、
    ここは rotate 後だけでなく revoke 後にも必ず再実行する。
 4. **nix 編集**: `home/hosts/<host>.nix` の `programs.git.signing.key` を
@@ -46,7 +46,7 @@ description: GPG の機体ローカル [S]/[E] サブ鍵をローテーション
    知る唯一の場所)。
 5. **sync**: `gpg-subkey sync --repo <dotfiles-checkout> --identity
    <personal|company>`(report)→ drift があれば `--fix --yes`(非対話実行
-   では `--yes` 必須、無いとエラーで止まる)。GitHub の GPG 鍵登録・
+   では `--yes` 必須、ないとエラーで止まる)。GitHub の GPG 鍵登録・
    keys.openpgp.org を現行サブ鍵に収束させる。GitHub は登録の in-place
    更新をサポートしないため、`--fix` は古いエントリを削除して現行の
    export を登録し直す。ステップ 2 で revoke した場合、その revoke で
@@ -55,7 +55,7 @@ description: GPG の機体ローカル [S]/[E] サブ鍵をローテーション
    報告するまでステップ 3〜5 を繰り返す。
 6. **`[E]` をローテーションした場合のみ**: そのサブ鍵が暗号化している
    ファイルを再暗号化する(CLI ヘルプ曰く「例: esa MCP の
-   `token.gpg`」)。対象が無ければスキップしてよいが、確認はする。
+   `token.gpg`」)。対象がなければスキップしてよいが、確認はする。
 7. **commit → PR**: `keys/<identity>.pub`(変更があれば)+ host module を
    1 コミットにまとめて PR にする。ADR-0027 により、同一セッション内に
    dotfiles の他の open PR があれば、その head branch を base にして積む
@@ -93,7 +93,7 @@ description: GPG の機体ローカル [S]/[E] サブ鍵をローテーション
 
 ## 4. 既知の落とし穴
 
-- `sync --fix` は非対話実行(スクリプト・hook 経由)では `--yes` が無いと
+- `sync --fix` は非対話実行(スクリプト・hook 経由)では `--yes` がないと
   `非対話実行では --yes が必要です` で失敗する。
 - `rotate --revoke-old` はカード紐付けサブ鍵を revoke しない。on-disk 材料
   だけが対象 — 「rotate に revoke-old を付けたのに旧鍵がまだ生きている」は

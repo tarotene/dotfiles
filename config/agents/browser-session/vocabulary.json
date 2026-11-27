@@ -1,7 +1,7 @@
 {
   "version": 1,
   "object": "browser-session",
-  "description": "ブラウザ操作の途中で、対象のアカウントが未ログインだったときのハンドオフの状態と事象の閉語彙。元は config/agents/skills/browser-login-handoff/SKILL.md の §1(未ログインの判定)・§2(ログイン画面への誘導)・§3(完了の確認)・§4(再開)・§5(personal ホストの Playwright MCP の同期)。パスワードと二段階認証の入力は、エージェントが代行しない領域で、本人の遷移(login)にだけ置く。personal ホストでは、普段の Firefox でログインし、確認のあと /mcp で playwright を再接続して同期をやり直す(その順序と、再接続が旧い process を先に終えるかは、本文が未確認と書く)。フォームを保存する前と、アクセス障害が起きたときの手順は reference/browser-operations.md が持ち、ここには書かない。",
+  "description": "ブラウザ操作の途中で、対象のアカウントが未ログインだったときのハンドオフの状態と事象の閉語彙。元は config/agents/skills/browser-login-handoff/SKILL.md の §1(未ログインの判定)・§2(ログイン画面への誘導)・§3(完了の確認)・§4(再開)・§5(personal ホストの Playwright MCP の同期)。パスワードと二段階認証の入力は、エージェントが代行しない領域で、本人の遷移(login)にだけ置く。personal ホストでは、普段の Firefox でログインし、確認のあと /mcp で playwright を再接続して同期をやり直す(その順序と、再接続が古い process を先に終えるかは、本文が未確認と書く)。フォームを保存する前と、アクセス障害が起きたときの手順は reference/browser-operations.md が持ち、ここには書かない。",
   "initial": "none",
   "states": [
     { "id": "logged_out", "terminal": false, "owner": "agent", "owner_detail": "未ログインと判定した。ページの状態を読んだ語(ログイン・サインイン)で機械的に判定する" },

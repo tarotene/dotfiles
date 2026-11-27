@@ -5,7 +5,7 @@ description: Claude Code routine(claude.ai 上の scheduled cloud agent)を、�
 
 Claude Code routine は今のところ `claude.ai/code/routines` の Web UI /
 `/schedule` / `RemoteTrigger` で個別に作るしかなく、定義(prompt・cron・
-対象 repo)がどこにも版管理されない。このスキルは、routine の設定と
+対象リポジトリ)がどこにも版管理されない。このスキルは、routine の設定と
 prompt 本体を対象リポジトリの `.claude/routines/` 配下のファイルに正本化し、
 live 側(claude.ai)をその宣言に追従させる。
 
@@ -36,10 +36,10 @@ JSON body を組み立てない。
 - `id` は初回 create 後にこのスキルが書き戻す値。手で作らない。
 - `state` は閉語彙 `enabled|disabled|retired`。`retired` は
   `enabled:false` を維持したまま宣言ファイルを残す(delete API が
-  無いため — D8)。
+  ないため — D8)。
 - `cron_utc` は UTC 解釈の 5 フィールド cron。run-once/webhook trigger は
   このスキーマで表現できない(意図的 — D11)。
-- `home_repo` は宣言が住む repo。`sources` からは導出しない —
+- `home_repo` は宣言が置かれるリポジトリ。`sources` からは導出しない —
   `sources` が空(prompt 内で手動 clone する routine)の実例があるため。
 - `auto_mode_allow`/`auto_mode_environment` は任意(文字列の配列)。cloud routine の auto mode の
   分類器に、共有の資源への書き込みなどを許す散文の規則を渡す。値の順序を保ち、**`"$defaults"` を
@@ -66,9 +66,9 @@ JSON body を組み立てない。
 3. その body をそのまま `RemoteTrigger`(action: create)に渡す。
    加工しない — 決定的 CLI の出力を信じる。
 4. 応答の `trigger.id` を宣言ファイルの `id` に書き戻し、同じ commit に含める。
-5. この repo が private なら、Claude GitHub App の install 先に含まれて
+5. このリポジトリが private なら、Claude GitHub App の install 先に含まれて
    いるか確認する(`docs/claude/claude-routines.md`「クラウド到達範囲」
-   節)。含まれていなければ cloud routine はこの repo を clone できない。
+   節)。含まれていなければ cloud routine はこのリポジトリを clone できない。
 
 ## 既存の routine を宣言に取り込む(adopt)
 
@@ -103,16 +103,16 @@ Web UI や旧来のやり方で作った routine を正本化するとき。
    - `conflict`: 宣言と live の両方が注記から乖離している。同上、人が判断する。
    - `suspended`: `suspension_reason`/`ended_reason` が非空。自動で
      再有効化しない — 原因を確認してから手で対処する。
-   - `refuse`: 注記が無い、または live の `name` が
-     `<home_repo>:<name>` と一致しない。adopt からやり直す。理由(注記が無い /
+   - `refuse`: 注記がない、または live の `name` が
+     `<home_repo>:<name>` と一致しない。adopt からやり直す。理由(注記がない /
      名前の不一致 / 入力の形)は標準エラーに 1 行出る。
-   - `new`: 宣言に `id` が無い。「新規 routine を作る」の手順に進む。
+   - `new`: 宣言に `id` がない。「新規 routine を作る」の手順に進む。
 
 ## 廃止する(retire)
 
 `state` を `retired` に変え、上記「宣言を適用する」で update する
 (`enabled:false` になる)。宣言ファイルは消さない — delete API が
-無いため、消すと live 側に孤児が残る(D8)。
+ないため、消すと live 側に孤児が残る(D8)。
 
 ## ローカルの宣言外書き込みは guard が塞ぐ
 

@@ -7,9 +7,9 @@
 # 毎回失敗し続ける。CI job が緑だとこの失敗は一覧で埋もれる
 # (tarotene/dotfiles#659 の実例: 失敗に気づくまで 2 日)。
 #
-# ADJUST: crates.io で配布する repo では、(1) manual-steps.md の bootstrap
+# ADJUST: crates.io で配布するリポジトリでは、(1) manual-steps.md の bootstrap
 # publish を済ませ、(2) Trusted Publishing を登録してから、この行を消す
-# (既定の true に戻る)。publish しない repo ではこの行をそのまま残す —
+# (既定の true に戻る)。publish しないリポジトリではこの行をそのまま残す —
 # release-plz は publish = false でも git tag と GitHub Release を作る
 # (release-plz docs "Configuration" https://release-plz.dev/docs/config、
 # 取得 2026-10-01)。

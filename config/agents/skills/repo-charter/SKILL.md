@@ -4,7 +4,7 @@ description: 新規リポジトリ作成時(gh repo create)、または既存リ
 ---
 
 新規リポジトリは「何を作るか」だけが先に決まり、「どの Issue がこのリポジトリに
-属するか」を判定する軸が言語化されないまま育つことが多い。軸が無いと、AI Agent
+属するか」を判定する軸が言語化されないまま育つことが多い。軸がないと、AI Agent
 は目指すべき方向性がブレ、人間は何を期待すべきかブレて、見当外れの Issue を切る
 (あるいは切ってよいか判断できない)。charter はこの軸を、README/CONTRIBUTING の
 中の機械検査可能な形に固定する。
@@ -36,7 +36,7 @@ description: 新規リポジトリ作成時(gh repo create)、または既存リ
    (ADR-0026 Amends 節):
    - `naming-descriptive` を選ぶ場合: 名前の末尾トークンが
      `config/github-audit/descriptive-species.tsv` の種別語に**ないと
-     作成に進めない**。ここにない種別語(特に「完了しうる行為」を表す
+     作成に進めない**。ここにない種別語(特に「完了し得る行為」を表す
      語 — cleanup, migration 等)は `naming-pj` へ倒す。種別語を追加したい
      場合は先にそのファイルの改訂 PR を立てる。
    - `naming-codename` を選ぶ場合: 名前が
@@ -44,7 +44,7 @@ description: 新規リポジトリ作成時(gh repo create)、または既存リ
      `~/.config/github-audit/codename-registry.local.tsv`(PRIVATE)に
      **登録されていないと作成に進めない**。未登録なら先にレジストリへの
      追記(PUBLIC は PR、PRIVATE はローカルファイルへの直接追記)を行う。
-   - `naming-coined` を選ぶ場合: 閉語彙チェックは無い(各リポジトリごとに
+   - `naming-coined` を選ぶ場合: 閉語彙チェックはない(各リポジトリごとに
      個別の意図を持って作られる造語のため)。その代わり、なぜその造語を
      選んだか(形態素パターン・比較審査の記録)を当該リポジトリの ADR 等に
      残すことを推奨する(dotfiles 側は強制しない)。
@@ -206,7 +206,7 @@ requests` の後に追加してよい。見出しリテラル(英語)・順序�
 リポジトリでもこの英語表記を使う。「Issue litmus」という見出し名の自作語彙は
 ADR-0017 で廃止した(判定問 + 採用例・棄却例という**内容の形**は `## Issues`
 冒頭に維持 — AI エージェントがコントリビュータになるケースへの言及は
-調査した一次情報のいずれにも無く、ここは先行例のない領域)。
+調査した一次情報のいずれにもなく、ここは先行例のない領域)。
 
 ## 4. ルート文書 allowlist(ADR-0016)
 
@@ -221,7 +221,7 @@ ADR-0017 で廃止した(判定問 + 採用例・棄却例という**内容の�
 
 「導線文書」= ルート文書 allowlist(前節)+ 各ディレクトリの
 `<dir>/README.md`。判定軸は**情報の寿命**(この記述は、指す実体が変わる
-たびに書き換えが要るか)。次の 3 種は寿命が短いので導線文書に書かない
+たびに書き換えが必要か)。次の 3 種は寿命が短いので導線文書に書かない
 — 実体の隣に置き、導線文書からは 1 行のポインタで指す。
 
 - **ディレクトリ構成図(tree)。** ファイル追加・リネームで壊れる。
@@ -230,7 +230,7 @@ ADR-0017 で廃止した(判定問 + 採用例・棄却例という**内容の�
   なので `<dir>/README.md` 自身は書いてよい)。
 - **ファイル/コンテンツの手書き一覧。** ADR 索引、ワークフロー一覧、
   コマンド一覧など。コンテンツ追加のたびに壊れ、実際に運用ではすぐ
-  drift する(欠落項目が出る)。索引が要るなら `docs/` 配下に生成
+  drift する(欠落項目が出る)。索引が必要なら `docs/` 配下に生成
   スクリプトを書くか、単に列挙をやめて「詳細は `docs/` を見よ」の
   1 行に留める。
 - **他ファイルの中身の転記。** YAML/JSON スキーマ、設定値、CLI の
@@ -238,7 +238,7 @@ ADR-0017 で廃止した(判定問 + 採用例・棄却例という**内容の�
   コメント、または `--help`)を 1 行で指す。
 
 目的・方針・命名規約・Issue 受け入れ判定基準のような寿命の長い記述は
-対象外 — 実体が変わっても書き換えが要らない。
+対象外 — 実体が変わっても書き換えは不要。
 
 機械検査(節内のユニークなパス様文字列が 4 個以上、またはツリー罫線
 文字の出現)は `github-audit` の charters ドメインが行う
@@ -331,7 +331,7 @@ ln -s ../../.agents/skills/<name> .claude/skills/<name>
 repo-create-guard が deny する。guard が強制したいのは「この手順に載せること」
 なので、手順そのもの(閉語彙チェック → `gh repo create` → `--add-topic` →
 governance 播種)を 1 本で実行するスクリプトが正規の入口で、バイパス用の環境変数
-(`SKIP_REPO_CREATE_GUARD=1`)は要らない — auto モードの分類器は、これを
+(`SKIP_REPO_CREATE_GUARD=1`)は不要 — auto モードの分類器は、これを
 safety bypass と判定して拒否する。guard は Bash のコマンド文字列しか見ないので、
 スクリプト内の `gh repo create` は deny に当たらない(`apply-rulesets` と同じ形、#707)。
 
@@ -381,14 +381,14 @@ description と topics は README・CONTRIBUTING の鏡で、正本は README・
 既存リポジトリの適合化で README・CONTRIBUTING を PR で直すときは、**その PR が merge された後**に
 `gh repo edit` を実行する。README の merge より前に鏡だけを書き換えると、メタデータと README が
 食い違う状態が一時的にできる。例外は 2 つ。(a) 新規作成: `create-repo.sh` が作成時に topics を
-付ける(README がまだ無いので、食い違う相手がいない)。(b) `naming-*` topic だけを足し、改名を
-伴わず、対応する README の PR が無い場合: 待つ相手の PR が無いので、すぐ
+付ける(README がまだないので、食い違う相手がいない)。(b) `naming-*` topic だけを追加し、改名を
+伴わず、対応する README の PR がない場合: 待つ相手の PR がないので、すぐ
 `gh repo edit --add-topic naming-<クラス>` してよい。改名を伴う場合(`naming-pj` への移行など)は、
 改名の PR の merge を待つ。
 
 **新規作成の場合、続けて標準 governance を播く**(#153、
 ADR-503)。`create-repo.sh --type …` がこれを行う(`gh` 自体には `repo create` 直後に
-走るフック機構が無いため、この手順が事実上の自動適用になる)。以下はスクリプトが
+走るフック機構がないため、この手順が事実上の自動適用になる)。以下はスクリプトが
 内部で呼ぶ個々のコマンドで、スクリプトが失敗したときのフォールバック手順でもある。
 required status check の正本は対象リポジトリ自身の `.github/rulesets/*.json` に
 一本化されている(`apply-rulesets.sh` は型を引数に取らない)。リポジトリの
@@ -409,10 +409,10 @@ rulesets の呼び出し順、`ci.yml`・`CI passed`・rulesets の宣言を同�
 `repo-governance` SKILL.md の「Without a language profile (`core`)」節が正本である。
 `create-repo.sh --type core` はその節の最初の 2 コマンドを呼び、失敗したときのフォールバック
 もその節にある。ここには複写しない。続けて、作業先に**根コミット**まで作る(`root_commit`、F57): 作業先が git の作業ツリーでなければ
-`git init -b main`、origin を **https** の URL で足し(SSH の URL で足すと、鍵の無い環境で push が publickey で落ちた)、
+`git init -b main`、origin を **https** の URL で追加し(SSH の URL で追加すると、鍵のない環境で push が publickey で失敗した)、
 播種したファイルを 1 つのコミットにする。署名は利用者の git の設定どおりなので、**sandbox の外で**(署名の鍵が見える場で)実行する。
-すでにコミットがあれば何もしない(続きから進められる)。push は、資格情報が要るので、案内(`next:`)に出すだけにする。
-main への直コミットは、HEAD が未生成の間だけ pre-commit が通す(`docs/git-sync.md`)ので、`GIT_ALLOW_MAIN_COMMIT` は要らない。
+すでにコミットがあれば何もしない(続きから進められる)。push は、資格情報が必要なので、案内(`next:`)に出すだけにする。
+main への直コミットは、HEAD が未生成の間だけ pre-commit が通す(`docs/git-sync.md`)ので、`GIT_ALLOW_MAIN_COMMIT` は不要。
 
 review 層(Copilot code review + 会話 resolve 必須)は ADR-0021 のとおり
 初期は付けない。開発初期フェーズを過ぎたら `--with-review` を付けて再実行する。
@@ -427,11 +427,11 @@ github-audit charters naming workflows rulesets
 `missing=` の項目を読んで埋め直す(`docs/github-audit.md` に各項目の説明)。
 
 `workflows` と `rulesets` は CI の構成を見る(ADR-1005)。`core` 型(言語別テンプレ
-が無い)は、`ci.yml` が `ci-passed` だけの最小形なので `ci-gate-empty` が出る。
-ADR-1005 D1 の基準 — ① 落ちたまま main に入ると main の不変条件(ビルド・テスト・
-整形・秘密なし等)が壊れる job だけを `ci.yml` に足し、② flaky・外部依存・p75 10 分
-超の job は `ci.yml` の外へ置く — を読んで、足す job を決める。足す job が今は無い
-リポジトリ(文書だけ等)は、exempt にする(`github-audit-triage` の三択)。足したら
+がない)は、`ci.yml` が `ci-passed` だけの最小形なので `ci-gate-empty` が出る。
+ADR-1005 D1 の基準 — ① 失敗したまま main に入ると main の不変条件(ビルド・テスト・
+整形・秘密なし等)が壊れる job だけを `ci.yml` に追加し、② flaky・外部依存・p75 10 分
+超の job は `ci.yml` の外へ置く — を読んで、追加する job を決める。追加する job が今はない
+リポジトリ(文書だけ等)は、exempt にする(`github-audit-triage` の三択)。追加したら
 `ci-passed.needs` にも入れる。
 
 ## 10. 既存 Issue への適用(適合化のとき)

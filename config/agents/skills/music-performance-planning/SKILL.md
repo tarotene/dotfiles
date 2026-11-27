@@ -119,7 +119,7 @@ slot-availability の SKILL.md「発行側の打診」に従う。予約型サ�
 主催者からタイムスケジュールのシートが払い出されることがあるが、これを
 前提にした専用パーサは持たない(相対時刻の表記も資料の形式も主催者ごとに
 バラバラで、実例がまだ乏しい — YAGNI、`docs/agents/music-performance-planning.md`
-参照)。資料が無い演奏でも、下記の対応表と同じ項目を対話で埋める。
+参照)。資料がない演奏でも、下記の対応表と同じ項目を対話で埋める。
 
 対応表(資料に出てくる典型項目 → フィールド):
 
@@ -127,7 +127,7 @@ slot-availability の SKILL.md「発行側の打診」に従う。予約型サ�
 |---|---|
 | 開場・開演・終演見込み(本番当日) | トップレベル `start`/`end` |
 | 各回の合わせ日程・会場 | `rehearsals[].start`/`end`/`location` |
-| ドレスコード | トップレベル `dress_code`(無ければ `"none"`) |
+| ドレスコード | トップレベル `dress_code`(なければ `"none"`) |
 | 宿泊の要否・宿泊先 | `travel.lodging.decision`/`name` |
 | 集合時刻・搬入等(相対時刻) | `day_timetable`(「5. 当日タイムテーブル」参照) |
 
@@ -168,7 +168,7 @@ person-state リポジトリ側の演奏ファイルへ書く PR を出し、CI 
    `activity`(・`duration`)に直す。`start` が `date` のままなら、
    `day_timetable` は射影されないことを本人に伝える。
 3. `travel.legs` の各区間について、確定済みの日時があれば `depart`/`arrive`
-   として書く。無ければ「要確定」として一覧に残す(勝手に時刻を仮定しない)。
+   として書く。なければ「要確定」として一覧に残す(勝手に時刻を仮定しない)。
    `travel.lodging` は射影されない — 「6. 付随作業」の `lodging-decision`/
    `lodging-booking` で追う。
 4. 追加・更新するエントリ(`activity`/`segment` と、導かれる開始・終了)の
@@ -192,7 +192,7 @@ bash "$HUB/state/performances/scripts/obligations.sh"
 
 - `venue-booking`: `stage` に応じて「3. 会場確保」の該当手順へ。
 - `dress-code-confirm`: 本人にドレスコードの有無を確認し、`dress_code`
-  に記入する(無ければ `"none"` を明記する — キー省略は「未確認」を
+  に記入する(なければ `"none"` を明記する — キー省略は「未確認」を
   意味するため、区別する)。
 - `attire-prep`/`attire-cleaning`: 本人が完了したら `attire.prep`/
   `attire.cleaning` を `done`(または不要なら `not-needed`)に書き換える。

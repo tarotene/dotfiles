@@ -56,7 +56,7 @@
     },
     {
       "name": "h2_asis",
-      "about": "H2: 不在を入れたあと、印を直す前に script が落ちると、再実行で不在が二重に入る",
+      "about": "H2: 不在を入れたあと、印を直す前に script が異常終了すると、再実行で不在が二重に入る",
       "rules": "asis",
       "flags": { "CAN_CRASH": true, "MAX_EDITS": 2 },
       "invariant": ["s2dup"],
@@ -71,7 +71,7 @@
     },
     {
       "name": "h4_asis",
-      "about": "H4: 冪等(探してから作る)でも、2 つの実行が同時に探して同時に作ると不在が二重に入る。ロックが要る",
+      "about": "H4: 冪等(探してから作る)でも、2 つの実行が同時に探して同時に作ると不在が二重に入る。ロックが必要",
       "rules": "asis",
       "flags": { "IDEMPOTENT_ABSENCE": true, "TWO_RUNS": true, "MAX_EDITS": 2 },
       "invariant": ["s2dup"],
@@ -131,7 +131,7 @@
     },
     {
       "name": "s6_asis",
-      "about": "S6: 本人が語彙に無い書き換え(例: [ng] を [go] に)をしても、ADR-550 には応答が無い",
+      "about": "S6: 本人が語彙にない書き換え(例: [ng] を [go] に)をしても、ADR-550 には応答がない",
       "rules": "asis",
       "flags": { "CAN_FORGE": true, "MAX_EDITS": 2 },
       "temporal": ["s6revert"],
@@ -160,7 +160,7 @@
     },
     {
       "name": "l1_revised",
-      "about": "L1: [go] は、いずれ [go] でなくなる(落ちる実行があっても)",
+      "about": "L1: [go] は、いずれ [go] でなくなる(異常終了する実行があっても)",
       "flags": { "CAN_CRASH": true },
       "temporal": ["l1"],
       "expect": "pass"

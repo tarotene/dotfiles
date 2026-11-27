@@ -4,7 +4,7 @@
 # 純粋な算術のみで行い、IANA タイムゾーン DB のオフセット解決は bash 側
 # (`TZ=<tz> date +%z`、slot-hit.sh 参照)に一度だけ委ねる。Google Calendar
 # API の `dateTime` は既にオフセット付き文字列で返るため、イベント側は
-# タイムゾーン DB を再解決する必要が無い。config 側のコマ時刻(HH:MM)だけ
+# タイムゾーン DB を再解決する必要がない。config 側のコマ時刻(HH:MM)だけ
 # `local_tz_offset`(slot-hit.sh が埋め込む "+09:00" 形式)を使って同じ
 # 関数でエポック秒に変換する。実測(2026-09-27、Python `datetime.fromisoformat
 # (...).timestamp()` との比較)で完全一致を確認済み。
@@ -48,7 +48,7 @@ def epoch_days_to_date:
 def hm_to_minutes:
   split(":") | (.[0] | tonumber) * 60 + (.[1] | tonumber);
 
-# jq 1.7 未満には `abs` 組み込みが無いため自前定義する(CI のランナー標準
+# jq 1.7 未満には `abs` 組み込みがないため自前定義する(CI のランナー標準
 # jq のバージョンに依存しないため)。
 def jq_abs:
   if . < 0 then -. else . end;
@@ -164,12 +164,12 @@ def resolve_year($month; $day; $weekday_ja; $today):
 
 # 期間 [$from, $to](両端含む)× 設定の全コマを、judge の入力契約
 # [{"date": "YYYY-MM-DD", "time": "HH:MM"}] として列挙する(候補一覧が
-# 無く、自分のカレンダーの空きコマを数え上げて相手に提示するとき用)。
+# なく、自分のカレンダーの空きコマを数え上げて相手に提示するとき用)。
 # 判定のロジックは持たない — 出力をそのまま judge に流せば、既存の
 # ○/△/× 判定がそのまま使える(判定コアを 1 つに保つ)。time は各コマの
 # 開始時刻で、match_slot がそのコマに解決する。
 #   $weekdays: 空なら全曜日。それ以外は曜日番号(0=日〜6=土)で絞る。
-#   $slots:    空なら全コマ。それ以外はコマ名で絞る(設定に無い名前はエラー)。
+#   $slots:    空なら全コマ。それ以外はコマ名で絞る(設定にない名前はエラー)。
 def enumerate_candidates($config; $from; $to; $weekdays; $slots):
   if (valid_iso_date($from) | not) or (valid_iso_date($to) | not) then
     error("--from / --to は実在する YYYY-MM-DD で指定してください")
@@ -180,7 +180,7 @@ def enumerate_candidates($config; $from; $to; $weekdays; $slots):
   elif any($weekdays[]; type != "number" or . < 0 or . > 6 or . != floor) then
     error("--weekdays は 0(日)〜6(土)の整数のカンマ区切りで指定してください")
   elif (($slots - ($config.slots | keys)) | length) > 0 then
-    error("設定に無いコマ名です: \(($slots - ($config.slots | keys)) | join(","))")
+    error("設定にないコマ名です: \(($slots - ($config.slots | keys)) | join(","))")
   else
     ($config.slots | to_entries | sort_by(.value.start | hm_to_minutes)
       | map(select(($slots | length) == 0 or (.key as $k | $slots | index($k) != null)))) as $entries
@@ -207,7 +207,7 @@ def marker_prefixes($config):
   [$config.marker_prefix] + ($config.marker_prefix_aliases // []) | map(select(. != null and . != ""));
 
 # list_events の 1 予定を {start, end, all_day}(epoch 秒)にする。終日は日本時間の 0:00 起点。
-# 時刻の無い予定は null。inbox.jq と adopted.jq が共有する。
+# 時刻のない予定は null。inbox.jq と adopted.jq が共有する。
 def range_of($ev; $tz):
   if $ev.start.date != null then
     ($ev.start.date | all_day_date | date_to_epoch_days) as $d0

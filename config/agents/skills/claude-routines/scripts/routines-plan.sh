@@ -14,7 +14,7 @@
 #
 # 正規化(decl_projection/live_projection)と body 組み立て(build_body)は
 # lib.jq、分類ロジックはこのファイル(bash 側)に持つ。sha256 計算は
-# jq に組み込みが無いため coreutils の sha256sum に委ねる。
+# jq に組み込みがないため coreutils の sha256sum に委ねる。
 #
 # 宣言スキーマは docs/claude/claude-routines.md を参照。
 set -euo pipefail
@@ -34,7 +34,7 @@ usage() {
   routines-plan.sh --selftest
   routines-plan.sh build-body --declaration <path> --md <path>
   routines-plan.sh classify --declaration <path> --md <path> --live <path>
-              (--live には get の生 JSON、または decl.id が無い新規宣言なら
+              (--live には get の生 JSON、または decl.id がない新規宣言なら
                中身が `null` の JSON ファイルを渡す)
   routines-plan.sh classify-unmanaged --live-list <path>
               (--live-list には list の生 JSON。{"data":[...]} 形式でも
@@ -131,7 +131,7 @@ cmd_classify() {
 
   if [[ -z "$decl_id" ]]; then
     if [[ "$live_json" != "null" ]]; then
-      echo "error: declaration に id が無いのに --live が null ではありません(adopt するなら id を宣言に書いてください)" >&2
+      echo "error: declaration に id がないのに --live が null ではありません(adopt するなら id を宣言に書いてください)" >&2
       exit 2
     fi
     echo "new"

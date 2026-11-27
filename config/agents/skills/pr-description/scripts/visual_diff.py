@@ -17,11 +17,11 @@
   - 第三者への要求は遮断する(決定的にするためで、ADR-1677 D6 と同じ線)。遮断した URL は manifest に残す。
   - 画面に差し込むデータは合成データだけ。実データを撮影定義に置かない。
 
-撮影定義 visual.toml(キーは閉じている。知らないキーは誤り):
+撮影定義 visual.toml(キーは閉じている。未知のキーは誤り):
 
   [[page]]
   id = "today"                     # 面の識別子([a-z0-9-]+)
-  root = "state/reviews/daily"     # リポジトリの根からの相対。この下を配信の根にする
+  root = "state/reviews/daily"     # リポジトリのルートからの相対。この下を配信のルートにする
   entry = "today-page.html"        # root からの相対(prepare の出力でもよい)
   prepare = "bash build.sh ..."    # 任意。取り出したツリーの中(cwd = root)で実行する
   stub = "visual/stub.js"          # 任意。撮影定義からの相対。ページのスクリプトより前に差し込む(window.claude の疑似など)
@@ -85,7 +85,7 @@ def load_spec(path: Path) -> list[dict]:
         raise SpecError(f"{path}: 読めません({e})") from e
     extra = set(data) - {"page"}
     if extra:
-        raise SpecError(f"{path}: 知らないキー {sorted(extra)}")
+        raise SpecError(f"{path}: 未知のキー {sorted(extra)}")
     pages = data.get("page") or []
     if not pages:
         raise SpecError(f"{path}: [[page]] がありません")
@@ -93,7 +93,7 @@ def load_spec(path: Path) -> list[dict]:
     for p in pages:
         extra = set(p) - PAGE_KEYS
         if extra:
-            raise SpecError(f"{path}: page に知らないキー {sorted(extra)}")
+            raise SpecError(f"{path}: page に未知のキー {sorted(extra)}")
         for k in ("id", "root", "entry"):
             if not isinstance(p.get(k), str) or not p[k]:
                 raise SpecError(f"{path}: page に {k} がありません")
@@ -115,7 +115,7 @@ def load_spec(path: Path) -> list[dict]:
         for s in states:
             extra = set(s) - STATE_KEYS
             if extra:
-                raise SpecError(f"{path}: state に知らないキー {sorted(extra)}")
+                raise SpecError(f"{path}: state に未知のキー {sorted(extra)}")
             if not NAME_RE.match(str(s.get("name", ""))):
                 raise SpecError(f"{path}: state.name は [a-z0-9-]+ です: {s.get('name')!r}")
             if s["name"] in names:
@@ -228,7 +228,7 @@ def _walk(spec_path: Path, ref: str, only: str | None):
                 if p.get("prepare"):
                     subprocess.run(["bash", "-c", p["prepare"]], cwd=site, check=True)
                 if not (site / p["entry"]).is_file():
-                    raise SpecError(f"{p['id']}: entry が無い({p['entry']}。ref={ref})")
+                    raise SpecError(f"{p['id']}: entry がない({p['entry']}。ref={ref})")
                 stub = (spec_path.parent / p["stub"]).read_text(encoding="utf-8") if p.get("stub") else ""
                 for s in p["state"]:
                     if only and ":" in only and only.split(":", 1)[1] != s["name"]:
@@ -392,22 +392,22 @@ def load_types(path: Path) -> dict[str, dict]:
         raise SpecError(f"{path}: 読めません({e})") from e
     extra = set(data) - {"type"}
     if extra:
-        raise SpecError(f"{path}: 知らないキー {sorted(extra)}")
+        raise SpecError(f"{path}: 未知のキー {sorted(extra)}")
     out: dict[str, dict] = {}
     seen_reqs: set[str] = set()
     for t in data.get("type") or []:
         extra = set(t) - {"id", "title", "requirement"}
         if extra:
-            raise SpecError(f"{path}: type に知らないキー {sorted(extra)}")
+            raise SpecError(f"{path}: type に未知のキー {sorted(extra)}")
         if not NAME_RE.match(str(t.get("id", ""))) or not isinstance(t.get("title"), str) or not t["title"]:
-            raise SpecError(f"{path}: type には id([a-z0-9-]+)と title が要ります: {t.get('id')!r}")
+            raise SpecError(f"{path}: type には id([a-z0-9-]+)と title が必要です: {t.get('id')!r}")
         if t["id"] in out:
             raise SpecError(f"{path}: type.id が重複しています: {t['id']}")
         reqs = []
         for r in t.get("requirement") or []:
             extra = set(r) - {"id", "text", "check", "audit", "principles"}
             if extra:
-                raise SpecError(f"{path}: requirement に知らないキー {sorted(extra)}")
+                raise SpecError(f"{path}: requirement に未知のキー {sorted(extra)}")
             if not REQ_ID_RE.match(str(r.get("id", ""))):
                 raise SpecError(f"{path}: requirement.id の形が違います: {r.get('id')!r}")
             if r["id"] in seen_reqs:
@@ -440,7 +440,7 @@ def load_types(path: Path) -> dict[str, dict]:
 
 
 def cell_findings(cell: dict, host: str, audits: set[str], structures: dict[str, dict] | None = None) -> list[tuple[str, str]]:
-    """撮った 1 セルの測定から、(検査の名前, 違反の説明) を作る。測定だけを見る純粋関数(ブラウザ無しで試験できる)。
+    """撮った 1 セルの測定から、(検査の名前, 違反の説明) を作る。測定だけを見る純粋関数(ブラウザなしでテストできる)。
     `structures`(structures.toml の構造パターンの id → パターン)があれば、宣言した構造が語彙にあるかと、構造ごとの測定(measure)も見る。"""
     m = cell.get("measures") or {}
     out: list[tuple[str, str]] = []
@@ -453,7 +453,7 @@ def cell_findings(cell: dict, host: str, audits: set[str], structures: dict[str,
         if not m.get("lang"):
             add("document", "`<html lang>` が空")
         if not m.get("viewport"):
-            add("document", "viewport の `<meta>` が無い")
+            add("document", "viewport の `<meta>` がない")
     if ZOOM_BLOCK_RE.search(m.get("viewportContent") or "") or _max_scale_below_two(m.get("viewportContent") or ""):
         add("document", "viewport が拡大を禁じている(`user-scalable=no`、または 2 未満の `maximum-scale`)")
     if not m.get("title"):
@@ -461,7 +461,7 @@ def cell_findings(cell: dict, host: str, audits: set[str], structures: dict[str,
     if m.get("mains") != 1:
         add("document", f"`<main>` が {m.get('mains')} 個(1 個だけ)")
     if not m.get("h1s"):
-        add("document", "`<h1>` が無い")
+        add("document", "`<h1>` がない")
     if m.get("contrastFailCount"):
         worst = min(m["contrastFails"], key=lambda f: f["ratio"])
         add("contrast", f"基準に届かない文字が {m['contrastFailCount']} 件。最悪は {worst['el']}「{worst['text']}」の {worst['ratio']}:1({worst['px']:g}px)")
@@ -490,9 +490,9 @@ def cell_findings(cell: dict, host: str, audits: set[str], structures: dict[str,
         add("input-size", f"文字が 16px 未満の入力欄が {m['smallInputCount']} 件(例: {first.get('el')} {first.get('px')}px)")
     declared = m.get("structure") or ""
     if not declared:
-        add("structure", "`<meta name=\"page-structure\">` が無い(ページの構造を宣言する)")
+        add("structure", "`<meta name=\"page-structure\">` がない(ページの構造を宣言する)")
     elif structures is not None and declared not in structures:
-        add("structure", f"宣言した構造 `{declared}` が、structures.toml の語彙に無い(使えるのは {sorted(structures)})")
+        add("structure", f"宣言した構造 `{declared}` が、structures.toml の語彙にない(使えるのは {sorted(structures)})")
     elif structures is not None and structures[declared].get("measure") == "viewport-fit" and m.get("pageScrollH", 0) > m.get("pageInnerH", 0) + 1:
         add("structure", f"構造 `{declared}` は、ページ全体が縦にスクロールしない形だが、スクロールする(高さ {m.get('pageScrollH')}px > 画面 {m.get('pageInnerH')}px)")
     return out
@@ -532,7 +532,7 @@ def load_structures(path: Path) -> dict[str, dict]:
     out: dict[str, dict] = {}
     for pat in data.get("pattern") or []:
         if not isinstance(pat, dict) or not NAME_RE.match(str(pat.get("id", ""))):
-            raise SpecError(f"{path}: pattern には id([a-z0-9-]+)が要ります: {pat!r}")
+            raise SpecError(f"{path}: pattern には id([a-z0-9-]+)が必要です: {pat!r}")
         out[pat["id"]] = pat
     if not out:
         raise SpecError(f"{path}: pattern が 1 つもありません")
@@ -546,7 +546,7 @@ def run_audit(spec_path: Path, types_path: Path, ref: str, only: str | None = No
     for p in pages.values():
         unknown = [t for t in p.get("types", ["common"]) if t not in types]
         if unknown:
-            raise SpecError(f"{p['id']}: types に、{types_path.name} に無い型 {unknown}")
+            raise SpecError(f"{p['id']}: types に、{types_path.name} にない型 {unknown}")
     report: dict = {"ref": ref, "pages": []}
     cur: dict | None = None
     cells_by_page: dict[str, list] = {}
@@ -655,7 +655,7 @@ def triptych(b2, a2, mask):
     return sheet
 
 
-CROP_MIN_HEIGHT = 1600  # これより高い画像だけ、変更箇所の切り出しを足す(全体では変更箇所が小さくて見えない)
+CROP_MIN_HEIGHT = 1600  # これより高い画像だけ、変更箇所の切り出しを追加する(全体では変更箇所が小さくて見えない)
 CROP_MAX_BANDS = 3
 CROP_MAX_HEIGHT = 1400
 CROP_MARGIN = 40
@@ -688,7 +688,7 @@ def diff_dirs(before: Path, after: Path, out: Path, tol: int = 8) -> dict:
         if name not in names_a:
             cells.append({"cell": name, "status": "removed"})
         elif name not in names_b:
-            # 新規のセルは、After の画像をそのまま出す(Before が無いので、並べる相手が無い)
+            # 新規のセルは、After の画像をそのまま出す(Before がないので、並べる相手がない)
             shutil.copyfile(after / f"{name}.png", out / f"{name}.png")
             with Image.open(after / f"{name}.png") as ai:
                 cells.append({"cell": name, "status": "added", "after_size": list(ai.size)})
@@ -852,7 +852,7 @@ def selftest(browser: bool) -> int:
         check((t / "d/p--s--dark--390.png").is_file() and not (t / "d/p--s--light--390.png").exists(), "差があるセルだけ並べた画像を出す")
         check((t / "d/report.json").is_file(), "report.json を出す")
         check((t / "d/new--s--light--390.png").is_file(), "新規のセルは、After の画像をそのまま出す")
-        check(not any(p.name.endswith(".crop1.png") for p in (t / "d").iterdir()), "低い画像には、変更箇所の切り出しを足さない")
+        check(not any(p.name.endswith(".crop1.png") for p in (t / "d").iterdir()), "低い画像には、変更箇所の切り出しを追加しない")
         # 高い画像: 離れた 2 か所の変更を、2 つの切り出しにする
         tallb, tallb2 = solid(100, 3000), solid(100, 3000)
         tallb2.putpixel((10, 200), (0, 0, 0))
@@ -879,20 +879,20 @@ def selftest(browser: bool) -> int:
         good.write_text('[[page]]\nid = "a"\nroot = "d"\nentry = "i.html"\n[[page.state]]\nname = "s1"\nsteps = [ { click = "#x" } ]\n', encoding="utf-8")
         check(load_spec(good)[0]["state"][0]["name"] == "s1", "正しい撮影定義を読む")
         for label, body in (
-            ("知らないキー", '[[page]]\nid = "a"\nroot = "d"\nentry = "i.html"\nbogus = 1\n'),
+            ("未知のキー", '[[page]]\nid = "a"\nroot = "d"\nentry = "i.html"\nbogus = 1\n'),
             ("root が上位へ出る", '[[page]]\nid = "a"\nroot = "../d"\nentry = "i.html"\n'),
-            ("root が根そのもの", '[[page]]\nid = "a"\nroot = "."\nentry = "i.html"\n'),
+            ("root がルートそのもの", '[[page]]\nid = "a"\nroot = "."\nentry = "i.html"\n'),
             ("id の形", '[[page]]\nid = "A_b"\nroot = "d"\nentry = "i.html"\n'),
             ("step が 2 種", '[[page]]\nid = "a"\nroot = "d"\nentry = "i.html"\n[[page.state]]\nname = "s"\nsteps = [ { click = "#x", press = "Tab" } ]\n'),
-            ("fill に value が無い", '[[page]]\nid = "a"\nroot = "d"\nentry = "i.html"\n[[page.state]]\nname = "s"\nsteps = [ { fill = "#x" } ]\n'),
+            ("fill に value がない", '[[page]]\nid = "a"\nroot = "d"\nentry = "i.html"\n[[page.state]]\nname = "s"\nsteps = [ { fill = "#x" } ]\n'),
         ):
             bad = t / "bad.toml"
             bad.write_text(body, encoding="utf-8")
             try:
                 load_spec(bad)
-                check(False, f"撮影定義の誤りを落とす: {label}")
+                check(False, f"撮影定義の誤りを拒否する: {label}")
             except SpecError:
-                check(True, f"撮影定義の誤りを落とす: {label}")
+                check(True, f"撮影定義の誤りを拒否する: {label}")
 
         # ページの型の要件(page-types.toml)
         real_types = Path(__file__).resolve().parents[5] / "config/web/page-types.toml"
@@ -905,29 +905,29 @@ def selftest(browser: bool) -> int:
             check(any(r["id"] == "C15" and r["check"] == "visual" for r in reqs), "最悪のデータでの描画(C15)は、人が見る要件")
             check(all(r["principles"] for r in reqs), "すべての要件が、原則の ID を 1 つ以上持つ")
         for label, body in (
-            ("principles が無い", '[[type]]\nid = "common"\ntitle = "c"\n[[type.requirement]]\nid = "C1"\ntext = "x"\ncheck = "visual"\n'),
+            ("principles がない", '[[type]]\nid = "common"\ntitle = "c"\n[[type.requirement]]\nid = "C1"\ntext = "x"\ncheck = "visual"\n'),
             ("principles が空", '[[type]]\nid = "common"\ntitle = "c"\n[[type.requirement]]\nid = "C1"\ntext = "x"\nprinciples = []\ncheck = "visual"\n'),
             ("principles の ID の形", '[[type]]\nid = "common"\ntitle = "c"\n[[type.requirement]]\nid = "C1"\ntext = "x"\nprinciples = ["Bad_Id"]\ncheck = "visual"\n'),
             ("principles の重複", '[[type]]\nid = "common"\ntitle = "c"\n[[type.requirement]]\nid = "C1"\ntext = "x"\nprinciples = ["a", "a"]\ncheck = "visual"\n'),
-            ("知らないキー", '[[type]]\nid = "common"\ntitle = "c"\nbogus = 1\n'),
+            ("未知のキー", '[[type]]\nid = "common"\ntitle = "c"\nbogus = 1\n'),
             ("check が語彙の外", '[[type]]\nid = "common"\ntitle = "c"\n[[type.requirement]]\nid = "C1"\ntext = "x"\ncheck = "maybe"\n'),
             ("walkthrough に audit の名前", '[[type]]\nid = "common"\ntitle = "c"\n[[type.requirement]]\nid = "C1"\ntext = "x"\ncheck = "walkthrough"\naudit = "document"\n'),
             ("audit の名前が語彙の外", '[[type]]\nid = "common"\ntitle = "c"\n[[type.requirement]]\nid = "C1"\ntext = "x"\ncheck = "audit"\naudit = "magic"\n'),
-            ("audit に名前が無い", '[[type]]\nid = "common"\ntitle = "c"\n[[type.requirement]]\nid = "C1"\ntext = "x"\ncheck = "audit"\n'),
+            ("audit に名前がない", '[[type]]\nid = "common"\ntitle = "c"\n[[type.requirement]]\nid = "C1"\ntext = "x"\ncheck = "audit"\n'),
             ("要件の id が重複", '[[type]]\nid = "common"\ntitle = "c"\n[[type.requirement]]\nid = "C1"\ntext = "x"\ncheck = "visual"\n[[type.requirement]]\nid = "C1"\ntext = "y"\ncheck = "visual"\n'),
             ("要件の id の形", '[[type]]\nid = "common"\ntitle = "c"\n[[type.requirement]]\nid = "X1"\ntext = "x"\ncheck = "visual"\n'),
-            ("型 common が無い", '[[type]]\nid = "form"\ntitle = "f"\n'),
+            ("型 common がない", '[[type]]\nid = "form"\ntitle = "f"\n'),
             ("どの要件にも結びつかない検査がある", '[[type]]\nid = "common"\ntitle = "c"\n[[type.requirement]]\nid = "C1"\ntext = "x"\ncheck = "visual"\n'),
         ):
             bad = t / "bad-types.toml"
-            if not label.startswith("principles"):  # 他の誤りの fixture は、原則の欄を満たして、狙った理由で落とす
+            if not label.startswith("principles"):  # 他の誤りの fixture は、原則の欄を満たして、狙った理由で拒否する
                 body = body.replace('text = "x"\n', 'text = "x"\nprinciples = ["x"]\n').replace('text = "y"\n', 'text = "y"\nprinciples = ["x"]\n')
             bad.write_text(body, encoding="utf-8")
             try:
                 load_types(bad)
-                check(False, f"型の要件の誤りを落とす: {label}")
+                check(False, f"型の要件の誤りを拒否する: {label}")
             except SpecError:
-                check(True, f"型の要件の誤りを落とす: {label}")
+                check(True, f"型の要件の誤りを拒否する: {label}")
         good_cell = {
             "cell": "p--initial--light--390", "state": "initial", "width": 390, "overflow_x": False, "blocked": [], "dialogs": [],
             "measures": {"lang": "ja", "title": "t", "viewport": True, "mains": 1, "h1s": 1, "contrastFailCount": 0, "contrastFails": [],
@@ -948,17 +948,17 @@ def selftest(browser: bool) -> int:
         }
         got = {a for a, _ in cell_findings(bad_cell, "site", every)}
         check(got == every - {"keyboard"}, f"基準を外れた測定は、keyboard 以外のすべての検査が違反を出す({sorted(every - {'keyboard'} - got)} が漏れ)")
-        check(cell_findings(bad_cell, "site", {"contrast"}) == [("contrast", cell_findings(bad_cell, "site", {"contrast"})[0][1])] and len(cell_findings(bad_cell, "site", {"contrast"})) == 1, "面の型が持たない検査は、違反に数えない")
+        check(cell_findings(bad_cell, "site", {"contrast"}) == [("contrast", cell_findings(bad_cell, "site", {"contrast"})[0][1])] and len(cell_findings(bad_cell, "site", {"contrast"})) == 1, "ページ種別が持たない検査は、違反に数えない")
         art = {a for a, _ in cell_findings({**bad_cell, "width": 1280}, "artifact", {"document", "overflow"})}
         check("overflow" not in art, "横スクロールは、幅 390px のセルだけで見る")
         doc = [d for a, d in cell_findings(bad_cell, "artifact", {"document"})]
-        check(not any("`<html lang>` が空" in d or "viewport の `<meta>` が無い" in d for d in doc), "Artifact の断片は、lang と viewport を求めない(ホストの殻が与える)")
+        check(not any("`<html lang>` が空" in d or "viewport の `<meta>` がない" in d for d in doc), "Artifact の断片は、lang と viewport を求めない(ホストの殻が与える)")
         check(any("拡大を禁じ" in d for d in doc), "Artifact でも、viewport を自分で書いて拡大を禁じるなら違反")
         check(any("<main>" in d for d in doc) and any("<h1>" in d for d in doc), "Artifact でも、main と h1 は求める")
         rc = {**good_cell, "state": "after-pick"}
         rc["measures"] = {**good_cell["measures"], "checkedRadios": 1}
         check(cell_findings(rc, "site", {"default-choice"}) == [], "選択済みのラジオは、初期状態だけで違反にする")
-        # 構造の宣言(F10): 宣言が無い・語彙に無い・step なのにページが縦にスクロールする、は違反。宣言どおりに収まれば違反なし。
+        # 構造の宣言(F10): 宣言がない・語彙にない・step なのにページが縦にスクロールする、は違反。宣言どおりに収まれば違反なし。
         pats = {"step": {"measure": "viewport-fit"}, "document": {"measure": "none"}}
         def struct_findings(structure: str, scroll_h: int = 800, structures=pats) -> list[str]:
             cell = {**good_cell, "measures": {**good_cell["measures"], "structure": structure, "pageScrollH": scroll_h}}
@@ -966,8 +966,8 @@ def selftest(browser: bool) -> int:
         check(struct_findings("document", 5000) == [], "構造 document は、ページが縦に長くても違反にしない(測定が none)")
         check(struct_findings("step", 800) == [] and struct_findings("step", 801) == [], "構造 step は、ページ全体が画面に収まれば違反なし(1px の丸めは許す)")
         check(any("スクロールする" in d for d in struct_findings("step", 1200)), "構造 step で、ページ全体が縦にスクロールすれば違反")
-        check(any("語彙に無い" in d for d in struct_findings("carousel")), "宣言した構造が structures.toml の語彙に無ければ違反")
-        check(any("page-structure" in d for d in struct_findings("")), "構造の宣言が無ければ違反")
+        check(any("語彙にない" in d for d in struct_findings("carousel")), "宣言した構造が structures.toml の語彙になければ違反")
+        check(any("page-structure" in d for d in struct_findings("")), "構造の宣言がなければ違反")
         check(struct_findings("anything", 5000, None) == [], "語彙を渡さないときは、宣言が在ることだけを見る")
         check(CONFIRM_RE.search("if (confirm('x')) go()") is not None and CONFIRM_RE.search("function confirmAll() {}") is None, "`confirm(` の静的な検出は、confirmAll などを拾わない")
 
@@ -983,8 +983,8 @@ def selftest(browser: bool) -> int:
         check(any("拡大を禁じ" in d for d in doc_findings("width=device-width, maximum-scale=1.0")), "2 未満の `maximum-scale` は違反")
         check(not any("拡大を禁じ" in d for d in doc_findings("width=device-width, user-scalable=yes")), "`user-scalable=yes` は違反にしない")
         hov = {**good_cell, "measures": {**good_cell["measures"], "hoverUngatedCount": 1, "hoverUngated": ["a:hover"]}}
-        check([a for a, _ in cell_findings(hov, "site", {"hover"})] == ["hover"], "囲いの無い `:hover` は、hover の検査が拾う(幅によらない)")
-        check(cell_findings({**hov, "measures": good_cell["measures"]}, "site", {"hover"}) == [], "`:hover` が無ければ、hover は違反なし")
+        check([a for a, _ in cell_findings(hov, "site", {"hover"})] == ["hover"], "囲いのない `:hover` は、hover の検査が拾う(幅によらない)")
+        check(cell_findings({**hov, "measures": good_cell["measures"]}, "site", {"hover"}) == [], "`:hover` がなければ、hover は違反なし")
         inp = {**good_cell, "measures": {**good_cell["measures"], "smallInputCount": 1, "smallInputs": [{"el": "textarea", "px": 14}]}}
         check([a for a, _ in cell_findings(inp, "site", {"input-size"})] == ["input-size"], "16px 未満の入力欄は、幅 390px のセルで拾う")
         check(cell_findings({**inp, "width": 1280}, "site", {"input-size"}) == [], "入力欄の文字の大きさは、幅 390px のセルだけで見る(拡大は小さい画面の挙動)")
@@ -1029,7 +1029,7 @@ def selftest(browser: bool) -> int:
             check(compare(light, dark)["status"] == "changed", "明と暗が実際に描き分けられる")
             check(light.width == 390 and Image.open(t / "c1/t--initial--light--1280.png").width == 1280, "幅は要求どおり(Firefox の 0.75 倍にならない)")
 
-            # 型の要件の検査: わざと悪いページ(番兵)が、すべての検査で落ち、良いページが通る
+            # 型の要件の検査: わざと悪いページ(番兵)が、すべての検査で失敗し、良いページが通る
             ids = {"C1": "document", "C2": "contrast", "C3": "targets", "C4": "overflow", "C9": "third-party",
                    "C12": "keyboard", "C16": "hover", "C17": "input-size", "F1": "main-button", "F2": "default-choice",
                    "F4": "confirm", "D7": "links", "F10": "structure"}
@@ -1055,7 +1055,7 @@ def selftest(browser: bool) -> int:
             rep = run_audit(repo / "visual.toml", t / "types.toml", "WORKTREE", structures_path=t / "structures.toml")
             by = {pg["page"]: pg for pg in rep["pages"]}
             got = {v["req"] for v in by["bad"]["violations"]}
-            check(got == set(ids), f"悪いページは、13 の検査のすべてで落ちる(漏れ: {sorted(set(ids) - got)})")
+            check(got == set(ids), f"悪いページは、13 の検査のすべてで失敗する(漏れ: {sorted(set(ids) - got)})")
             check(by["good"]["violations"] == [] and sorted(by["good"]["passed"]) == sorted(ids), "良いページは、13 の検査のすべてを通る")
             kb = [v for v in by["bad"]["violations"] if v["req"] == "C12"]
             keys = sorted(k for v in kb for k in ("Enter", "Space") if k in v["detail"])
@@ -1070,7 +1070,7 @@ def selftest(browser: bool) -> int:
 def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(prog="visual_diff.py", description=__doc__.split("\n")[0])
     ap.add_argument("--selftest", action="store_true", help="自己検査(ブラウザ無しで走る)")
-    ap.add_argument("--browser", action="store_true", help="--selftest に、実際の撮影の検査を足す(Chromium が要る)")
+    ap.add_argument("--browser", action="store_true", help="--selftest に、実際の撮影の検査を追加する(Chromium が必要)")
     sub = ap.add_subparsers(dest="cmd")
     c = sub.add_parser("capture")
     c.add_argument("--spec", required=True, type=Path)

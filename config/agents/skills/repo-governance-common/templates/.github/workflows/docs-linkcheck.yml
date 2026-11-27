@@ -43,7 +43,7 @@ jobs:
         with:
           # output / format は lychee-action の専用 input で渡す。args にも
           # `--output` / `--format` を書くと「'output' is set in args as well as
-          # in the action configuration」で step が落ち、起票まで進まない
+          # in the action configuration」で step が失敗し、起票まで進まない
           # (#646 の実行検証で判明)。
           args: >-
             --no-progress --cache --max-cache-age 1d --exclude-mail

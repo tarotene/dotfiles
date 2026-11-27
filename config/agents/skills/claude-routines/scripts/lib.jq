@@ -1,7 +1,7 @@
 # lib.jq — claude-routines の宣言(.claude/routines/*.json + <name>.md)と
 # live trigger(RemoteTrigger get/list が返す生 JSON)を同じ形の正規化
 # 射影(projection)に変換する共有関数。ハッシュ化(sha256)自体はここでは
-# 行わない — jq に組み込みが無いため、routines-plan.sh 側が coreutils の
+# 行わない — jq に組み込みがないため、routines-plan.sh 側が coreutils の
 # sha256sum に委ねる(このファイルは正規化 JSON 文字列を作るところまで)。
 #
 # 設計と根拠: docs/claude/claude-routines.md、
@@ -44,7 +44,7 @@ def live_prompt_content:
   .job_config.ccr.events[0].data.message.content // "";
 
 # live prompt の末尾の `routine-spec: <sha256 hex>` 行から hash 値だけを
-# 取り出す。無ければ null(捕捉なしなら capture は空ストリームを返すため
+# 取り出す。なければ null(捕捉なしなら capture は空ストリームを返すため
 # `//` で null に倒す)。
 def live_annotation:
   live_prompt_content

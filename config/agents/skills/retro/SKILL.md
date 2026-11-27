@@ -19,11 +19,11 @@ PR を作ったセッション、またはその場で書いたコードの痕�
    手動のセッションでは transcript のパスが hook に渡っていないので、ユーザー発言の一覧は
    出ない。その場合は会話を自分で見返して、ユーザーの指摘・不満・言い直しを拾う。
 3. 出力に従って `--retro-add` で行を書く。語彙は閉じていて、語彙外は exit 64 になる。
-   「何も無かった」は `kind: none` の 1 行で表す。黙って飛ばさない。
+   「何もなかった」は `kind: none` の 1 行で表す。黙って飛ばさない。
 4. 全行がそろったら `--retro-close '<session_id>'` を実行する。台帳の全行を kind ごとの表にして、vault の
    `retro/<年>/` に 1 件のノートとして書き出し、読み戻してから完了にする(PR にはコメントしない。表を
-   自分で書き直さない)。vault の無い機体では、台帳に残したまま完了になる。
-5. `disposition: inbox` にした行は、通常の気づきと同じく inbox(vault のノート、vault の無い機体では
+   自分で書き直さない)。vault のない機体では、台帳に残したまま完了になる。
+5. `disposition: inbox` にした行は、通常の気づきと同じく inbox(vault のノート、vault のない機体では
    jsonl)に入る。Issue にはならず、`/my-cleanup` で本人が裁定する。ここで直接
    `gh issue create` しない。ただし `kind: user-correction` の行は `inbox` にできない(共有 AGENTS.md の
    「フィードバックは Issue 化」)。先に `gh issue create` で Issue にして `issue:#<N>` と書くか、
@@ -34,7 +34,7 @@ PR を作ったセッション、またはその場で書いたコードの痕�
 - **指摘(user-correction)**: ユーザーが方針・結果を直した発言。`mechanism` は、それを
   次から防ぐのに実際に効く最も上位の手段(`eliminate` > `unrepresentable` > `gate` > `tool` >
   `prose`)。`signal` で理由(兆候)を選び、その既定の段と違う段には `level_reason` を書く。
-  `prose` 以外の段は `existing`(採用|拡張|自前)と `searched` も要る。リポジトリ内は必ず探し、
+  `prose` 以外の段は `existing`(採用|拡張|自前)と `searched` も必要。リポジトリ内は必ず探し、
   外部は `自前` のときだけ 1 回探す。`searched` は、範囲の名前だけでなく、見つけたものを `<範囲>:<名前>` で
   書く(`crates:issue-index`、`skills:retro`、何も当たらなければ `inbox:none`)。範囲の名前だけの候補は、
   「既存で足りた」で却下される例が続いた(5・6・8 件と増えた)。`自前` にする前に、検討した既存の仕組みを 1 つ挙げ、

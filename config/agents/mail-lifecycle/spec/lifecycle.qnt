@@ -21,12 +21,12 @@
 //   掃引(sweep)          remind/stale だけを書く。規則が許す前には書かない。
 // 機体は 2 つ(TWO_MACHINES)。それぞれ vault のノートの行を自分の写し(views)に持ち、
 // 相手の機体が書いた行は LiveSync の遅延(inbox)を経て、書かれた順に届く。
-// 機体ごとに、終端の出来事を書いたあとで自分の台帳(控え、led)に項目を足す。足す前に落ちると
+// 機体ごとに、終端の出来事を書いたあとで自分の台帳(控え、led)に項目を追加する。追加する前に異常終了すると
 // 控えが欠ける(余計な控えはできない)。
 //
 // 畳み込みの規則(語彙 JSON の表が正本。applyLine):
-//   - 出来事は行の順に当てる。語彙の from に今の状態が無い出来事は、状態を変えず食い違い(disc)に数える。
-//     終端の状態からの遷移は語彙に無いので、終端は吸収する(ABSORB を外すと、終端のあとの出来事も当たる)。
+//   - 出来事は行の順に当てる。語彙の from に今の状態がない出来事は、状態を変えず食い違い(disc)に数える。
+//     終端の状態からの遷移は語彙にないので、終端は吸収する(ABSORB を外すと、終端のあとの出来事も当たる)。
 //   - 開く出来事だけで from が ["none"] の出来事(read/draft/ask)が、開いた項目に重ねて来たら、
 //     何もせず無視する(再読の冪等。DUP_IDEMPOTENT を外すと、開いた直後の状態に戻す)。
 //   - 項目を新しく開くとき、同じスレッドの古い項目が未裁定なら、暗黙に superseded にする(行は書かれない)。
@@ -42,7 +42,7 @@
 //   - 終端の行の削除の検知(s7)は、台帳を持つ機体が、自分の写しで削除されたときだけ。
 //     台帳を持たない機体(相手の機体)で消されたとき、その機体は検知しない。LiveSync が削除を
 //     相手に伝える挙動は、仕様に入れていない(削除は消した機体の写しだけに効く)。
-//   - 2 つの機体で行が届く順は異なりうる。畳み込みは行の順に依るので、機体の間で最終の状態が
+//   - 2 つの機体で行が届く順は異なる可能性がある。畳み込みは行の順に依るので、機体の間で最終の状態が
 //     食い違うことがある(収束は性質に入れていない)。同じ受信に対する開く出来事は、機体によらず
 //     受信の内容から一意に決まる(rc.kind)と仮定している。
 //   - 実時間の閾値(7 日・7 日・3 日)は、仕様では小さい値(scenarios.json の REMIND_AFTER など)に置き換える。
@@ -53,7 +53,7 @@ module lifecycle {
   // ---------------------------------------------------------------- 型
   // k: 項目、ev: 出来事、d: 書いた日、due: 期日(-1 = 無し、開く行だけ)、
   // bl: 開く行の書き手が、古い未裁定の項目を見ていなかった(ゴースト)、
-  // ow: decide の行の担い手(""(旧い行)| "me" | "agent")、snd: decide が、エージェントによる外部への送信(owner = agent)
+  // ow: decide の行の担い手(""(古い行)| "me" | "agent")、snd: decide が、エージェントによる外部への送信(owner = agent)
   // chk: stale の行の書き手が、その時点で「最後の非 remind のあとに、今日より前の日の remind がある」を満たしていた(ゴースト)。
   //      apply の行の書き手が、その時点で「送信の裁定なら、confirm のあとだった」を満たしていた(ゴースト)
   type Line = { k: int, ev: str, d: int, due: int, bl: bool, chk: bool, ow: str, snd: bool }
@@ -66,13 +66,13 @@ module lifecycle {
   type Fo = { a: int -> Acc, badImp: bool }
   type Sys = {
     views: int -> List[Line],     // 機体ごとの、ノートの行の写し
-    fo: int -> Fo,                // 機体ごとの、写しの畳み込みの結果(行を足すたびに 1 行ぶん進める。cacheOk が foldView と一致を確かめる)
+    fo: int -> Fo,                // 機体ごとの、写しの畳み込みの結果(行を追加するたびに 1 行ぶん進める。cacheOk が foldView と一致を確かめる)
     inbox: int -> List[Line],     // LiveSync で、まだ届いていない行
     rc: int -> Rc,                // 受信(受信箱に来たメール)
     gm: int -> str,               // Gmail の下書き: none | exists | sent | deleted
     ag: int -> Ag,                // エージェントの、2 手の途中(pk = -1 は空き)
     led: int -> Set[int],         // 機体ごとの台帳(控え)
-    todo: int -> Set[int],        // 終端の行を書いたが、台帳にまだ足していない項目
+    todo: int -> Set[int],        // 終端の行を書いたが、台帳にまだ追加していない項目
     wrote: int -> Set[int],       // ゴースト: 台帳の手順を最後まで終えた項目(台帳の規則に依らない)
     today: int,
     crashes: int,
@@ -98,7 +98,7 @@ module lifecycle {
   pure val KINDS = Set("read", "draft", "ask").filter(x =>
     (x == "read" and ALLOW_READ) or (x == "draft" and ALLOW_DRAFT) or (x == "ask" and ALLOW_ASK))
   pure val DELTAS = if (WITH_DUE) Set(-1, 1, 2) else Set(-1)
-  // decide の担い手の選び方。0 = 印の無い旧い行、1 = owner: me、2 = owner: agent、3 = owner: agent と send
+  // decide の担い手の選び方。0 = 印のない古い行、1 = owner: me、2 = owner: agent、3 = owner: agent と send
   pure val OWNER_CODES = if (WITH_OWNER) Set(1, 2, 3) else Set(0)
   pure def ownerOf(c: int): str = if (c == 1) "me" else if (c >= 2) "agent" else ""
 
@@ -117,7 +117,7 @@ module lifecycle {
   // エージェントの番: 語彙で owner が agent の状態。ただし decide の担い手が本人(owner: me)なら本人の番
   pure def agentTurn(x: Acc): bool = AGENT_STATES.contains(x.st) and not(x.st == "decided" and x.ow == "me")
 
-  // 語彙で、状態 st から出来事 ev で行き着く状態。無ければ ""
+  // 語彙で、状態 st から出来事 ev で行き着く状態。なければ ""
   pure def target(ev: str, st: str): str = {
     val ts = TRANSITIONS_LIST.select(t => t.ev == ev and t.from == st)
     if (ts.length() > 0) ts.head().to else ""
@@ -319,12 +319,12 @@ module lifecycle {
     }
   }
 
-  // エージェントが、下書きの 2 手の途中で落ちる(続きを失う)
+  // エージェントが、下書きの 2 手の途中で異常終了する(続きを失う)
   action agentCrash(m: int): bool = all {
     CAN_CRASH, MACH.contains(m), s.crashes < MAX_CRASHES, s.ag.get(m).pk >= 0,
     commit({ ...s, ag: s.ag.set(m, idleAg), crashes: s.crashes + 1 }, Set(), false),
   }
-  // 終端の行を書いたあと、台帳に足す前に落ちる(控えが欠ける)
+  // 終端の行を書いたあと、台帳に追加する前に異常終了する(控えが欠ける)
   action ledgerCrash(m: int, k: int): bool = all {
     CAN_CRASH, MACH.contains(m), s.crashes < MAX_CRASHES, s.todo.get(m).contains(k),
     commit({ ...s, todo: s.todo.set(m, s.todo.get(m).exclude(Set(k))), crashes: s.crashes + 1 }, Set(), false),
@@ -342,7 +342,7 @@ module lifecycle {
   }
 
   // ---------------------------------------------------------------- エージェント
-  // 受信を読む。記録した行が無く、Gmail にも下書きが無い受信が対象
+  // 受信を読む。記録した行がなく、Gmail にも下書きがない受信が対象
   action agentOpen(m: int, k: int): bool = {
     val kd = s.rc.get(k).kind
     val blind = olderUnres(m, k).size() == 0
@@ -390,7 +390,7 @@ module lifecycle {
       commit({ ...addLines(s, m, lines), ag: s.ag.set(m, idleAg) }, trs, false),
     }
   }
-  // 行はあるのに Gmail に下書きが無い下書きの項目を、走査で作り直す(落ちた後の回復)
+  // 行はあるのに Gmail に下書きがない下書きの項目を、走査で作り直す(異常終了後の回復)
   action redraft(m: int, k: int): bool = all {
     MACH.contains(m), idle(m), s.gm.get(k) == "none",
     s.views.get(m).select(l => l.k == k and l.ev == "draft").length() > 0,
@@ -591,7 +591,7 @@ module lifecycle {
 
   // ---------------------------------------------------------------- 公平性と活性
   // 公平性は、日が進む・LiveSync が届く・掃引・エージェントの読み取り・台帳への追記に置く。
-  // 本人の手(decide/pass/下書きの削除/送信/行の削除)と落ちる手には置かない。
+  // 本人の手(decide/pass/下書きの削除/送信/行の削除)と異常終了する手には置かない。
   val vars = s
   temporal fair =
     weakFair(tick, vars) and
@@ -603,7 +603,7 @@ module lifecycle {
         ((SWEEP_ALL or m == 0) implies (weakFair(sweepRemind(m, k), vars) and weakFair(sweepStale(m, k), vars)))))
 
   def unresF(m: int, k: int): bool = isUnres(stOf(m, k)) and not(flagged(m).contains(k))
-  // L1: 未裁定のまま残り続ける項目は無い(終端、stale、または台帳の控えと食い違う項目として拾われる)
+  // L1: 未裁定のまま残り続ける項目はない(終端、stale、または台帳の控えと食い違う項目として拾われる)
   temporal l1at(m: int, k: int): bool = always(unresF(m, k) implies eventually(not(unresF(m, k))))
   temporal l1 = fair implies MACH.forall(m => (SWEEP_ALL or m == 0) implies AKEYS.forall(k => l1at(m, k)))
   // L2: 来た受信は、いずれ項目になるか、記録済みと見なされる(どの機体のエージェントも、もう開かない)

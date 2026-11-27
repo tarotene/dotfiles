@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # selftest.sh — routines-plan.sh の自己検査本体。ネットワーク・実 API には
 # 一切依存しない。宣言・live trigger のフィクスチャはすべてこの中で作る
-# プレースホルダ値(owner/repo-a 等)で、実在の repo 名は書かない
+# プレースホルダ値(owner/repo-a 等)で、実在のリポジトリ名は書かない
 # (ADR-0034)。
 set -euo pipefail
 
@@ -120,7 +120,7 @@ printf '%s' "$live_suspended" > "$live_suspended_file"
 check "6 classify suspended" "suspended" \
   "$(bash "$PLAN" classify --declaration "$decl_file" --md "$md_file" --live "$live_suspended_file" | head -1)"
 
-# --- 7) refuse: routine-spec 注記が無い ---------------------------------
+# --- 7) refuse: routine-spec 注記がない ---------------------------------
 
 live_no_annotation="$(jq '.job_config.ccr.events[0].data.message.content = "no annotation here"' <<< "$live_in_sync")"
 live_no_annotation_file="$TMPDIR_T/live-no-annotation.json"
@@ -138,7 +138,7 @@ printf '%s' "$live_name_mismatch" > "$live_name_mismatch_file"
 check "8 classify refuse(name不一致)" "refuse" \
   "$(bash "$PLAN" classify --declaration "$decl_file" --md "$md_file" --live "$live_name_mismatch_file" 2> /dev/null | head -1)"
 
-# --- 9) new: 宣言に id が無い -------------------------------------------
+# --- 9) new: 宣言に id がない -------------------------------------------
 
 decl_no_id="$(jq 'del(.id)' <<< "$DECL_BASE")"
 decl_no_id_file="$TMPDIR_T/decl-no-id.json"
@@ -149,7 +149,7 @@ printf 'null' > "$null_file"
 check "9 classify new" "new" \
   "$(bash "$PLAN" classify --declaration "$decl_no_id_file" --md "$md_file" --live "$null_file" | head -1)"
 
-# --- 10) build-body は cron_utc が無い宣言を拒否する(D11) --------------
+# --- 10) build-body は cron_utc がない宣言を拒否する(D11) --------------
 
 decl_no_cron="$(jq 'del(.cron_utc)' <<< "$DECL_BASE")"
 decl_no_cron_file="$TMPDIR_T/decl-no-cron.json"
@@ -208,7 +208,7 @@ jq -n --argjson body "$body_auto" \
     enabled:$body.enabled, job_config:$body.job_config, suspension_reason:"", ended_reason:""}' > "$live_auto_file"
 check "12e live が宣言と同じ auto_mode_* を持てば in-sync" "in-sync" \
   "$(bash "$PLAN" classify --declaration "$decl_auto_file" --md "$md_file" --live "$live_auto_file" | head -1)"
-check "12f 宣言が auto_mode_* を足し、live が古いままなら declared-ahead" "declared-ahead" \
+check "12f 宣言が auto_mode_* を追加し、live が古いままなら declared-ahead" "declared-ahead" \
   "$(bash "$PLAN" classify --declaration "$decl_auto_file" --md "$md_file" --live "$live_file" | head -1)"
 
 # --- 13) get の生応答 {"trigger": {...}} を渡せる / refuse の理由を stderr に出す(#982) ---

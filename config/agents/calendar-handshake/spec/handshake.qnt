@@ -7,7 +7,7 @@
 //
 // 参加者:
 //   本人(person)        題名の印を任意の値に書き換えられる(スマホから)。予定の削除もする。
-//   会社側 script        10 分ごと。1 回の実行は複数の書き込みに分かれ、途中で落ち、重複して動く。
+//   会社側 script        10 分ごと。1 回の実行は複数の書き込みに分かれ、途中で異常終了し、重複して動く。
 //   会社 PC のエージェント [blocked] を [secured] にする(本人が送ったあとだけ)。
 //   朝の机(desk)         停滞を警告する。
 // 共有記憶:
@@ -94,7 +94,7 @@ module handshake {
 
   pure def isHard(m: Mark): bool = m == Blocked or m == Secured
   pure def isSoft(m: Mark): bool = not(isHard(m))
-  // 組のキー: 刻んだ id があればそれ、無ければ題名の残り(ADR-550 D1 のまま)
+  // 組のキー: 刻んだ id があればそれ、なければ題名の残り(ADR-550 D1 のまま)
   pure def gkey(ev: Ev): str = if (STAMP_GROUP and ev.gid != "") ev.gid else ev.title
   pure def stampOf(ev: Ev): str = if (STAMP_GROUP and ev.gid == "") ev.title else ev.gid
 
@@ -157,7 +157,7 @@ module handshake {
   }
 
   def readPhase(r: int): bool = runs.get(r).ph == Read
-  // 許されない書き換え(語彙の遷移に無い)を見つけた / 許される書き換えを見つけた
+  // 許されない書き換え(語彙の遷移にない)を見つけた / 許される書き換えを見つけた
   def plain(r: int): bool = not(REVERT) or sn(r).ack == sn(r).mark
   def illegalSeen(r: int): bool =
     REVERT and sn(r).ack != sn(r).mark and not(legalStep(sn(r).kind, sn(r).ack, sn(r).mark))
@@ -195,8 +195,8 @@ module handshake {
 
   // [go]: 不在が既にあるかを探す。
   // 閉じた組への [go] を [ng] にする遷移は置かない: 判定の時点の閉じ込め(doJudge)と、
-  // [go] の処理の候補削除(goPrune)が先に効き、[go] の時点で組が閉じていることが無い
-  // (落ちる実行・2 つの実行・題名の編集・削除・取り下げ・日の編集を入れた広い環境でも
+  // [go] の処理の候補削除(goPrune)が先に効き、[go] の時点で組が閉じていることがない
+  // (異常終了する実行・2 つの実行・題名の編集・削除・取り下げ・日の編集を入れた広い環境でも
   // 到達不能であることを TLC で確かめた。ADR の「検査の結果」)。
   action goLookup(r: int): bool = all {
     readPhase(r), plain(r), sn(r).mark == Go,
@@ -257,7 +257,7 @@ module handshake {
     runs' = runs, lock' = lock, evs' = evs, env' = env, fired' = fired,
   }
 
-  // script が途中で落ちる(A2: ロックは解放される)
+  // script が途中で異常終了する(A2: ロックは解放される)
   action runCrash(r: int): bool = all {
     CAN_CRASH,
     runs.get(r).ph != Idle,
@@ -278,7 +278,7 @@ module handshake {
                         sent: false, intent: t }),
     spend, keepRuns, keepAbs, fired' = fired,
   }
-  // 正規の遷移: [ok]/[resched] → [go]。remote-trip には [go] の手順が無い(朝の机も出さない)ので、
+  // 正規の遷移: [ok]/[resched] → [go]。remote-trip には [go] の手順がない(朝の机も出さない)ので、
   // 本人が書くなら手書き(personForge)になる。種類を知らない環境(KIND_AWARE が false)は、どの種類にも出す
   action personGo(e: int): bool = all {
     budget, evs.get(e).present, evs.get(e).mark == Ok or evs.get(e).mark == Resched,
@@ -306,7 +306,7 @@ module handshake {
     evs' = evs.set(e, { ...evs.get(e), start: s }),
     spend, keepRuns, keepAbs, fired' = fired,
   }
-  // 語彙に無い書き換えを含む、任意の印の書き込み(スマホからの手書き)
+  // 語彙にない書き換えを含む、任意の印の書き込み(スマホからの手書き)
   action personForge(e: int, m: Mark): bool = all {
     CAN_FORGE, budget, evs.get(e).present, evs.get(e).mark != m,
     evs' = evs.set(e, { ...evs.get(e), mark: m }),
@@ -410,7 +410,7 @@ module handshake {
   val s1 = TITLES.forall(i => intentHard(i).size() <= 1)
   // S2: 不在は二重に入らない
   val s2dup = IDS.forall(e => absFor(e).length() <= 1)
-  // S2: [blocked]・[secured] には、日の合った不在がちょうど 1 件ある(本人の書き換えが無い環境で)
+  // S2: [blocked]・[secured] には、日の合った不在がちょうど 1 件ある(本人の書き換えがない環境で)
   val s2blk = IDS.forall(e =>
     (evs.get(e).present and isHard(evs.get(e).mark)) implies consistent(e))
   // S3: [blocked]・[secured] のあと、同じ会議の他の候補が(判定待ちの [hold] と [ng] の他に)残らない

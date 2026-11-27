@@ -7,7 +7,7 @@
 # agy は `--agent antigravity`)で
 # 流し、判定を比べる。食い違えば generation が build できない。CI は vega・arcturus・altair の 3 構成を
 # build するので、「この hook が拒否するか」を、機体ごとの実機確認なしに全機体で確かめられる
-# (確認の台帳に積まず、ここに fixture を 1 行足す。pr-description スキル §6 の手順 6)。
+# (確認の台帳に積まず、ここに fixture を 1 行追加する。pr-description スキル §6 の手順 6)。
 #
 # 規則の判定そのものは cargo test が持つ。ここが確かめるのは、配備される binary と引数の組が、
 # その判定を返すこと。設定ファイルや状態を読む規則(sandbox-compound-guard など)は、build の中では

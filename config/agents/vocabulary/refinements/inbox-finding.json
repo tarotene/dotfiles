@@ -13,7 +13,7 @@
     "open": "拾った時点で vault のノートになり、my-cleanup が再発の多い順に本人へ見せる。拾う(picked)と見せる(shown)を分けて記録しない",
     "fixed": "直した。再発すると open に戻るので、終端でなく settled(閉じているが再発を待つ)",
     "dropped": "捨てた。再発すると open に戻るので settled。見送り(declined)の終端ではない",
-    "lapsed": "open のまま放置されて失効した。再発すると open に戻るので、抽象の失効(lapsed。終端)でなく settled(閉じているが再発を待つ)。裁定の手順で fixed・dropped にも進めるが、issued へは進めない(抽象に settled から handed_off への事象が無い。Issue にするには、再発して open に戻ってから)",
+    "lapsed": "open のまま放置されて失効した。再発すると open に戻るので、抽象の失効(lapsed。終端)でなく settled(閉じているが再発を待つ)。裁定の手順で fixed・dropped にも進めるが、issued へは進めない(抽象に settled から handed_off への事象がない。Issue にするには、再発して open に戻ってから)",
     "issued": "Issue にした。以後は Issue が追い、再発しても open に戻らない。別の追跡先への引き継ぎ"
   },
   "p1": {

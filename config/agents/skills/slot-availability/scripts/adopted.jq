@@ -8,7 +8,7 @@
 # 同じ候補日程一覧から出した他の仮押さえ(確定したら一括で消す対象)を、判定の前に見つける。
 #
 # 入力(すべて --argjson):
-#   $config  — config.toml を JSON 化し、tz_offset_seconds を足したもの。
+#   $config  — config.toml を JSON 化し、tz_offset_seconds を追加したもの。
 #   $markers — 仮押さえを書き込むカレンダー(marker_calendar)の list_events の生レスポンス
 #              ({"events": [...]})。
 #   $adopted — 型付きデータの adopted_from に並ぶ予定の id の配列(文字列)。
@@ -20,7 +20,7 @@
 # URL を書く)。
 #
 # 出力: {"ok": bool, "stale": [...], "siblings": [...], "table": "..."}
-#   ok は、取り込み済みなのに残っているマーカーが無いこと。siblings は stale が空でないときだけ出る。
+#   ok は、取り込み済みなのに残っているマーカーがないこと。siblings は stale が空でないときだけ出る。
 include "lib";
 
 def source_url($ev):

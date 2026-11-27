@@ -6,7 +6,7 @@
 # (docs/agents/repo-create-guard.md)。guard が強制したいのは「手順に載せること」
 # なので、手順そのものを実行するこのスクリプトを正規の入口にする。guard は Bash の
 # コマンド文字列しか見ないため、このスクリプト内の `gh repo create` は deny に
-# 当たらず、バイパス用の環境変数は要らない(#754。rulesets-write-guard に対する
+# 当たらず、バイパス用の環境変数は不要(#754。rulesets-write-guard に対する
 # apply-rulesets と同じ形、#707)。
 set -euo pipefail
 
@@ -29,7 +29,7 @@ usage: create-repo.sh --owner OWNER --repo REPO --description TEXT --class namin
   --topic         技術領域・ドメインを表す topic(最低 1 つ)
   --lifecycle     lifecycle-timeboxed | lifecycle-study(任意、0〜1 個)
   --type          governance の型。rust/typst/astro は各 seed.sh、core は apply-repo-settings.sh
-                  + copy-files.sh。--type を付けたら --dest(ローカルの checkout)も要る
+                  + copy-files.sh。--type を付けたら --dest(ローカルの checkout)も必要
   --public        公開リポジトリにする(既定は --private)
   --plan          所有者のプラン(既定 auto = gh api で検出)。非公開かつ free のとき、
                   トピック plan-free-private を播く(自動マージ・rulesets が使えない環境の
@@ -60,7 +60,7 @@ detect_plan() {
 
 # ---- 閉語彙チェック(repo-charter §1、ADR-0020 / ADR-0026) ---------------
 
-# TSV(`#` 始まりと空行を除く)の第 1 列に $1 があるか。ファイルが無ければ偽。
+# TSV(`#` 始まりと空行を除く)の第 1 列に $1 があるか。ファイルがなければ偽。
 tsv_has() {
   local key="$1" file="$2"
   [ -f "$file" ] || return 1
@@ -87,7 +87,7 @@ vocab_check() {
       [[ "$repo" =~ ^[a-z0-9]+(-[a-z0-9]+)+$ ]] \
         || die "naming-descriptive は <対象>-<種別語> の形です: $repo"
       tsv_has "${repo##*-}" "$AUDIT_DIR/descriptive-species.tsv" \
-        || die "種別語 '${repo##*-}' が descriptive-species.tsv にありません。完了しうる行為を表す語なら naming-pj へ、恒久的な器の語なら先にそのファイルの改訂 PR を立ててください"
+        || die "種別語 '${repo##*-}' が descriptive-species.tsv にありません。完了し得る行為を表す語なら naming-pj へ、恒久的な器の語なら先にそのファイルの改訂 PR を立ててください"
       ;;
     naming-site)
       [[ "$repo" =~ ^[a-z0-9]+(\.[a-z0-9]+)+$ ]] || die "naming-site は FQDN の形です: $repo"
@@ -101,12 +101,12 @@ vocab_check() {
 
 # ---- 実行 -------------------------------------------------------------------
 
-# 作業先に根コミットを作る(--type core)。作業先が git の作業ツリーでなければ `git init -b main`、origin が無ければ
-# https の URL で足し、播種したファイルを 1 つのコミットにする(署名は、利用者の git の設定どおり)。
-# コミットが既にあれば何もしない(続きから進める)。push は、資格情報が要るので案内だけにする。
-# https にするのは、SSH の URL で足すと、鍵の無い環境で push が publickey で落ちたため(F57、2026-11-15)。
+# 作業先にルートコミットを作る(--type core)。作業先が git の作業ツリーでなければ `git init -b main`、origin がなければ
+# https の URL で追加し、播種したファイルを 1 つのコミットにする(署名は、利用者の git の設定どおり)。
+# コミットが既にあれば何もしない(続きから進める)。push は、資格情報が必要なので案内だけにする。
+# https にするのは、SSH の URL で追加すると、鍵のない環境で push が publickey で失敗したため(F57、2026-11-15)。
 # main への直コミットは、HEAD が未生成の間だけ pre-commit が通す(config/git/hooks/pre-commit)ので、
-# `GIT_ALLOW_MAIN_COMMIT` の前置は要らない。
+# `GIT_ALLOW_MAIN_COMMIT` の前置は不要。
 root_commit() {
   local dest="$1" slug="$2"
   local url="https://github.com/$slug.git"
@@ -163,7 +163,7 @@ main() {
   [ -n "$owner" ] && [ -n "$repo" ] && [ -n "$desc" ] && [ -n "$class" ] \
     || { usage >&2; die "--owner / --repo / --description / --class は必須です"; }
   [ "${#desc}" -le 120 ] || die "--description は 120 字以内です(${#desc} 字)"
-  [ "${#topics[@]}" -ge 1 ] || die "--topic が最低 1 つ要ります(技術領域・ドメイン)"
+  [ "${#topics[@]}" -ge 1 ] || die "--topic が最低 1 つ必要です(技術領域・ドメイン)"
   case "$lifecycle" in
     "" | lifecycle-timeboxed | lifecycle-study) ;;
     *) die "--lifecycle は lifecycle-timeboxed | lifecycle-study のどちらかです: $lifecycle" ;;
@@ -176,7 +176,7 @@ main() {
     auto | free | paid) ;;
     *) die "--plan は auto | free | paid のどれかです: $plan" ;;
   esac
-  { [ -z "$type" ] || [ -n "$dest" ]; } || die "--type を付けるときは --dest(ローカルの checkout)も要ります"
+  { [ -z "$type" ] || [ -n "$dest" ]; } || die "--type を付けるときは --dest(ローカルの checkout)も必要です"
 
   vocab_check "$repo" "$class"
   echo "ok: 閉語彙チェック($class: $repo)"
@@ -256,7 +256,7 @@ STUB
     printf '#!/usr/bin/env bash\nprintf "%s %%s\\n" "$*" >> "$STUB_LOG"\n' "$(basename "$s")" > "$tmp/skills/$s"
   done
   # git: 呼び出しを記録する。STUB_GIT_REPO_RC は `rev-parse --git-dir`(作業ツリーか)、STUB_GIT_HEAD_RC は
-  # `rev-parse --verify HEAD`(コミットがあるか)の終了コード(既定は、どちらも無い = 1)。origin は無い。
+  # `rev-parse --verify HEAD`(コミットがあるか)の終了コード(既定は、どちらもない = 1)。origin はない。
   cat > "$tmp/git" <<'STUB'
 #!/usr/bin/env bash
 printf 'git %s\n' "$*" >> "$STUB_LOG"

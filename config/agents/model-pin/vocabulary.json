@@ -15,7 +15,7 @@
     { "id": "inventory", "from": ["stale"], "to": ["inventoried"], "by": "agent", "by_detail": "変更の前に必ず grep する。呼び出し本体の既定値・selftest の固定し直しブロック・フェイクバイナリの期待値・ラベル文字列・設計ドキュメントの記述を列挙する", "carriers": ["skill:model-pin-update"] },
     { "id": "choose", "from": ["inventoried"], "to": ["chosen"], "by": "agent", "by_detail": "CLI の --help で渡しているフラグが現行にもあるか、ベンダーの公式 changelog で GA と廃止の期限を確かめ、役割適性・クロスベンダー独立性・課金方式で 1 つに決め、無効な ID が送信前にエラーになることでスラッグを確かめる", "carriers": ["skill:model-pin-update"] },
     { "id": "edit", "from": ["chosen"], "to": ["updated"], "by": "agent", "by_detail": "呼び出し本体の既定値・selftest の期待値(固定し直し・契約値・ラベルの 3 種)・設計ドキュメントを同時に変える。実測の来歴は消さない", "carriers": ["skill:model-pin-update"] },
-    { "id": "fix_leftover", "from": ["updated"], "to": ["same"], "by": "agent", "by_detail": "grep で旧 ID が 1 件でもヒットする、または selftest・lint が落ちるときは未完了として、残りを直す", "carriers": ["skill:model-pin-update"] },
+    { "id": "fix_leftover", "from": ["updated"], "to": ["same"], "by": "agent", "by_detail": "grep で旧 ID が 1 件でもヒットする、または selftest・lint が失敗するときは未完了として、残りを直す", "carriers": ["skill:model-pin-update"] },
     { "id": "verify", "from": ["updated"], "to": ["done"], "by": "agent", "by_detail": "selftest が新しい pin 値で全通過し、lint がクリーンで、実機で非ゲート消費の経路を 1 回実行してスキーマ適合の応答が返り、grep で旧 ID が 0 件", "carriers": ["skill:model-pin-update"] }
   ]
 }

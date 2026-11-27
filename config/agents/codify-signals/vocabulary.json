@@ -2,7 +2,7 @@
   "version": 1,
   "description": "as-code 化(決定論化)の候補を振り返りで記録するときの閉語彙(正本)。issue-inbox が include_str! で読み、session-retrospective・promotion-detect が使う。retro の手順の文と docs/agents/codify-signals.md の事例集の表はここから生成する。",
   "levels": [
-    { "id": "eliminate", "rank": 5, "means": "手順や共有の状態そのものを無くす。誤りが起きる場が存在しなくなる" },
+    { "id": "eliminate", "rank": 5, "means": "手順や共有の状態そのものをなくす。誤りが起きる場が存在しなくなる" },
     { "id": "unrepresentable", "rank": 4, "means": "型・閉じた語彙・単一の宣言・状態機械で、誤りを書けなくする" },
     { "id": "gate", "rank": 3, "means": "実行前の拒否・Stop での差し戻し・CI で、誤りを止める" },
     { "id": "tool", "rank": 2, "means": "正しいやり方を 1 本の CLI・スクリプトにする" },
@@ -71,7 +71,7 @@
       "default": "unrepresentable",
       "since": "2026-10-30",
       "formal_spec": true,
-      "look_for": "並行・中断で壊れうる手順。順序や途中失敗で状態が食い違う",
+      "look_for": "並行・中断で壊れる可能性がある手順。順序や途中失敗で状態が食い違う",
       "examples": ["ADR-1242", "ADR-1259"]
     },
     {
@@ -85,7 +85,7 @@
       "id": "sandbox-env-gap",
       "default": "unrepresentable",
       "since": "2026-10-30",
-      "look_for": "sandbox の宣言・除外・許可の不足で、書き込みや署名や認証が失敗し、外での再実行や往復が要った",
+      "look_for": "sandbox の宣言・除外・許可の不足で、書き込みや署名や認証が失敗し、外での再実行や往復が必要になった",
       "examples": ["#1164"]
     },
     {
@@ -106,21 +106,21 @@
       "id": "worktree-bootstrap",
       "default": "tool",
       "since": "2026-10-30",
-      "look_for": "新しい worktree に、依存・認証・検証の前提が無かった。作成直後の準備を毎回手で整えた",
+      "look_for": "新しい worktree に、依存・認証・検証の前提がなかった。作成直後の準備を毎回手で整えた",
       "examples": []
     },
     {
       "id": "tool-semantics",
       "default": "tool",
       "since": "2026-11-10",
-      "look_for": "道具の暗黙の挙動(参照の上書き・新しいシェルでの実行・git が追跡しないファイルを見ない)で、エラーも無く違う結果になった。正しい呼び方を 1 本の入口にする",
+      "look_for": "道具の暗黙の挙動(参照の上書き・新しいシェルでの実行・git が追跡しないファイルを見ない)で、エラーもなく違う結果になった。正しい呼び方を 1 本の入口にする",
       "examples": []
     },
     {
       "id": "unclassified",
       "default": "prose",
       "since": "2026-10-30",
-      "look_for": "上のどれにも入らないが、決定論化できそうだと思った。上位の段を選ぶなら level_reason が必須。数が溜まると語彙に足す候補になる",
+      "look_for": "上のどれにも入らないが、決定論化できそうだと思った。上位の段を選ぶなら level_reason が必須。数が溜まると語彙に追加する候補になる",
       "examples": []
     }
   ],

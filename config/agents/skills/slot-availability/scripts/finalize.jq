@@ -37,7 +37,7 @@ def parse_own_markers($markers_data; $config; $source_url):
 def epoch_iso($epoch; $tz_offset_seconds; $tz_offset):
   ($epoch + $tz_offset_seconds | strftime("%Y-%m-%dT%H:%M:%S")) + $tz_offset;
 
-# own_markers から、区間が重なる最初の1件を取り出す(無ければ null)。
+# own_markers から、区間が重なる最初の1件を取り出す(なければ null)。
 def find_overlap($d; $markers):
   ($markers | map(select(.start < $d.end and .end > $d.start)) | .[0]) // null;
 

@@ -79,7 +79,7 @@ out=$(run_judge \
   '[{"date":"2026-10-18","time":"19:00"}]')
 check "4 overlap->×" "×" "$(jq -r '.plan.answers[0]' <<<"$out")"
 
-# 5) soft_day で時間指定の確定予定が無ければエラー終了。
+# 5) soft_day で時間指定の確定予定がなければエラー終了。
 set +e
 err=$(run_judge \
   '[{"calendar_id":"primary","calendar_summary":"本体","ev":{"status":"confirmed","start":{"date":"2026-11-15"},"end":{"date":"2026-11-16"},"summary":"【試験本番】テスト"}}]' \
@@ -227,7 +227,7 @@ err="$(bash "$SCRIPT_DIR/slot-hit.sh" judge --config "$tmpd/config.toml" --candi
 check_error_contains "13c active が boolean でなければエラー" "boolean" "$rc" "$err"
 rm -rf "$tmpd"
 
-# 14) enumerate_candidates: 候補一覧が無いとき、期間 × 全コマを judge の入力
+# 14) enumerate_candidates: 候補一覧がないとき、期間 × 全コマを judge の入力
 #     契約として列挙する。2026-10-03 は土曜、10-04 は日曜。
 enum() { # $1=from $2=to $3=weekdays(JSON) $4=slots(JSON)
   jq -nc -L"$SCRIPT_DIR" --argjson config "$CONFIG" --arg from "$1" --arg to "$2" \
@@ -244,7 +244,7 @@ check "14d コマ名で絞る" '["18:00"]' "$(enum 2026-10-03 2026-10-03 '[]' '[
 rc=0; err="$(enum 2026-10-05 2026-10-03)" || rc=$?
 check_error_contains "14e from > to はエラー" "より後" "$rc" "$err"
 rc=0; err="$(enum 2026-10-03 2026-10-05 '[]' '["nope"]')" || rc=$?
-check_error_contains "14f 設定に無いコマ名はエラー" "設定に無いコマ名" "$rc" "$err"
+check_error_contains "14f 設定にないコマ名はエラー" "設定にないコマ名" "$rc" "$err"
 rc=0; err="$(enum 2026-10-03 2026-10-05 '[9]')" || rc=$?
 check_error_contains "14g 範囲外の曜日はエラー" "--weekdays" "$rc" "$err"
 rc=0; err="$(enum 2026-10-03 2028-10-05)" || rc=$?
@@ -283,9 +283,9 @@ check "15b 取り込み待ちがあれば ok=false" "false" "$(jq '.ok' <<<"$out
 out=$(run_inbox "{\"events\":[$held,$legacy,$outing,$outing_old,$cancelled,$ended,$invited]}")
 check "15c 印付き・取消・終了・招待だけなら ok=true(複数の除外接頭辞が効く)" "true" "$(jq '.ok' <<<"$out")"
 check "15d 空の受付箱は ok=true" "true" "$(run_inbox '{"events":[]}' | jq '.ok')"
-# 15e) 主催者の情報が無い予定は、手入力とみなす(取りこぼしを避ける側に倒す)。
+# 15e) 主催者の情報がない予定は、手入力とみなす(取りこぼしを避ける側に倒す)。
 out=$(run_inbox "{\"events\":[$(ev '主催者不明' 2026-10-22T10:00:00+09:00 2026-10-22T11:00:00+09:00)]}")
-check "15e organizer が無い予定は取り込み待ち" '["主催者不明"]' "$(jq -c '[.pending[].summary]' <<<"$out")"
+check "15e organizer がない予定は取り込み待ち" '["主催者不明"]' "$(jq -c '[.pending[].summary]' <<<"$out")"
 
 # 16) slot-hit.sh inbox-check(TOML → events ファイル → 終了コード): 取り込み待ちがあれば 1。
 tmpd="$(mktemp -d)"
@@ -333,7 +333,7 @@ check "17a 残っている取り込み済みの仮押さえは m1 だけ(過去�
 check "17b 同じ候補日程一覧の他の仮押さえ(旧印を含む)は m2 だけ" '["m2"]' "$(jq -c '[.siblings[].id]' <<<"$out")"
 check "17c 取り込み済みの仮押さえが残っていれば ok=false" "false" "$(jq '.ok' <<<"$out")"
 out=$(run_adopted "$all_markers" '[]')
-check "17d 取り込み済みの id が無ければ ok=true、sibling も出さない" "true|0" "$(jq -r '"\(.ok)|\(.siblings | length)"' <<<"$out")"
+check "17d 取り込み済みの id がなければ ok=true、sibling も出さない" "true|0" "$(jq -r '"\(.ok)|\(.siblings | length)"' <<<"$out")"
 out=$(run_adopted "$all_markers" '["m3"]')
 check "17e 別の候補日程一覧の仮押さえは sibling に数えない" '["m3"]|[]' "$(jq -r '"\([.stale[].id] | tojson)|\(.siblings | map(.id) | tojson)"' <<<"$out")"
 out=$(run_adopted '{"events":[]}' '["m1"]')
@@ -367,9 +367,9 @@ check "17g 取り込み済みが残っていれば終了コード 1" "1" "$rc"
 check "17h 2 本の TOML の adopted_from(入れ子を含む)を両方拾い、一括で消す対象も出す" "true" "$([[ "$out" == *"2 件残って"* && "$out" == *"他の仮押さえ 1 件"* ]] && echo true || echo false)"
 printf '%s' '{"events":[]}' > "$tmpd/none.json"
 rc=0; bash "$SCRIPT_DIR/slot-hit.sh" adopted-check --config "$tmpd/config.toml" --markers "$tmpd/none.json" --adopted "$tmpd/events.toml" --now "2026-10-21T12:00:00+09:00" >/dev/null 2>&1 || rc=$?
-check "17i 残りが無ければ終了コード 0" "0" "$rc"
+check "17i 残りがなければ終了コード 0" "0" "$rc"
 rc=0; err="$(bash "$SCRIPT_DIR/slot-hit.sh" adopted-check --config "$tmpd/config.toml" --markers "$tmpd/none.json" --now "2026-10-21T12:00:00+09:00" 2>&1 >/dev/null)" || rc=$?
-check_error_contains "17j --adopted が無ければエラー" "--adopted" "$rc" "$err"
+check_error_contains "17j --adopted がなければエラー" "--adopted" "$rc" "$err"
 rm -rf "$tmpd"
 
 echo ""

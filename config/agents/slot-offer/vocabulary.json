@@ -16,8 +16,8 @@
     { "id": "confirm_holds", "from": ["intended"], "to": ["held"], "by": "agent", "by_detail": "全スロットの押さえを読み戻して確かめたとき", "carriers": ["cli:worklog", "skill:slot-availability"], "gates": ["cli:worklog"] },
     { "id": "lose_hold", "from": ["held"], "to": ["intended"], "by": "agent", "by_detail": "提示の前に、読み戻した押さえが欠けていたとき", "carriers": ["cli:worklog"] },
     { "id": "present", "from": ["held"], "to": ["offered"], "by": "agent", "by_detail": "送信前の確認(画面・全文・宛先)を本人が済ませ、送って、送信済みの画面を読み戻したあと", "carriers": ["cli:worklog", "skill:inbox-adjudication", "skill:slot-availability"], "gates": ["cli:worklog"] },
-    { "id": "abort", "from": ["intended", "held"], "to": ["cancelled"], "by": "agent", "by_detail": "提示が出ていない提案の取消。押さえをすべて消し、残りが無いことを読み戻したあとに記録する", "carriers": ["cli:worklog", "skill:slot-availability"], "gates": ["cli:worklog"] },
-    { "id": "retract", "from": ["offered"], "to": ["cancelled"], "by": "person", "by_detail": "出てしまった提示の取り下げ。相手への連絡は本人が決める。押さえをすべて消し、残りが無いことを読み戻したあとに記録する", "carriers": ["cli:worklog", "skill:slot-availability"], "gates": ["cli:worklog"] },
+    { "id": "abort", "from": ["intended", "held"], "to": ["cancelled"], "by": "agent", "by_detail": "提示が出ていない提案の取消。押さえをすべて消し、残りがないことを読み戻したあとに記録する", "carriers": ["cli:worklog", "skill:slot-availability"], "gates": ["cli:worklog"] },
+    { "id": "retract", "from": ["offered"], "to": ["cancelled"], "by": "person", "by_detail": "出てしまった提示の取り下げ。相手への連絡は本人が決める。押さえをすべて消し、残りがないことを読み戻したあとに記録する", "carriers": ["cli:worklog", "skill:slot-availability"], "gates": ["cli:worklog"] },
     { "id": "choose", "from": ["offered"], "to": ["chosen"], "by": "agent", "by_detail": "相手が日を選んだ。選ばれたスロットの確定と残りの解放は slot-hit.sh finalize が行う", "carriers": ["cli:worklog", "skill:slot-availability"], "gates": ["cli:worklog"] }
   ]
 }

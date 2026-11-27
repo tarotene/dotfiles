@@ -15,7 +15,7 @@
   "events": [
     { "id": "detect", "from": ["none"], "to": ["drifted"], "by": "machine", "carriers": ["cli:github-audit"] },
     { "id": "draft", "from": ["drifted"], "to": ["drafted"], "by": "agent", "by_detail": "一括起草して、1 回の一括レビュー表(Artifact)に載せる", "carriers": ["skill:github-audit-triage"] },
-    { "id": "redetect", "from": ["drafted"], "to": ["same"], "by": "machine", "by_detail": "レビュー表はセッション内限りで、裁定が無ければ次の github-audit の実行が同じ組を drifted として再び報告する(定期の実行は無い。手動の実行のときだけ)", "carriers": ["cli:github-audit"] },
+    { "id": "redetect", "from": ["drafted"], "to": ["same"], "by": "machine", "by_detail": "レビュー表はセッション内限りで、裁定がなければ次の github-audit の実行が同じ組を drifted として再び報告する(定期の実行はない。手動の実行のときだけ)", "carriers": ["cli:github-audit"] },
     { "id": "go", "from": ["drafted"], "to": ["approved"], "by": "person", "carriers": ["skill:github-audit-triage"] },
     { "id": "apply", "from": ["approved"], "to": ["applied"], "by": "agent", "by_detail": "GO 分だけ。PR 作成までが完了で、merge はしない", "carriers": ["skill:github-audit-triage", "cli:apply-rulesets"] },
     { "id": "route", "from": ["approved"], "to": ["routed"], "by": "agent", "by_detail": "低確信フラグの組と ci-absent の誘導 Issue", "carriers": ["skill:github-audit-triage"] },

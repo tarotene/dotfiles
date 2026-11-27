@@ -13,7 +13,7 @@
   "events": [
     { "id": "stage_local", "from": ["none"], "to": ["local"], "by": "agent", "by_detail": "上げたいファイルが手元にある" },
     { "id": "locate", "from": ["none"], "to": ["remote"], "by": "agent", "by_detail": "取りたいファイルの ID を、Drive の URL か、コネクタの search_files・get_file_metadata から得る。10 MB 以下でコネクタで取れるなら、コネクタでよい", "carriers": ["skill:drive-upload"] },
-    { "id": "upload", "from": ["local"], "to": ["uploaded"], "by": "agent", "by_detail": "rclone copy <ファイル> gdrive-agent:<purpose>/。scope は drive.file で、rclone が作ったものしか触れない。同名は上書きされる。消す操作(delete・purge・sync)は本人の依頼が無い限り使わない", "carriers": ["skill:drive-upload"] },
+    { "id": "upload", "from": ["local"], "to": ["uploaded"], "by": "agent", "by_detail": "rclone copy <ファイル> gdrive-agent:<purpose>/。scope は drive.file で、rclone が作ったものしか触れない。同名は上書きされる。消す操作(delete・purge・sync)は本人の依頼がない限り使わない", "carriers": ["skill:drive-upload"] },
     { "id": "fetch", "from": ["remote"], "to": ["fetched"], "by": "agent", "by_detail": "rclone backend copyid gdrive-read: <ファイルの ID> <保存先>/。gdrive-read は drive.readonly で、書き込みには使わない。保存先は / で終える", "carriers": ["skill:drive-upload"] },
     { "id": "verify_upload", "from": ["uploaded"], "to": ["verified"], "by": "agent", "by_detail": "rclone lsf --format pi と rclone md5sum の出力を、ローカルの md5sum とサイズに突き合わせる。報告には読み戻しのコマンドと Drive の ID を添える。共有の設定は変えない", "carriers": ["skill:drive-upload"] },
     { "id": "verify_fetch", "from": ["fetched"], "to": ["verified"], "by": "agent", "by_detail": "取ったファイルのサイズを、Drive のメタデータの fileSize(get_file_metadata)と突き合わせて報告する", "carriers": ["skill:drive-upload"] }
