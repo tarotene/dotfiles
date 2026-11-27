@@ -79,6 +79,27 @@ Code 固有」。例えば stacked PR(ADR-0027)は「同一セッションの複
 マウント、Claude だけ `~/.claude/CLAUDE.md` から `@~/.agents/AGENTS.md`
 を import する形になり、3 者で統一的な単一パスには揃わない。
 
+## Antigravity CLI(agy)は分割して `~/.gemini/config/rules/` へ
+
+agy は大域の規則を `~/.gemini/GEMINI.md`・`~/.gemini/AGENTS.md`、または `~/.gemini/config/` の同名と
+`rules/` から読む。1 ファイルは 24,000 バイトで切られ、全体は 20,000 トークンの予算を持ち、超えた規則は
+「パスと説明の一覧」に降格される(agy 1.5.17 に同梱の `agy-customizations/docs/rules.md` の
+「Size Limits and Context Budget」、取得 2026-11-27)。共有 AGENTS.md は約 99 KB なので、Codex のように
+1 ファイルへ結合せず、`home/modules/antigravity.nix` が Nix の評価時に切る。
+
+- 切る単位は `# `・`## ` の見出し。コードフェンス内の `#`(シェルのコメント)は見出しに数えない。最初の
+  `# ` 節(1〜474 行)だけで 41 KB あるため、H1 だけでは足りず、H2 でも切る。
+- 隣り合う単位を、フロントマター込みで 24,000 バイトに収まるよう(本文 23,500 バイトまで)貪欲に詰める。1 つの単位が
+  単独で超えるときは評価が失敗する(`ruleFile` の assert)。
+- 各ファイルは `trigger: always_on` と `description`(含む見出し名)を持つ。降格の対象と順は agy が決める
+  (未確認。実機の確認は台帳に載せる)。
+- agy 固有の施行配線は `config/antigravity/AGENTS.antigravity.md`(`00-antigravity.md`)。道具名の読み替え・
+  計画の自己検査・PR 運用・生成元の 1 行を持つ。
+- 切った結果の確認: `nix eval` で `home.file` の `.gemini/config/rules/*` のバイト数を読み、各ファイルが 24,000 バイト
+  以内であることと、本文を連結すると共有 AGENTS.md と一致することを確かめた(2026-11-27、6 ファイル、
+  最大 23,489 バイト)。
+- 配るのは `dotfiles.antigravity.enable` の identity(個人。#9 と同じ判断)だけ。
+
 ## 配備機構: `~/.agents/skills/` と同型
 
 正本 1 ファイルを `home.file` で複数パスにマウントする方式は、本リポジトリ

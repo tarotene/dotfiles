@@ -80,10 +80,10 @@ in
   # 確かめてから(home/modules/ja-polish.nix の冒頭)。
   dotfiles.jaPolish.enable = true;
 
-  # Antigravity CLI(agy)の settings.json に、Claude・Codex と同じ正本から権限を配る
+  # Antigravity CLI(agy)に、Claude・Codex と同じ正本から権限と大域の規則を配る
   # (home/modules/antigravity.nix)。クラウドの AI の道具なので、warp-terminal(#9)と同じく個人の
-  # identity だけで有効にする。
-  dotfiles.antigravityPermissions.enable = true;
+  # identity だけで有効にする。権限の宣言(`dotfiles.antigravityPermissions.enable`)はこれに従う。
+  dotfiles.antigravity.enable = true;
 
   dotfiles.claude.mcpServers = {
     # PR の Before/After 視覚証跡(docs/agents/pr-description.md の G_visual)と
