@@ -2,9 +2,9 @@
 
 **移行は完了した(2026-10-24)。** hook・CLI は Rust の workspace(`crates/*`)になり、
 残る bash は、escape hatch(`bootstrap.sh`・`scripts/install-*.sh` など、Nix や Rust が
-無い段階で動くもの)と、governance テンプレートとして各リポジトリへ複製される
+ない段階で動くもの)と、governance テンプレートとして各リポジトリへ複製される
 `scripts/adr-number-check` だけ(ADR-0024 Amendment 3)。この文書は、移植の
-記録と、新しい道具の既定がどう執行されるかを残す。
+記録と、新しいツールの既定がどう執行されるかを残す。
 
 ## workspace の構成
 
@@ -37,7 +37,7 @@ GNU テスト乗っ取り、Meszaros の Data-Driven Test、Feathers の charact
 最後の bash を移したので、この手順を支えていた `crates/fixture-oracle`(bash に向けた
 characterization fixture)は空になり、`crates/migration-audit` と `rust-migration.toml`
 (移植対象の allowlist と実体の突き合わせ)は、残件 0 のまま、走査対象のディレクトリの大半が
-無くなった。2026-10-24 に 3 つとも撤去した(ADR-0024 Amendment 5)。
+なくなっていた。2026-10-24 に 3 つとも撤去した(ADR-0024 Amendment 5)。
 
 ## 検討して外した方法: Parallel Run
 
@@ -46,7 +46,7 @@ GitHub Scientist 型の Parallel Run は、bash と Rust を両方実行して�
 副作用が二重になるためで、Scientist 自身も "should not have side effects"
 と明記している(#391)。
 
-## 新しい道具の既定
+## 新しいツールの既定
 
 新しい hook・CLI・検査の実装は、既定で Rust(ADR-0024)。Rust の bin は実行時の `--selftest` を
 持たない: ADR-0024 の「cases は `#[test]` へ 1:1 で移す」の完了後に、`--selftest` を「`cargo test` に
@@ -55,17 +55,17 @@ GitHub Scientist 型の Parallel Run は、bash と Rust を両方実行して�
 列挙するもの: escape-hatch(`bootstrap.sh` 等)、他リポジトリへ配布する skills の
 templates/scripts、git hooks、zsh モジュール(ADR-0007 の性質分類、可搬性維持のため)。
 
-撤去した `migration-audit` は、「分類されていない bash を見つけたら CI を落とす」**検出**だった。
-撤去したあとは、**言語そのものを機械で強制する検査は無い**(ADR-0024 Amendment 5 で、検出を
-1 つ手放すと決めた)。残るのは、新しい道具を作る時点で理由を書かせる仕組みで、どちらも
+撤去した `migration-audit` は、「分類されていない bash を見つけたら CI を失敗させる」**検出**だった。
+撤去したあとは、**言語そのものを機械で強制する検査はない**(ADR-0024 Amendment 5 で、検出を
+1 つ手放すと決めた)。残るのは、新しいツールを作る時点で理由を書かせる仕組みで、どちらも
 言語を直接は問わない:
 
-- 計画の段階: 新しい道具・単位の実装言語を選ぶ `Dn` には、対抗馬を立てて白紙で比べた記録
+- 計画の段階: 新しいツール・単位の実装言語を選ぶ `Dn` には、対抗馬を立てて白紙で比べた記録
   (`本命:` / `対抗馬:` / `既存手段:`)を書く規約がある(`technology-selection` スキル、ADR-0035、
   ADR-751)。`plan-precedent-gate` が見るのは `## 先行例との対比` 節と `軸:` などの書式で、
   言語選択の `Dn` に重い欄が書かれているかまでは判定しない。内容は `copilot-plan-review` の
   lens A が監査する。
-- 書く段階: `new-tool-guard`(ADR-543)が、新しい道具・単位(`bin/`・`scripts/`・`hooks/`・
+- 書く段階: `new-tool-guard`(ADR-543)が、新しいツール・単位(`bin/`・`scripts/`・`hooks/`・
   `cmd/` 配下の新規ファイル、パッケージマニフェストの新設など)を Write する前に、`既存手段:` の
   記録を求める。これは「既存手段で足りないか」を問うもので、言語は問わない。
 

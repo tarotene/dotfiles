@@ -16,7 +16,7 @@ ADR-0024 本体ではなくここに置く。
 
 ### nix(crane)
 
-`crates/hook-io/src/git.rs` の末尾に 1 行足してから `nix build .#dotfiles-tools`
+`crates/hook-io/src/git.rs` の末尾に 1 行追加してから `nix build .#dotfiles-tools`
 を実行し、3 回計測した:
 
 | 回 | 秒 |
@@ -32,7 +32,7 @@ ADR-0024 本体ではなくここに置く。
 #### bin 入りの再計測(Stage 3、#392)
 
 bin メンバーが 2 本(`gh-edit-allow` / `update-own-tools`)になった時点で、
-`crates/gh-edit-allow/src/main.rs` に 1 行足して取り直した:
+`crates/gh-edit-allow/src/main.rs` に 1 行追加して取り直した:
 
 | 回 | 秒 |
 |---|---:|
@@ -126,7 +126,7 @@ statusline はストリーミング中 ~300ms 毎、claude-usage は herdr の�
 - 環境: x86_64-linux(Pop!_OS、14 コア)、rustc 1.94.0、hyperfine 1.20.0
 - 手順: `CARGO_PROFILE_RELEASE_LTO` で設定ごとに上書きし、設定ごとに別の
   `CARGO_TARGET_DIR` で `cargo build --release --workspace --locked` を測った
-  (クリーンは target を消してから 1 回、再ビルドは対象に 1 行足してから)。
+  (クリーンは target を消してから 1 回、再ビルドは対象に 1 行追加してから)。
   `thin` は、最初の測定が別の作業(`cargo doc` など)と時間が重なった疑いがあったので、
   CPU を空けて測り直した値を載せる。
 

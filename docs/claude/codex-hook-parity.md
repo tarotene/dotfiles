@@ -27,7 +27,7 @@ Codex 固有の入力変換を境界に集め、各検査を別実装にしな�
 | issue-index、esa-mirror-context、wrap-up案内、署名準備、PR一覧、worktree鮮度、herdr警告、fail-open警告、daily-desk-reminder、worklog、worktree監査 | 実装済み。共通宣言の SessionStart |
 | PR完了確認、wrap-up、main checkout事後検査、ターンログ | 実装済み。共通宣言の Stop/UserPromptSubmit |
 | Herdr metadata | 実装済み。従来の4イベントに PreToolUse を追加。model と bypass 状態を更新。Plan mode を推測しない |
-| Atuin | 実装済み。既存の `atuin hook codex` を利用。終了コードが無いときは -1（不明）を渡す |
+| Atuin | 実装済み。既存の `atuin hook codex` を利用。終了コードがないときは -1(不明)を渡す |
 | routines-write-guard | 実装済みの規則を共通 router に保持。RemoteTrigger が来れば検査する。現版Codexに同じサービスの操作ツールはないため、現在の入力経路は該当なし |
 | 個別に追加されたローカルHook | `hook-router compat '<既存command>'` で同じスクリプトを呼ぶ。私有のルールや宛先は公開ソースへコピーしない。ask は理由を保った deny、allow は通常の確認フローへ戻す |
 
@@ -66,7 +66,7 @@ PreToolUse に残す。MCP の GitHub 投稿も Codex の署名で判定する�
 実際の Hook payload で、公開前の版と比べて A/B で確かめる。そのうえで dotfiles の固定版を更新し、
 `crates/hook-router/src/codex.rs` の入力変換と回帰テストを直して、この節から該当の `Blocked-Upstream:` の行を除く。
 終了コードが渡るようになったら、Atuin に -1 を渡す補正(`atuin_input` とそのテスト)も外す。PostToolUseFailure が
-無いことは、登録を隔離して `codex app-server` の `hooks/list` で読み、対応しているイベントを指定した対照群と比べて実測した。
+ないことは、登録を隔離して `codex app-server` の `hooks/list` で読み、対応しているイベントを指定した対照群と比べて実測した。
 新しい版でも同じ方法で確かめ直す。
 
 ## 先行例との対比
@@ -75,13 +75,13 @@ PreToolUse に残す。MCP の GitHub 投稿も Codex の署名で判定する�
 既存手段: crates/codex-plan-gate — 拡張 — 同じ Plan エンジンを呼び、Stop の出力へ変換する。
 既存手段: atuin hook codex — 採用 — 終了コード不明だけを補正する。
 
-- D1: 登録と規則表を共通化 / 先行例は同repo `crates/hook-router`、変更前df5893c8、2026-10-26確認 / 先行例との差分は Agent 引数と入力境界のみ / 軸: 表現不可能性（片方への登録漏れを防ぐ）。
-- D2: apply_patch をファイルごとの検査入力へ変換 / OpenAI, Codex rust-v0.164.0, [hook_names.rs L28–38](https://github.com/openai/codex/blob/rust-v0.164.0/codex-rs/core/src/tools/hook_names.rs#L28)、[hooks.rs L5090以降](https://github.com/openai/codex/blob/rust-v0.164.0/codex-rs/core/tests/suite/hooks.rs#L5090)、取得2026-10-26 / matcher aliasだけに頼らずpayloadを変換 / 軸: 還元性（既存ガードの再利用）。
+- D1: 登録と規則表を共通化 / 先行例は同リポジトリ `crates/hook-router`、変更前df5893c8、2026-10-26確認 / 先行例との差分は Agent 引数と入力境界のみ / 軸: 表現不可能性(片方への登録漏れを防ぐ)。
+- D2: apply_patch をファイルごとの検査入力へ変換 / OpenAI, Codex rust-v0.164.0, [hook_names.rs L28–38](https://github.com/openai/codex/blob/rust-v0.164.0/codex-rs/core/src/tools/hook_names.rs#L28)、[hooks.rs L5090以降](https://github.com/openai/codex/blob/rust-v0.164.0/codex-rs/core/tests/suite/hooks.rs#L5090)、取得2026-10-26 / matcher aliasだけに頼らずpayloadを変換 / 軸: 還元性(既存ガードの再利用)。
 - D3: 許可は PermissionRequest / OpenAI, Codex rust-v0.164.0, [pre_tool_use.rs L443以降](https://github.com/openai/codex/blob/rust-v0.164.0/codex-rs/hooks/src/events/pre_tool_use.rs#L443)、[permission_request.rs L149以降](https://github.com/openai/codex/blob/rust-v0.164.0/codex-rs/hooks/src/events/permission_request.rs#L149)、取得2026-10-26 / upstreamの公開イベントに合わせる / 軸: 還元性。
 - D4: Atuinの既存Codex処理を利用 / Atuin contributors, v18.15.2, [hook.rs L42以降](https://github.com/atuinsh/atuin/blob/v18.15.2/crates/atuin/src/command/client/hook.rs#L42)、取得2026-10-26 / 隔離DBでauthor=codex・command・durationを読み戻した。Codexの出力形式に合わせ不明な終了コードだけを補正 / 軸: 還元性。
-- D5: Planエンジンを再利用 / 同repo `hook-io/src/plan.rs`、`codex-plan-gate`、変更前df5893c8、2026-10-26確認 / Stopの拒否形式へ変換。表示は実pandoc、レビューは通信しない偽CopilotでPoC済み / 軸: 還元性。
+- D5: Planエンジンを再利用 / 同リポジトリ `hook-io/src/plan.rs`、`codex-plan-gate`、変更前df5893c8、2026-10-26確認 / Stopの拒否形式へ変換。表示は実pandoc、レビューは通信しない偽CopilotでPoC済み / 軸: 還元性。
 
-上流の残条件の出典（OpenAI、Codex rust-v0.164.0、取得2026-10-26）:
+上流の残条件の出典(OpenAI、Codex rust-v0.164.0、取得2026-10-26):
 [write_stdin.rs L132以降](https://github.com/openai/codex/blob/rust-v0.164.0/codex-rs/core/src/tools/handlers/unified_exec/write_stdin.rs#L132)、
 [exec_command.rs L499以降](https://github.com/openai/codex/blob/rust-v0.164.0/codex-rs/core/src/tools/handlers/unified_exec/exec_command.rs#L499)、
 [hook_runtime.rs L187以降](https://github.com/openai/codex/blob/rust-v0.164.0/codex-rs/core/src/hook_runtime.rs#L187)、
@@ -89,7 +89,7 @@ PreToolUse に残す。MCP の GitHub 投稿も Codex の署名で判定する�
 
 ## 適用後は Codex の信頼状態を読み戻す
 
-`hms .`（作業ツリーの検証）またはマージ後の `hms` で配備する。Codexを起動して
+`hms .`(作業ツリーの検証)またはマージ後の `hms` で配備する。Codexを起動して
 `/hooks` を入力して `Hooks` を開く。イベントを選び Enter で開き、変更された
 ユーザーHookを選ぶ。command・イベントを確認し、`t trust` の `t` を押す。
 詳細の `Trust` が `New hook - review required` または
@@ -97,35 +97,35 @@ PreToolUse に残す。MCP の GitHub 投稿も Codex の署名で判定する�
 信頼後の Space/Enter は有効・無効の切替なので、信頼の操作には使わない。
 これは OpenAI, Codex rust-v0.164.0 の
 [hooks_browser_view.rs L533–619](https://github.com/openai/codex/blob/rust-v0.164.0/codex-rs/tui/src/bottom_pane/hooks_browser_view.rs#L533)
-（取得2026-10-26）で確認した名称とキーである。機械的に
+(取得2026-10-26)で確認した名称とキーである。機械的に
 `trusted_hash` を書き換えたり、信頼確認を無効化したりしない。
 
 完了確認は Codex app-server の `hooks/list` に対象cwdを渡し、各Hookの
 `enabled=true`・`trustStatus=trusted`、warnings/errorsが空であることを読む。
 信頼済みでも実際の検査とは別なので、拒否例・許可例・パッチ編集・Planを
 テストする。詳細は OpenAI, [Hooks](https://learn.chatgpt.com/docs/hooks)
-（取得2026-10-26）、固定版の [hooks_list.rs](https://github.com/openai/codex/blob/rust-v0.164.0/codex-rs/app-server/tests/suite/v2/hooks_list.rs#L190) を参照。
+(取得2026-10-26)、固定版の [hooks_list.rs](https://github.com/openai/codex/blob/rust-v0.164.0/codex-rs/app-server/tests/suite/v2/hooks_list.rs#L190) を参照。
 
-## `/hooks` の表示名（statusMessage）
+## `/hooks` の表示名(statusMessage)
 
-Codex の `/hooks` は、hook の `statusMessage` を表示名にし、無い（空白だけを含む）hook を
+Codex の `/hooks` は、hook の `statusMessage` を表示名にし、ない(空白だけを含む)hook を
 すべて `Unnamed hook` と表示する。信頼の操作で、どの検査を信頼するのかが一覧から判断できない
-（#1122）。そこで、Codex に登録する hook には `statusMessage` を付ける。
+(#1122)。そこで、Codex に登録する hook には `statusMessage` を付ける。
 
-- 共有の宣言（`codexHookDeclarations`）: `pipeline-map.toml` のノードの `label` を表示名にする。
+- 共有の宣言(`codexHookDeclarations`): `pipeline-map.toml` のノードの `label` を表示名にする。
   `label` は ASCII で、`home/modules/pipeline.nix` の `nodeLabels` が nix の評価時に引く。
-  node の無い宣言は、評価の時点で落ちる（表示名の無い hook を登録できない）。
+  node のない宣言は、評価の時点で失敗する(表示名のない hook を登録できない)。
 - herdr の統合と worktree の context: 共有の spec(`codex-hooks-spec`)の各 `register` の `statusMessage` で表示名を付ける。
   かつての argv 形(`codex-hooks` の `--status-message <text>`)は削除した。
 - Claude の宣言には付けない。Claude は `statusMessage` を hook の実行中の表示にも使うため、
   共有の宣言から導く対象は Codex だけにしている。`statusMessage` は宣言があるときだけ書き、
-  宣言の無いハンドラの既存の値（他のツールや本人が足したもの）には触れない。
+  宣言のないハンドラの既存の値(他のツールや本人が追加したもの)には触れない。
 
 根拠: OpenAI, Codex `rust-v0.164.0`、取得 2026-10-28。
 [hooks_browser_view.rs](https://github.com/openai/codex/blob/rust-v0.164.0/codex-rs/tui/src/bottom_pane/hooks_browser_view.rs#L420)
 は `hook.status_message` を trim し、空なら `Unnamed hook` とする。
 [hook_config.rs](https://github.com/openai/codex/blob/rust-v0.164.0/codex-rs/config/src/hook_config.rs#L190)
-は JSON キー `statusMessage`（`#[serde(default, rename = "statusMessage")]`）を受け付ける。
+は JSON キー `statusMessage`(`#[serde(default, rename = "statusMessage")]`)を受け付ける。
 
 疑問や上流更新による不一致は dotfiles の Issue に、Codexの版と上記の読み戻し結果を
 添えて報告する。Hook はイベントで起動する検査、router は検査の振り分け役、

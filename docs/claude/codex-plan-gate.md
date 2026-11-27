@@ -19,12 +19,12 @@ Codex 週の間 Plan の要求インベントリ・先行例接地チェック�
 頼りになると、Claude 側で機械 gate が担っている規律が抜け、検証結果が
 「Codex の実力」ではなく「規律の有無」の差になってしまう。
 
-## Codex に ExitPlanMode という執行点は無い
+## Codex に ExitPlanMode という執行点はない
 
 Claude Code の Plan mode は `ExitPlanMode` という明示的なツールコールで
 終わり、そこに PreToolUse hook(`plan-scope-gate` 等)を挟める。Codex
 CLI の Plan mode(TUI バイナリの文字列リテラルで確認: 「Plan Mode
-(Conversational)」)にはこれに相当するツールコールが無く、モデルは応答
+(Conversational)」)にはこれに相当するツールコールがなく、モデルは応答
 本文に `<proposed_plan>...</proposed_plan>` ブロックを埋め込むだけで
 Plan を提案する。ユーザーが Plan mode を抜けて実装を求めるか、Plan mode
 に留まって Plan を練り直すかを選ぶ、という UI 上の分岐点であって、
@@ -81,12 +81,12 @@ ADR-0005 の binary-existence gating に倣い、次はすべて黙って exit 0
 不能を deny に変えない):
 `jq` 不在 / `plan-scope-gate`・`plan-precedent-gate` が実行可能でない /
 `hook_event_name != "Stop"` / `last_assistant_message` が空 /
-`<proposed_plan>` タグが無い。
+`<proposed_plan>` タグがない。
 
 ## 既知の限界
 
 - `last_assistant_message` に `<proposed_plan>` タグが verbatim で残るかは
-  Codex の公式ドキュメントに明記が無い(2026-09-28 時点)。段4の「要確認」
+  Codex の公式ドキュメントに明記がない(2026-09-28 時点)。段4の「要確認」
   節にある実機疎通確認(`codex exec`)で確認する。タグが失われる場合、この
   hook は静かに no-op になる(縮退と同じ挙動 — 誤って block する側には
   倒れない)。

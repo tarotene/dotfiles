@@ -49,8 +49,8 @@ type = External の Production アプリに対し、Application home page・
 Privacy policy へのリンク、および Search Console で所有証明した
 Authorized domain を要求する(未審査でも必須。下記出典)。ドメインを
 持たないツールでは、この要件を満たすためだけにドメイン取得・Search
-Console 検証という工数が発生する。**「無人実行だから Production が要る」
-という実害が無い限り、この工数を払う理由はない** — 上記の分岐基準は
+Console 検証という工数が発生する。**「無人実行だから Production が必要」
+という実害がない限り、この工数を払う理由はない** — 上記の分岐基準は
 このコストとのトレードオフである。
 
 「1 ツール」の粒度は、そのツール自身が下流の複数スクリプトを束ねる共有
@@ -133,7 +133,7 @@ gcloud services enable <api-1> <api-2> --project=<tool>-<github-username>
   (Application Default Credentials)実行が前提になる)
 - 有効化する API の宣言
 - IAM の追加的な権限付与(`*_iam_member` 相当の加算型。既存の
-  `roles/owner` を巻き込んで消しうる authoritative な上書き型
+  `roles/owner` を巻き込んで消す可能性がある authoritative な上書き型
   (`*_iam_policy`)は避ける)
 - API キーの発行と、そのキーが使える API の制限
 
@@ -160,5 +160,5 @@ Google が該当 API を廃止しているため、恒久的にコンソール�
   https://support.google.com/cloud/answer/15549049?hl=en (取得 2026-09-23) —
   「These links are required for all external production apps」と明記。
   External + Production への切り替えには homepage・privacy policy の
-  リンクと、それが乗る Authorized domain(所有証明必須)が要ることの根拠。
+  リンクと、それが乗る Authorized domain(所有証明必須)が必要なことの根拠。
   未審査(verification 未申請)でもこの要件は免除されない。

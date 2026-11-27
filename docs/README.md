@@ -7,9 +7,9 @@ What runs automatically, when, and on which stack: see the [pipeline map](pipeli
 ## この索引について
 
 文書の一覧は、各文書の H1(`# 題名`)から [`docs-index`](agents/docs-index.md) が生成する。1 行は、文書へのリンクと H1 だけで、
-手で書いた要約は持たない(要約は文書の側で腐るので、見出しを正本にする)。文書を足す、題名を変える、置き場を移したら、
+手で書いた要約は持たない(要約は文書の側で腐るので、見出しを正本にする)。文書を追加する、題名を変える、置き場を移したら、
 `cargo run -p docs-index -- render` で書き直す。書き直し忘れは、`cargo test --workspace`(CI の `Rust workspace`)が
-`crates/docs-index/tests/tree.rs` で落とす。生成の外の文章は、手で書いたまま残る。
+`crates/docs-index/tests/tree.rs` で失敗させる。生成の外の文章は、手で書いたまま残る。
 
 ## Architecture Decision Records
 

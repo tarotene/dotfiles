@@ -32,7 +32,7 @@ ov08x40 → Intel CVS → IPU7 CSI2 → /dev/video0〜31(生の Bayer)
   `v4l2loopback-dkms` を `home/hosts/arcturus.nix` が宣言する。
 - `/dev/udmabuf` を一般ユーザーに開ける udev 規則は、systemd 本体の
   `rules.d/70-uaccess.rules.in` と同じ 1 行(取得 2026-11-05)。この機体の systemd 255 には
-  無いので足している。`/dev/dma_heap/*` は開けない。
+  ないので追加している。`/dev/dma_heap/*` は開けない。
 
 ## 2. 使い方
 
@@ -64,7 +64,7 @@ ov08x40 → Intel CVS → IPU7 CSI2 → /dev/video0〜31(生の Bayer)
 | 仮想カメラへの中継 | 1920x1080 YUYV を 300 枚、28.57 fps で届けた(`v4l2-ctl --stream-mmap`) |
 | オンデマンド | 読む側が居ないあいだ `/dev/video0` を誰も握らず、読む側が居るあいだだけ `v4l2-relayd` が握る |
 | 負荷 | 4K 受け → 1080p YUY2 の GStreamer 経路で、プロセス全体 約 8.3%(8 コア中 約 0.66 コア。GStreamer の `rusage`) |
-| 画質 | 色はやや緑に寄る。ov08x40 用のチューニングファイルが libcamera に無く、`uncalibrated.yaml` へ退避する |
+| 画質 | 色はやや緑に寄る。ov08x40 用のチューニングファイルが libcamera になく、`uncalibrated.yaml` へ退避する |
 
 低解像度モードを使わない理由: コード 18 は、カーネルの
 `drivers/staging/media/ipu7/abi/ipu7_fw_isys_abi.h` で `INSYS_MSG_ERR_CAPTURE_HW_ERR_BAD_FRAME_DIM`
@@ -78,10 +78,10 @@ ov08x40 → Intel CVS → IPU7 CSI2 → /dev/video0〜31(生の Bayer)
 1. 入力・待機映像のパイプラインの末尾に `appsink` を置かない。`v4l2-relayd` が、末尾の
    「リンクされていない src パッド」へ自分で `appsink` を付ける(`backend_pipeline_create`)。
    置くと `no src pad available` で `NULL` が返り、終了処理の `gst_element_set_state` が
-   `GST_IS_ELEMENT` の assertion で落ちる(エラー本文は `GST_DEBUG=V4L2_RELAYD:4` を付けないと出ない)。
-2. 末尾が caps だけで終わる文字列は、`no element "video"` で落ちる。末尾に `identity` を置くと通る
+   `GST_IS_ELEMENT` の assertion で異常終了する(エラー本文は `GST_DEBUG=V4L2_RELAYD:4` を付けないと出ない)。
+2. 末尾が caps だけで終わる文字列は、`no element "video"` で失敗する。末尾に `identity` を置くと通る
    (原因の細部は未確認)。
-3. 出力の `v4l2sink` に `sync=false` が要る。無いと 24〜26 枚で止まり、実効 約 1.7 fps になる。
+3. 出力の `v4l2sink` に `sync=false` が必要。ないと 24〜26 枚で止まり、実効 約 1.7 fps になる。
 
 ## 5. まだ確かめていないこと
 

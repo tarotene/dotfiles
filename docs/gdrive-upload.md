@@ -9,13 +9,13 @@ Drive にある既存の大きなファイルを取る読み取り側(`gdrive-re
 写真付きの印刷用 PDF(約 3 MB)を Drive の既存フォルダへ上げられなかった。
 
 - claude.ai の Google Drive コネクタ(`create_file`)は、ファイルの中身を `base64Content` / `textContent` の文字列で受け取る。
-  ローカルのファイルパスを渡す口が無く、3 MB の PDF は base64 で約 4 MB の文字列になる。エージェントが一字も違えずに
+  ローカルのファイルパスを渡す口がなく、3 MB の PDF は base64 で約 4 MB の文字列になる。エージェントが一字も違えずに
   出力するのは現実的でなく、1 文字の誤りで PDF が壊れ、気づくのは Drive で開いたとき。
 - Playwright でのブラウザ操作は、Google に未ログインで止まった。
 - このホストにあったローカルの手段は、どちらも読み取り専用だった(既存の `rclone.conf` のリモートは `scope = drive.readonly`、
   ローカルの gdrive MCP サーバは検索と読み取りだけ)。
 
-## 読み取り側がなぜ要るか(#969)
+## 読み取り側がなぜ必要か(#969)
 
 Drive にある 10 MB を超える既存のファイル(13 MB のバイナリ)を、エージェントが取れなかった。
 
@@ -71,7 +71,7 @@ gcloud services enable drive.googleapis.com --project=rclone-<github-username>
 
 - 完了確認: `gcloud services list --enabled --project=rclone-<github-username>` に `drive.googleapis.com` が出る。
 - 根拠: `docs/personal-cloud-projects.md` の「gcloud で自動化できる範囲」。
-- `gcloud` が未認証なら、先に `gcloud auth login`(ブラウザ)を行う。`gcloud` が無いホストでは、下の 2 以降と同じコンソール
+- `gcloud` が未認証なら、先に `gcloud auth login`(ブラウザ)を行う。`gcloud` がないホストでは、下の 2 以降と同じコンソール
   (https://console.developers.google.com/)で、プロジェクトの作成と API の有効化を行う(画面の項目名は、rclone 公式の手順の
   「Select a project or create a new project」「ENABLE APIS AND SERVICES」)。
 
@@ -82,8 +82,8 @@ https://console.developers.google.com/ で、手順 1 のプロジェクトを�
 - 左のパネルの「Credentials」を開く(「Create credentials」ではない。ウィザードが開く)。「CONFIGURE CONSENT SCREEN」が出たら押す。
 - 同意画面の種類(audience)は「External」、アプリ名は `rclone`、サポートメールと開発者連絡先は所有アカウントのメールアドレス。ロゴは空欄。
 - 追加するスコープ: `https://www.googleapis.com/auth/drive.file`。**rclone 公式の手順は、同意画面に `docs`・`drive`・
-  `drive.metadata.readonly` を足す形で、`drive.file` を足す画面の項目名は公式文書に無いので未確認**。見つからない場合は、
-  スコープを画面から足さずに先へ進み、手順 5 の認可で `drive.file` を要求する(同意画面に載っていないスコープの扱いは未確認)。
+  `drive.metadata.readonly` を追加する形で、`drive.file` を追加する画面の項目名は公式文書にないので未確認**。見つからない場合は、
+  スコープを画面から追加せずに先へ進み、手順 5 の認可で `drive.file` を要求する(同意画面に載っていないスコープの扱いは未確認)。
 - 「Audience」を開き、下へスクロールして「+Add users」で、自分のアカウントを test user に追加して保存する。
   公開ステータスは **Testing のまま**(「PUBLISH APP」は押さない)。refresh token は 7 日で失効するので、失効したら手順 5 をやり直す。
 - 完了確認: 「Audience」の画面に、自分のアカウントが test user として出る。
@@ -127,7 +127,7 @@ rclone lsf --dirs-only gdrive-agent:rclone
 ```
 
 - 完了確認: `uploads/` が出る。
-- `drive.file` では、rclone が作ったフォルダだけが見える。`root_folder_id` を `rclone/uploads` の ID に固定すると、リモートの根がそこになり、
+- `drive.file` では、rclone が作ったフォルダだけが見える。`root_folder_id` を `rclone/uploads` の ID に固定すると、リモートのルートがそこになり、
   どのパスで呼んでも、そのフォルダの外へ書けなくなる。ID は `rclone lsf --format pi --dirs-only gdrive-agent:rclone`(`p` = パス、`i` = ID)
   で読み、`rclone config` の編集で `root_folder_id` に入れる。固定したあとは、フォルダ名を含めずに `gdrive-agent:<purpose>/` と書く。
 - 完了確認(固定後): `rclone lsd gdrive-agent:` が、`uploads` の中身(空でもよい)を返す。

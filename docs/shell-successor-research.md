@@ -75,7 +75,7 @@ NixOS/nixpkgs、取得日 2026-09-21)、実装ソース
 `excludeShellChecks = [ "SC2016" ]` を明示しない限りビルドが通らない。
 「既存の 87 本をそのまま writeShellApplication に載せる」という続投案自体、
 ゼロコストではない(個々のスクリプトの shellcheck 適合を都度確認・調整する
-作業が要る)ことが実測で確認できた。
+作業が必要)ことが実測で確認できた。
 
 ## 2. Rust
 
@@ -110,14 +110,14 @@ Programming Language ch11(取得日 2026-09-21)。
   coreutils の拡張で POSIX 外だが、Pop!_OS(apt ベース)では問題にならない。
 - `deno compile` で単一実行可能バイナリを作れる。cross-compile 可、
   `--engine quickjs` で軽量化可能(V8 の代替、ただし JIT なし)。
-- **nix 統合: 確立された手法が無い。** `pkgs.deno` は nixpkgs 本流にあるが
+- **nix 統合: 確立された手法がない。** `pkgs.deno` は nixpkgs 本流にあるが
   (<https://github.com/NixOS/nixpkgs/blob/master/pkgs/by-name/de/deno/package.nix>)、
   外部 import を closure にロックするコミュニティツール **deno2nix**
   (<https://github.com/SnO2WMaN/deno2nix>)は **2024-06-07 にアーカイブ済み**
   (非メンテナンス)。前身の `esselius/nix-deno`・`brecert/nix-deno` も個人
   プロジェクトの域を出ない。制約 1(must: closure 固定)を満たす成熟した経路が
-  無いという、この調査で最も重い negative finding。
-- stdin/stdout の JSON 専用ヘルパーは公式に無く、`Deno.stdin.readable` を
+  ないという、この調査で最も重い negative finding。
+- stdin/stdout の JSON 専用ヘルパーは公式になく、`Deno.stdin.readable` を
   自前でバッファリングする必要がある(PoC で実装、後述)。
 - テスト: `deno test` は組み込みで追加設定不要。
 
@@ -134,7 +134,7 @@ Programming Language ch11(取得日 2026-09-21)。
 
 - **Go**: `buildGoModule`(nixpkgs 公式、`vendorHash` で依存固定)は closure
   固定が容易、`encoding/json` の書き味も良好。ただしこのリポジトリ・
-  エコシステムに Go の既存資産が無く、Rust/Deno 案に対する差別化が薄い。
+  エコシステムに Go の既存資産がなく、Rust/Deno 案に対する差別化が薄い。
   出典: <https://github.com/NixOS/nixpkgs/blob/master/doc/languages-frameworks/go.section.md>
   (取得日 2026-09-21)。**深掘り候補だが優先度低、不採用。**
 - **Babashka**: 公式サイトが謳う起動 0.026 秒という数値は魅力的で、
@@ -220,7 +220,7 @@ Rust より遅いが Deno よりは速い——bash 起動そのものは軽量�
   新規の限界コスト。
 - Deno: **`deno compile` で 1 hook ごとに単体バイナリ化する設計だと、
   denort(V8 込み)がバイナリごとに毎回埋め込まれ、40 本に適用すると
-  真の限界コストが 40 × 89MB 相当まで膨らみうる**(共有されない)。
+  真の限界コストが 40 × 89MB 相当まで膨らむ可能性がある**(共有されない)。
   `pkgs.deno` ランタイムを共有し `deno run` で都度実行する設計なら
   ランタイム自体は 202MB を 1 回払うだけで済むが、それでも「各スクリプトの
   import 依存を closure にロックする」問題(deno2nix アーカイブ済み)は
@@ -234,7 +234,7 @@ Rust より遅いが Deno よりは速い——bash 起動そのものは軽量�
   nixpkgs キャッシュ済みのため実質ラップのみ)。
 - Deno: `deno compile` 2.9 秒(初回のみ denort 約 90MB のダウンロードが
   別途発生、以降はキャッシュ)。nix 経由のビルドは未実施(deno2nix
-  アーカイブのため確立手法が無く、比較対象外)。
+  アーカイブのため確立手法がなく、比較対象外)。
 
 ## PoC ソースコード(再現用)
 

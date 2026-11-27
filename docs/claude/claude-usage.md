@@ -76,7 +76,7 @@ interval 60s / timeout 10s の根拠: `/usage` と同じエンドポイントに
 | `weekly` | `wk` |
 | 未知 | `group`(なければ `kind`) |
 
-`percent` か `resets_at` が無いエントリは丸ごと捨てる(表示不能なだけで、他の
+`percent` か `resets_at` がないエントリは丸ごと捨てる(表示不能なだけで、他の
 エントリの表示は妨げない)。
 
 ## ペース着地予測
@@ -118,7 +118,7 @@ interval 60s / timeout 10s の根拠: `/usage` と同じエンドポイントに
 - 元の要望は「リセットからの経過」を基準にしたペース配分の指標であり、直近の
   バースト的な使用量の傾きとは主語が違う。
 - 平均ペース方式は「使いすぎ」と「余る」の両方を `▲`/`▼` の 1 記号で同時に表現
-  できる。旧実装は使いすぎ側の ETA しか出さず、余る側の指標が無かった。
+  できる。旧実装は使いすぎ側の ETA しか出さず、余る側の指標がなかった。
 - サンプル履歴・state の `series`・履歴クリアのロジックが丸ごと不要になり、
   再起動直後や herdr 起動直後の初回呼び出しでも(経過率 5% 以上なら)即座に
   着地%が出る。旧実装は 2 サンプル(session で最低 5 分間隔)集まるまで無表示
@@ -189,12 +189,12 @@ CURLCFG
 統合テスト(`crates/claude-usage/tests/integration.rs`)が、この経路をスタブ curl(argv に
 `Bearer` が現れたら即 exit 9)+偽 credentials で実際に通し、stdout・state file にトークン文字列が
 現れないことを検証する(かつての bash 版の `--selftest` の全ケースを写したもの。実行時の
-`--selftest` は無い)。
+`--selftest` はない)。
 
 ## 縮退表: stale-if-error
 
 herdr の command 仕様は失敗/空出力/timeout を「セグメント表示クリア」として
-扱う。旧実装はすべての失敗を空出力に落としていたため、一時的な HTTP 失敗・
+扱う。旧実装はすべての失敗を空出力にしていたため、一時的な HTTP 失敗・
 ネットワーク断・トークンリフレッシュ中の 401・`curl --max-time 5` の
 タイムアウトのたびに、次の interval(60s)の成功までタブバーから usage
 セグメントだけが消えていた(hostname・時計は残ったまま)。これは herdr 側の
@@ -216,8 +216,8 @@ stale の対象外(fresh response が常にキャッシュを置換する、と�
 
 | 状況 | 挙動 |
 |---|---|
-| `jq` / `curl` / `date` が無い | 空出力(state すら読めないため sticky 化の対象外) |
-| `~/.claude/.credentials.json` が無い・読めない・トークンが空 | stale-if-error(TTL 内なら `last_line` を再出力、超過で空出力) |
+| `jq` / `curl` / `date` がない | 空出力(state すら読めないため sticky 化の対象外) |
+| `~/.claude/.credentials.json` がない・読めない・トークンが空 | stale-if-error(TTL 内なら `last_line` を再出力、超過で空出力) |
 | HTTP 失敗(401 含む)・ネットワーク断 | stale-if-error(`last_fetch` は更新しないので次回すぐ再試行) |
 | レスポンスが不正 JSON | stale-if-error(state file は書き換えない) |
 | `limits[]` から表示可能なエントリが 1 件も取れない(fetch は成功) | 空出力 + state をこの回の `now` で更新(authoritative empty、古い行は復活しない) |

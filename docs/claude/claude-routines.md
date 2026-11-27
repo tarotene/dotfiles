@@ -2,7 +2,7 @@
 
 Claude Code routine(claude.ai 上の scheduled cloud agent)は Web UI・
 `/schedule`・`RemoteTrigger` で個別に作るしかなく、定義(prompt・cron・
-対象 repo)がどこにも版管理されていなかった。`/grill-me` と、その後の
+対象リポジトリ)がどこにも版管理されていなかった。`/grill-me` と、その後の
 Plan agent による敵対的レビュー(replan)を経て、対象リポジトリ自身の
 宣言を正本にする形に決めた(ADR-503〔rulesets の宣言〕と同型)。
 
@@ -25,15 +25,15 @@ routine の汎用手順〕、決定論的な差分コアは
 | 差分検出 | prompt 末尾の `routine-spec: <sha256>` 注記(last-applied 相当)と、宣言/live それぞれから再計算したハッシュを3方比較 |
 | update の挙動 | `job_config.ccr` に触れると全置換(2026-09-27 実測)。CLI は常に完全な body を組み立てて送る |
 | 実行主体 | ローカルは `SKILL.md`(create・adopt・update を 1:1 中継)。クラウドの自己監査 routine(週次)は `auditor.md` に従い update のみ行う |
-| auditor の権限 | update のみ。create はしない(未マージの書き戻し PR がある間の重複 create を避ける — delete API が無い)。自分自身の宣言は report のみ |
-| 廃止 | `state: retired` で `enabled:false` 固定。宣言ファイルは残す(delete API が無い) |
+| auditor の権限 | update のみ。create はしない(未マージの書き戻し PR がある間の重複 create を避ける — delete API がない)。自分自身の宣言は report のみ |
+| 廃止 | `state: retired` で `enabled:false` 固定。宣言ファイルは残す(delete API がない) |
 | ローカルの宣言外書き込み | `crates/routines-write-guard`(PreToolUse)が、名前空間キー + routine-spec 注記という構造を満たさない `RemoteTrigger` create/update を deny する(bypass なし) |
-| sources 網羅性 | `github-audit`(`crates/github-audit`)の routines ドメインが、`.claude/routines/` を持つのに auditor の宣言に含まれない repo を検出する |
+| sources 網羅性 | `github-audit`(`crates/github-audit`)の routines ドメインが、`.claude/routines/` を持つのに auditor の宣言に含まれないリポジトリを検出する |
 
 ## 自動モードの分類器への許可(`auto_mode_allow` / `auto_mode_environment`)
 
 cloud routine は auto mode で動き、分類器が、共有の資源への書き込みなどを「Modify Shared
-Resources」として拒否することがある。`allowed_tools` に道具を足しても、分類器の判定は別なので
+Resources」として拒否することがある。`allowed_tools` にツールを追加しても、分類器の判定は別なので
 通らない(`ArtifactData` が `allowed_tools` にあっても、新しい文書の作成が拒否された事例がある)。
 公式文書は、拒否を直す手段として、`autoMode.allow`(`soft_deny` への例外)と
 `autoMode.environment`(信頼する先)を、どちらも散文の配列として定義している
@@ -60,7 +60,7 @@ project の `.claude/settings.json` は読まれない(リポジトリに入っ�
 ## 実測(2026-09-27、`RemoteTrigger` + 段0 プローブ)
 
 - API(`/v1/code/triggers`)は list/get/create/update/run/
-  create_webhook_trigger。**delete は無い**。`list` は cursor を無視し
+  create_webhook_trigger。**delete はない**。`list` は cursor を無視し
   1 ページ目(20 件、newest-first)しか返さない。
 - `update` は `job_config.ccr` に触れると全置換。`environment_id` を
   省略すると 400。`session_context` を省略すると `sources`/`model` が
@@ -69,29 +69,29 @@ project の `.claude/settings.json` は読まれない(リポジトリに入っ�
 - 全 routine で `mcp_connections` が同一の 5 connector(uuid まで一致)=
   アカウント既定セットで、宣言対象ではない。
 - `sources` が空の routine が実在する(prompt 内で `gh repo clone` を
-  手動実行する形)。家 repo は `sources[0]` から導出できない。
-- クラウド sandbox に `gh` CLI は無い(`mcp__github__*` MCP tool を使う)。
+  手動実行する形)。ホームリポジトリ(`home_repo`)は `sources[0]` から導出できない。
+- クラウド sandbox に `gh` CLI はない(`mcp__github__*` MCP tool を使う)。
   `jq`/`yq` は両方ある。
 - GitHub アクセスは routine の `sources` に scope される。
 - クラウドの meta connector(`Claude_Code_Remote`)には `delete_trigger`/
-  `list_triggers` がある(ローカルの `RemoteTrigger` ツールには無い)。
+  `list_triggers` がある(ローカルの `RemoteTrigger` ツールにはない)。
   delete を使わない設計判断(D8)はこの発見後も維持した。
 
 ## クラウド到達範囲(ADR-590 の Amendment 2026-10-01)
 
 `.claude/routines/*.json` の宣言が「実行すべき routine」を表す一方、
-Claude のクラウド sandbox がその repo に到達できるかは、GitHub の接続方法で
-決まり、この repo の宣言では固定できない。
+Claude のクラウド sandbox がそのリポジトリに到達できるかは、GitHub の接続方法で
+決まり、このリポジトリの宣言では固定できない。
 
 - **Claude GitHub App**(ブラウザで claude.ai/code から接続): public は常に、
-  private は App が install された repo にだけ届く。install は
+  private は App が install されたリポジトリにだけ届く。install は
   **Only select repositories** で絞る。到達範囲を絞れるのはこの方法だけで、
   推奨する。
 - **`/web-setup`**: `gh` のトークンを Anthropic に送り、そのトークンが触れる
   全リポジトリに届く。fine-grained PAT は使えない(classic の `repo` スコープ
   が必須、2026-10-01 実測)。
 
-`.claude/routines/*.json` を置く private repo は、Claude GitHub App の
+`.claude/routines/*.json` を置く private リポジトリは、Claude GitHub App の
 install 先に含める。到達範囲の機械的な検出は未実装で、別 Issue で扱う
 (`github-audit` は Claude App の install 先を読めない)。詳細:
 `docs/github-app-snapshot.md`「Claude's cloud sandbox reach」節。

@@ -19,7 +19,7 @@ branch = "main"                     # 省略時は "main"
 install = ["cargo", "install", "--locked", "--path", "{dir}", "--target-dir", "{cache}"]
 ```
 
-未知のキーはエラーにする(typo を黙って既定値に落とさないため)。
+未知のキーはエラーにする(typo を黙って既定値にフォールバックしないため)。
 
 ## 動作
 
@@ -40,7 +40,7 @@ update-own-tools [--dry-run] [--registry <path>] [<name>...]
 - 対象リポジトリのチェックアウト(HEAD・ブランチ・未コミットの変更)には触れない。
   変わるのはリモート追跡 ref(`origin/<branch>`)だけ。
 - `--dry-run` は実行予定のコマンドを出力するだけで、キャッシュも作らない。
-- `cargo` が PATH に無いときは明示的に失敗する。ツールチェインは rustup など
+- `cargo` が PATH にないときは明示的に失敗する。ツールチェインは rustup など
   per-project runtime で用意する(ADR-0002)。
 - on-demand でのみ実行する。systemd timer は張らない(ADR-0025 D3)。
 
@@ -49,8 +49,8 @@ update-own-tools [--dry-run] [--registry <path>] [<name>...]
 ADR-0025 D4 に従う。dotfiles 側のコードは変更しない。
 
 1. ホストのレジストリから、該当する `[[tool]]` を削除する。
-2. そのツールを `home.packages`(nixpkgs か flake input)に足す。
-   どの層に足すかは `docs/operations.md` の判定フローに従う。
+2. そのツールを `home.packages`(nixpkgs か flake input)に追加する。
+   どの層に追加するかは `docs/operations.md` の判定フローに従う。
 3. `hms` で適用し、`~/.cargo/bin/<tool>` に残った旧バイナリを
    `cargo uninstall <crate>` で削除する。PATH の優先順位(ADR-0029)上、
    `~/.cargo/bin` は nix より後ろにあるので、残っていても shadow はしない。

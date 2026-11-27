@@ -6,7 +6,7 @@ worktree の作成・削除そのものと stale 登録の監査は
 herdr は PR ごとに worktree を切るが、`git worktree add -b <branch> <path>` を
 **親 checkout の HEAD から、fetch せず、upstream も張らずに**実行する(実測: 全
 herdr ブランチの reflog が `branch: Created from HEAD`、fresh worktree に
-`branch.*.remote` が無い)。herdr はこのリポジトリの管理外なので入口は直せない。
+`branch.*.remote` がない)。herdr はこのリポジトリの管理外なので入口は直せない。
 以下は、その結果として実際に起きた(または起きかけた)同期事故に対する、
 `home/modules/git.nix` の config と 2 本の git hook による手当て。
 
@@ -20,12 +20,12 @@ Claude Code 側の advisory・hard gate(base 鮮度・push 忘れ・stash)は
 |---|---|---|
 | `pull.ff = "only"` | 古い base に気づかず暗黙の merge/rebase commit が生える | 分岐した状態で `git pull` すると fail する。rebase/merge は人間が明示的に選ぶ |
 | `fetch.prune = true` | 削除済み PR ブランチの remote-tracking ref が溜まる | `git fetch` のたびに `origin/*` の消えたものを自動で畳む |
-| `push.autoSetupRemote = true` | herdr worktree が upstream 無しで作られ、初回 push が `--set-upstream` を要求してくる | 初回 `git push` が自動で upstream を張る |
+| `push.autoSetupRemote = true` | herdr worktree が upstream なしで作られ、初回 push が `--set-upstream` を要求してくる | 初回 `git push` が自動で upstream を張る |
 | `rerere.enabled = true` | 同じ衝突を worktree ごとに手で再解決する | 一度解決した衝突の解決結果を再利用する |
-| `merge.conflictStyle = "zdiff3"` | 衝突表示に共通祖先が無く、エージェントの解決精度が落ちる | 3-way diff に共通祖先を追加した表示に変える |
-| `rebase.updateRefs = true` | stacked PR([`docs/agents/stacked-pr.md`](agents/stacked-pr.md))で下位段を rebase すると、上位段のブランチ ref が古いコミットを指したまま置いていかれる | rebase 対象のコミット範囲に入っているブランチ tip を自動 force-update する(`git-rebase(1)`, git 2.38+。公式 man に "stacked branches" の語は無いが、効果はまさにこれ) |
+| `merge.conflictStyle = "zdiff3"` | 衝突表示に共通祖先がなく、エージェントの解決精度が下がる | 3-way diff に共通祖先を追加した表示に変える |
+| `rebase.updateRefs = true` | stacked PR([`docs/agents/stacked-pr.md`](agents/stacked-pr.md))で下位段を rebase すると、上位段のブランチ ref が古いコミットを指したまま置いていかれる | rebase 対象のコミット範囲に入っているブランチ tip を自動 force-update する(`git-rebase(1)`, git 2.38+。公式 man に "stacked branches" の語はないが、効果はまさにこれ) |
 | `config/git/hooks/pre-commit` の protected-branch ガード | worktree を切ったつもりで親 checkout の `main`/`master` に直接 commit してしまう | `main`/`master` への直接 commit を `exit 1` で拒否する。`GIT_ALLOW_MAIN_COMMIT=1` で回避 |
-| `config/git/hooks/pre-commit` の rustfmt 検査 | stacked PR の下の段に整形漏れの Rust を積み、上の段で workspace 全体の `cargo fmt` を回すまで気づかず、段を積み直す | stage 済みの `.rs` に `rustfmt --check`(edition は最寄りの `Cargo.toml`、無ければ最上位、それも無ければ 2021)をかけ、違えば `exit 1`。`rustfmt` や stage 済みの `.rs` が無ければ何もしない |
+| `config/git/hooks/pre-commit` の rustfmt 検査 | stacked PR の下の段に整形漏れの Rust を積み、上の段で workspace 全体の `cargo fmt` を回すまで気づかず、段を積み直す | stage 済みの `.rs` に `rustfmt --check`(edition は最寄りの `Cargo.toml`、なければ最上位、それもなければ 2021)をかけ、違えば `exit 1`。`rustfmt` や stage 済みの `.rs` がなければ何もしない |
 | `config/git/hooks/commit-msg`(pre-commit も `--staged` で呼ぶ)の bleep 検査 | 公開リポジトリの commit メッセージや追加行に、非公開リポジトリの名前を書いてしまい、push の検査で初めて止まる(commit を作り直す往復が増える) | commit 時に denylist と照合して `exit 1`(公開リポジトリ以外では何もしない)。`docs/agents/public-publish-guard.md` |
 | `git prune-branches`(`crates/git-prune`) | ローカルに残った `[gone]` ブランチが溜まり続ける | `git prune-branches` で一覧確認 → 1 回だけ y/N 確認 → 削除。`--auto` は内容保全の証拠を根拠に `git-auto-prune` timer から確認なしで削除(`docs/worktree-lifecycle.md`) |
 | `git shelve` / `git unshelve`(`crates/git-shelve` / `crates/git-shelve`) | worktree 間で共有される stash スタックの取り違え(他 worktree の WIP を pop/apply/drop してしまう) | worktree の絶対パスをタグに積み、自分の entry だけを SHA で解決して apply/drop する。詳細は `docs/agents/git-stash-guard.md` |
@@ -74,7 +74,7 @@ worktree は「PR ブランチをそこから直接 push する」のが通常�
   `-c core.hooksPath=…`)を `push-hook-bypass` で deny する(bleep ADR-0003)。
   push の公開検査は、この hook が `bleep scan-push --pre-push` に渡す pre-push の
   stdin(`<local-ref> <local-sha> <remote-ref> <remote-sha>`)で範囲を決める。
-  stdin は bleep と repo-local の pre-push の両方が要るので、一時ファイルに
+  stdin は bleep と repo-local の pre-push の両方が必要なので、一時ファイルに
   退避して両方へ渡す。
 
 ## `GIT_ALLOW_MAIN_COMMIT`
@@ -89,8 +89,8 @@ worktree は「PR ブランチをそこから直接 push する」のが通常�
 GIT_ALLOW_MAIN_COMMIT=1 git commit -m "..."
 ```
 
-**新しいリポジトリの根コミットは、この逃げ道なしで通る**(F16)。HEAD が未生成(コミットが 1 つも無い)の間は、ガードが
-`main`/`master` への直コミットを拒否しない。最初のコミットは、最初のブランチに作るしかなく、隠れる先の履歴が無いため。
-`create-repo.sh --type core` が根コミットを作る(`config/agents/skills/repo-charter`)。2026-11-15 は、ガードと、auto モードの
-分類器が拒否した環境変数の前置のせいで、本人が `!` 付きで根コミットを実行する往復が要った。HEAD が生成済みの `main` は、これまでどおり拒否する
+**新しいリポジトリのルートコミットは、この逃げ道なしで通る**(F16)。HEAD が未生成(コミットが 1 つもない)の間は、ガードが
+`main`/`master` への直コミットを拒否しない。最初のコミットは、最初のブランチに作るしかなく、隠れる先の履歴がないため。
+`create-repo.sh --type core` がルートコミットを作る(`config/agents/skills/repo-charter`)。2026-11-15 は、ガードと、auto モードの
+分類器が拒否した環境変数の前置のせいで、本人が `!` 付きでルートコミットを実行する往復が必要だった。HEAD が生成済みの `main` は、これまでどおり拒否する
 (2026-11-20 に、未生成・生成済み・`GIT_ALLOW_MAIN_COMMIT=1` の 3 状態を、使い捨てのリポジトリで実測した)。

@@ -5,7 +5,7 @@
 1 行出して終了コード 0 で終わる。それ以外は、理由を標準エラー出力に出して終了コード 1 で終わる。
 引数の誤りは終了コード 2。
 
-## なぜ要るか
+## なぜ必要か
 
 1 つの外部アカウント(1 つの GitHub アカウントなど)を、会社と個人の両方の機体で使うと、
 「この機体は、どちらの側として操作してよいか」を、ツールが機械的に決める必要がある。機体の
@@ -18,11 +18,11 @@
 |---|---|---|
 | `DOTFILES_IDENTITY` | nix の `dotfiles.identity.name` | `personal` か `company`(閉じた集合) |
 | `DOTFILES_CLAUDE_ACCOUNT` | nix の `dotfiles.identity.claudeAccount` | `exact:<メール>` か `domain:<ドメイン>` |
-| `oauthAccount.emailAddress` | `$CLAUDE_CONFIG_DIR/.claude.json`、無ければ `$HOME/.claude.json` | ログイン中の Claude アカウントのメール |
+| `oauthAccount.emailAddress` | `$CLAUDE_CONFIG_DIR/.claude.json`、なければ `$HOME/.claude.json` | ログイン中の Claude アカウントのメール |
 
 最初の 2 つは `home/modules/identity.nix` が `home.sessionVariables` に出す。正本は
 identity の層(`home/identities/{personal,company}.nix`)の `dotfiles.identity` の 1 か所で、
-option に既定値は無い(宣言を忘れた層は、nix の評価で失敗する)。
+option に既定値はない(宣言を忘れた層は、nix の評価で失敗する)。
 
 ## 判定
 
@@ -30,8 +30,8 @@ option に既定値は無い(宣言を忘れた層は、nix の評価で失敗�
 - `domain:<ドメイン>`: `@` より後ろが完全一致。サブドメイン(`sub.example.com`)と、
   末尾だけ一致する別ドメイン(`evil-example.com`)は一致しない。ローカル部が空のものも一致しない。
 
-次のいずれでも失敗する(閉じる側): `DOTFILES_IDENTITY` が無い・集合に無い、`DOTFILES_CLAUDE_ACCOUNT`
-が無い・形が違う、設定ファイルが読めない・JSON でない、`oauthAccount.emailAddress` が無い、不一致。
+次のいずれでも失敗する(閉じる側): `DOTFILES_IDENTITY` がない・集合にない、`DOTFILES_CLAUDE_ACCOUNT`
+がない・形が違う、設定ファイルが読めない・JSON でない、`oauthAccount.emailAddress` がない、不一致。
 エラー文にメールアドレスは含めない。
 
 ## 既知の未確認
