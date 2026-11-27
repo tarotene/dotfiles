@@ -184,3 +184,29 @@ Atuin は既存の Codex 処理を採用する。各判断の固定版ソース�
 - crates/hook-router/src/rules.rs
 - crates/codex-plan-gate/src/main.rs
 - config/codex/AGENTS.codex.md
+
+## Amendment (2026-11-27 — Antigravity CLI(agy)にも同じ検査を載せる)
+
+Claude・Codex に配ってある hook の検査を、Antigravity CLI(agy)にも同じ宣言から配る。利用者から、
+Claude・Codex 向けの設定を agy へ完全に移植する依頼を受けた変更である(権限は #1726、指示文は #1728、
+入力と出力の境界は #1730 で先に入れた)。
+
+- 登録は Claude の宣言(`claudeHookDeclarations`)から導く(`antigravityHookDeclarations`)。ツール呼び出しの検査は
+  `hook-router pre|post --agent antigravity`、それ以外の個別の hook は `hook-router wrap <Claude の command>` で、
+  検査の本体を共有する。agy の hook は matcher が道具名だけで `if` が無い、イベントが 6 つしかない、という違いは
+  [Antigravity との対応表](../claude/antigravity-hook-parity.md)に「載せないもの」として記録する。
+- `~/.gemini/config/hooks.json` は、agy の `/hooks` と herdr の連携も書く。ファイル全体は配らず、自分の名前のキー
+  `dotfiles` だけを `agent-settings-reconcile antigravity-hooks` が所有する(宣言から外した hook は、キーごとの
+  置き換えで消える)。agy が黙って捨てる形の宣言は、reconcile が書く前に止め、build の検査(`home.checks` の
+  `antigravity-hooks-spec`)も同じ検査を回す。
+- 計画の関所(plan-scope-gate・plan-precedent-gate)は、agy の `exit_plan_mode` に、Claude の `ExitPlanMode` と同じく
+  PreToolUse の deny で掛ける(本人の裁定、2026-11-27)。agy は全ターンを計画から始めるので、設計判断を含まない
+  小さな計画は、既存の 1 行の免除(`先行例: 該当なし — <理由>`)で通す。
+
+### 執行点
+
+- home/modules/agents.nix
+- crates/agent-settings-reconcile/src/antigravity_hooks.rs
+- crates/agent-settings-reconcile/src/lib.rs
+- crates/hook-router/src/antigravity.rs
+- config/antigravity/AGENTS.antigravity.md
