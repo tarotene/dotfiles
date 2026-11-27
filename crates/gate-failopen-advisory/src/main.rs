@@ -86,7 +86,7 @@ fn billing_line(records: &Path, now_unix: u64, percent_threshold: f64) -> Option
         return None;
     }
     Some(format!(
-        "ja-polish が、直近 7 日の {total} 段落のうち {n} 段落({pct:.0}%)を、混雑・時間切れで素通しにしています(閾値 {th}%)。無料枠は、混んだときに先に切り捨てられる枠で処理される(推論)ので、有料枠を検討してください。有料枠は、送った文面を Google の製品の改善に使わず、切り捨てられにくい。gemini-3.6-flash で月の目安は $30 前後(推定)。判断の材料は docs/adr/1387-ja-polish.md の「有料の API キー・Vertex AI」。閾値は環境変数 `JA_POLISH_TRANSIENT_ADVISORY_PERCENT` で変えられる。",
+        "ja-polish が、直近 7 日の {total} 段落のうち {n} 段落({pct:.0}%)を、混雑・時間切れで素通しにしています(閾値 {th}%)。無料枠は、混んだときに先に切り捨てられる枠で処理される(推論)ので、有料枠を検討してください。有料枠は、送った文面を Google の製品の改善に使わず、切り捨てられにくい。gemini-3.8-flash で月の目安は $30 前後(推定。2027-01-01 から単価が倍)。判断の材料は docs/adr/1387-ja-polish.md の「有料の API キー・Vertex AI」。閾値は環境変数 `JA_POLISH_TRANSIENT_ADVISORY_PERCENT` で変えられる。",
         total = rate.total,
         n = rate.transient,
         pct = rate.percent(),

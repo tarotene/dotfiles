@@ -335,7 +335,7 @@ fn busy_is_retried_and_the_thinking_level_is_passed_to_llm() {
     let args = sb.llm_args();
     assert_eq!(
         args,
-        vec!["gemini-3.6-flash minimal", "gemini-3.6-flash minimal"],
+        vec!["gemini-3.8-flash minimal", "gemini-3.8-flash minimal"],
         "混雑で 1 回失敗し、同じモデルへの再依頼で通った"
     );
     assert!(sb.gate_events().contains("\"decision\":\"pass\""));
@@ -358,9 +358,9 @@ fn busy_forever_falls_back_then_records_a_transient_skip() {
     assert_eq!(
         args,
         vec![
-            "gemini-3.6-flash low",
-            "gemini-3.6-flash low",
-            "gemini-3.6-flash low",
+            "gemini-3.8-flash low",
+            "gemini-3.8-flash low",
+            "gemini-3.8-flash low",
             "fb-model none"
         ],
         "主を 3 回、予備を 1 回(予備には思考量を渡さない)"
