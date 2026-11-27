@@ -23,25 +23,67 @@ pub struct Sample {
     /// 一覧に書いた指定(`<commit>:<path>`)。
     pub spec: String,
     pub text: String,
+    /// 参照の文書があるときの「直すべき段落」: この文書の段落(空白をそろえた本文)のうち、参照の文書に
+    /// 残っていない段落。参照の無い見本は `None`(取りこぼしの率の分母に入らない)。
+    pub needs_fix: Option<HashSet<String>>,
 }
 
-/// 見本の一覧を読む。1 行 1 件の `<commit>:<path>`。空行と、`#` で始まる行は読み飛ばす。中身は `show`
-/// (`git show <commit>:<path>` を呼ぶ関数)で取り出す。1 件でも取れなければ、全体を `Err` にする
-/// (見本が欠けたまま測ると、組どうしの比較が合わなくなる)。
+/// 文書の段落(空白をそろえた本文)の集合。空の段落は入れない。
+fn paragraph_set(text: &str) -> HashSet<String> {
+    blocks::split(text)
+        .iter()
+        .map(|b| blocks::normalize(&b.text))
+        .filter(|t| !t.is_empty())
+        .collect()
+}
+
+/// 見本の一覧を読む。1 行 1 件の `<commit>:<path>` に、任意で空白を挟んで参照の `<ref-commit>` を続けられる
+/// (`<commit>:<path> <ref-commit>`)。参照の文書は、同じパスの `<ref-commit>` での中身で、見本の段落のうち、
+/// そこに(空白をそろえて)残っていない段落を「直すべき段落」とする(`Sample::needs_fix`)。空行と、`#` で始まる行は
+/// 読み飛ばす。中身は `show`(`git show <commit>:<path>` を呼ぶ関数)で取り出す。1 件でも取れなければ、全体を
+/// `Err` にする(見本が欠けたまま測ると、組どうしの比較が合わなくなる)。
 pub fn load_samples(
     list: &str,
     show: &dyn Fn(&str) -> Result<String, String>,
 ) -> Result<Vec<Sample>, String> {
     let mut out = Vec::new();
     for line in list.lines() {
-        let spec = line.trim();
-        if spec.is_empty() || spec.starts_with('#') {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('#') {
             continue;
         }
+        let mut fields = line.split_whitespace();
+        let spec = fields.next().unwrap_or_default();
+        let reference = fields.next();
+        if fields.next().is_some() {
+            return Err(format!(
+                "見本の行は `<commit>:<path> [<ref-commit>]` です: {line}"
+            ));
+        }
         let text = show(spec).map_err(|e| format!("見本 {spec} を取れません: {e}"))?;
+        let needs_fix = match reference {
+            None => None,
+            Some(ref_commit) => {
+                let path = spec
+                    .split_once(':')
+                    .map(|(_, p)| p)
+                    .ok_or_else(|| format!("見本の指定に `:` がありません: {spec}"))?;
+                let ref_spec = format!("{ref_commit}:{path}");
+                let ref_text =
+                    show(&ref_spec).map_err(|e| format!("参照 {ref_spec} を取れません: {e}"))?;
+                let kept = paragraph_set(&ref_text);
+                Some(
+                    paragraph_set(&text)
+                        .into_iter()
+                        .filter(|p| !kept.contains(p))
+                        .collect(),
+                )
+            }
+        };
         out.push(Sample {
             spec: spec.to_string(),
             text,
+            needs_fix,
         });
     }
     if out.is_empty() {
@@ -102,6 +144,10 @@ pub struct Row {
     /// textlint の指摘(冗長表現)の数。全段落の、書き直しの前と後。textlint が無いときは `None`。
     pub issues_before: Option<usize>,
     pub issues_after: Option<usize>,
+    /// 参照の文書がある見本で、「直すべき段落」(`Sample::needs_fix`)のうち、モデルが答えた段落の数と、
+    /// そのうち本文を変えずに返した(取りこぼした)段落の数。素通し(答えが無い)は、どちらにも数えない。
+    pub needs_fix: usize,
+    pub missed: usize,
 }
 
 fn fullwidth_parens(s: &str) -> i64 {
@@ -181,6 +227,16 @@ pub fn measure(
         );
         for (p, e) in result.paras.iter().zip(&result.entries) {
             row.paras += 1;
+            let must_fix = sample
+                .needs_fix
+                .as_ref()
+                .is_some_and(|set| set.contains(&blocks::normalize(&p.before)));
+            if must_fix && matches!(p.status, Status::Polished | Status::Unchanged) {
+                row.needs_fix += 1;
+                if p.status == Status::Unchanged {
+                    row.missed += 1;
+                }
+            }
             match &p.status {
                 Status::Polished => {
                     row.polished += 1;
@@ -220,8 +276,14 @@ pub fn render_table(rows: &[Row], samples: &[Sample]) -> String {
         samples.len(),
         rows.first().map_or(0, |r| r.paras)
     ));
-    out.push_str("| 組 | 時間(秒) | 書き直し | 変更なし | 素通し(混雑・時間切れ) | 全角括弧の増減 | 用語の置き換え | 変更行の割合 | 冗長表現の指摘(前→後) |\n");
-    out.push_str("|---|---:|---:|---:|---:|---:|---:|---:|---:|\n");
+    // 参照の文書がある見本があるときだけ、取りこぼしの列を足す(参照が無ければ、従来の表のまま)。
+    let with_reference = samples.iter().any(|s| s.needs_fix.is_some());
+    out.push_str("| 組 | 時間(秒) | 書き直し | 変更なし | 素通し(混雑・時間切れ) | 全角括弧の増減 | 用語の置き換え | 変更行の割合 | 冗長表現の指摘(前→後) |");
+    out.push_str(if with_reference {
+        " 取りこぼし(直すべき段落のうち変更なし) |\n|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|\n"
+    } else {
+        "\n|---|---:|---:|---:|---:|---:|---:|---:|---:|\n"
+    });
     for r in rows {
         let issues = match (r.issues_before, r.issues_after) {
             (Some(b), Some(a)) => format!("{b} → {a}"),
@@ -236,7 +298,7 @@ pub fn render_table(rows: &[Row], samples: &[Sample]) -> String {
             )
         };
         out.push_str(&format!(
-            "| {} | {:.0} | {} | {} | {} ({}) | {:+} | {} | {} | {} |\n",
+            "| {} | {:.0} | {} | {} | {} ({}) | {:+} | {} | {} | {} |",
             r.label,
             r.secs,
             r.polished,
@@ -248,6 +310,20 @@ pub fn render_table(rows: &[Row], samples: &[Sample]) -> String {
             ratio,
             issues
         ));
+        if with_reference {
+            let missed = if r.needs_fix == 0 {
+                "-".to_string()
+            } else {
+                format!(
+                    "{}/{} ({:.0}%)",
+                    r.missed,
+                    r.needs_fix,
+                    r.missed as f64 * 100.0 / r.needs_fix as f64
+                )
+            };
+            out.push_str(&format!(" {missed} |"));
+        }
+        out.push('\n');
     }
     out
 }
@@ -311,6 +387,7 @@ mod tests {
         Sample {
             spec: "x:y".into(),
             text: text.into(),
+            needs_fix: None,
         }
     }
 
@@ -350,6 +427,63 @@ mod tests {
             .unwrap_err()
             .contains("abc:none.md"));
         assert!(load_samples("# だけ\n", &show).is_err());
+    }
+
+    #[test]
+    fn load_samples_derives_needs_fix_from_the_reference_commit() {
+        let show = |s: &str| match s {
+            "a:d.md" => {
+                Ok("直した段落です。\n\nそのままの文だ。\n\n触らない段落です。\n".to_string())
+            }
+            "r:d.md" => Ok("直した段落だ。\n\n変えた文だ。\n\n触らない段落です。\n".to_string()),
+            _ => Err("無い".to_string()),
+        };
+        let s = load_samples("a:d.md r\na:d.md\n", &show).unwrap();
+        let fix = s[0].needs_fix.as_ref().expect("参照がある");
+        // 参照に残っていない 2 段落が、直すべき段落。参照にも残っている段落は入らない。
+        assert_eq!(fix.len(), 2);
+        assert!(fix.contains("直した段落です。") && fix.contains("そのままの文だ。"));
+        assert!(!fix.contains("触らない段落です。"));
+        assert!(
+            s[1].needs_fix.is_none(),
+            "参照が無い行は、取りこぼしを数えない"
+        );
+        // 参照が取れない・行の形が違うときは、全体が失敗する。
+        assert!(load_samples("a:d.md none\n", &show)
+            .unwrap_err()
+            .contains("none:d.md"));
+        assert!(load_samples("a:d.md r x\n", &show).is_err());
+    }
+
+    #[test]
+    fn measure_counts_needs_fix_paragraphs_the_model_returned_unchanged() {
+        let show = |s: &str| match s {
+            "a:d.md" => {
+                Ok("直した段落です。\n\nそのままの文だ。\n\n触らない段落です。\n".to_string())
+            }
+            "r:d.md" => Ok("直した段落だ。\n\n変えた文だ。\n\n触らない段落です。\n".to_string()),
+            _ => Err("無い".to_string()),
+        };
+        let samples = load_samples("a:d.md r\n", &show).unwrap();
+        let r = measure(
+            &Variant::parse("m"),
+            &cfg(),
+            &samples,
+            "# 規約",
+            &Model { wide: false },
+            &Counter,
+        );
+        // 直すべき 2 段落のうち、偽のモデルが変えたのは「です」の 1 段落だけ。「だ」の段落は変えずに返した。
+        assert_eq!((r.needs_fix, r.missed), (2, 1));
+        let t = render_table(&[r], &samples);
+        assert!(t.contains("取りこぼし(直すべき段落のうち変更なし)"), "{t}");
+        assert!(t.contains("| 1/2 (50%) |"), "{t}");
+    }
+
+    #[test]
+    fn render_table_omits_the_missed_column_without_a_reference() {
+        let t = render_table(&[Row::default()], &[sample("x")]);
+        assert!(!t.contains("取りこぼし"), "{t}");
     }
 
     #[test]
