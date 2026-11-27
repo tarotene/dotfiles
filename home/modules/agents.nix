@@ -1797,6 +1797,9 @@ let
   #   (バイナリ内の「Supported agents」、2026-11-27)。PostToolUseFailure も agy に無い。
   # - git-worktree-allow・gh-edit-allow-judge: `if` つきの allow 判定。agy の hook は matcher が道具名だけで、
   #   Codex でも同じ理由で外している(ネイティブの承認を通す)。
+  # - plan-view: Chrome の専用窓を毎回新しく開く。agy は全ターンを計画から始めるので、小さな追従のたびに
+  #   窓が開き続ける(実測: exit_plan_mode ごとに HTML が作られた、2026-11-27)。Claude は明示的な
+  #   Plan mode のときだけ開く。本人の裁定(2026-11-27)で agy からは外す。
   # - UserPromptSubmit・SessionEnd・PostToolUseFailure のイベント: agy に無い。
   # SessionStart の `startup|resume|compact` の絞り込みも agy には無く、全開始で走る。
   antigravitySkipNodes = [
@@ -1805,6 +1808,7 @@ let
     "atuin-history"
     "git-worktree-allow"
     "gh-edit-allow-judge"
+    "plan-view"
   ];
   antigravityEvents = [
     "PreToolUse"

@@ -17,7 +17,7 @@
 | `Agent`・`Task` | `invoke_subagent`(引数 `Prompt`) |
 | `ExitPlanMode` | `exit_plan_mode`(引数 `plan`) |
 
-### 計画を渡す前の自己検査
+### 計画の書式(`exit_plan_mode` に渡す前)
 
 agy は、メッセージを受けるたびに計画のターンから始まり、`exit_plan_mode` で計画を実行側へ
 渡す。非自明な設計判断(機構の選び方・配置・分割・命名・プロトコル・アルゴリズム)を含む計画には、
@@ -30,20 +30,19 @@ agy は、メッセージを受けるたびに計画のターンから始まり�
 複数項目を含む依頼には `## 要求インベントリ` 節を置き、逐語で `Rn` の ID を振って処分
 (実装する段、または閉じたタグ)を書く(requirements-inventory スキル)。
 
-`exit_plan_mode` を呼ぶ前に、計画の本文を一時ファイルに書き、次の 2 本を自分で実行して指摘ゼロを
-確認する:
-
-```
-~/.claude/hooks/plan-precedent-gate --check <計画の本文のファイル>
-~/.claude/hooks/plan-scope-gate --check <同上>
-```
+計画の検査(`## 先行例との対比` の節または 1 行の免除、要求インベントリ)は、`exit_plan_mode` を呼ぶと
+hook が自動で走り、足りなければ拒否される。**検査の道具(`~/.claude/hooks/` の `plan-precedent-gate`・
+`plan-scope-gate` など、hook のスクリプト)を、自分で実行して試さない。** agy の安全監視が、hook を探る・回避する
+動きとして検知する(2026-11-27 の実測)。計画は、上の書式で書いて、そのまま渡す。拒否されたら、理由が書式の
+例を示すので、それに従って直して渡し直す。共有の skill(`precedent-grounding`・`technology-selection` など)に
+「提出前の自己検査」として `--check` を実行する手順があっても、agy では実行しない。
 
 ### 検査(hook)
 
 Claude・Codex と同じ検査が、agy の hook として働く(`~/.gemini/config/hooks.json` の `dotfiles` のキー)。
 ツール呼び出しの前後の検査は `hook-router`、Stop・SessionStart の検査(PR の完了、ja-polish、main checkout の
 事後検査、wrap-up など)は `hook-router wrap` 経由で走る。拒否されたら、理由に従って直して出し直す。
-計画の関所(要求インベントリ・先行例との対比)は `exit_plan_mode` の前に deny でかかるため、上の自己検査を先に通す。
+計画の関所(要求インベントリ・先行例との対比)は `exit_plan_mode` の前に deny でかかる。
 
 ### PR 運用(セッション内チェーン・完了定義)
 

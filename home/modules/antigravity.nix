@@ -155,7 +155,7 @@ let
 
   rulesFiles = {
     ".gemini/config/rules/00-antigravity.md".text = ruleFile {
-      description = "Antigravity CLI(agy)固有の施行配線: 道具名の読み替え・計画の自己検査・PR 運用";
+      description = "Antigravity CLI(agy)固有の施行配線: 道具名の読み替え・計画の書式・PR 運用";
       body = builtins.readFile (repoConfig + "/antigravity/AGENTS.antigravity.md");
     };
   }
