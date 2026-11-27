@@ -279,6 +279,7 @@ What runs automatically, when, and on which stack: see the [pipeline map](pipeli
 [`claude/`](claude/) は、Claude Code に固有の設計と根拠。
 
 <!-- BEGIN GENERATED: docs-index claude -->
+- [`claude/antigravity-hook-parity.md`](claude/antigravity-hook-parity.md) — Claude と Antigravity CLI で同じ Hook の検査を使う
 - [`claude/claude-mcp-servers.md`](claude/claude-mcp-servers.md) — claude-mcp-servers — `~/.claude.json` の `.mcpServers` を宣言的に管理する「口」
 - [`claude/claude-permissions.md`](claude/claude-permissions.md) — claude-permissions — `permissions.allow` を宣言的に配る
 - [`claude/claude-routines.md`](claude/claude-routines.md) — claude-routines — Claude Code routine を as-code で扱う仕組みの設計記録

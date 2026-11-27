@@ -905,7 +905,8 @@ pub fn check(call: &ToolCall) -> Option<String> {
     };
     let project = match call.agent {
         Agent::Copilot => return None,
-        Agent::Codex => {
+        // Antigravity も Codex と同じ扱い: MCP の道具名の形が未確認なので、`Bash` だけを見る。
+        Agent::Codex | Agent::Antigravity => {
             if !call.is_bash() {
                 return None;
             }

@@ -51,13 +51,25 @@ pub struct Call {
 fn agent_list(spec: &Spec) -> String {
     spec.agents
         .iter()
-        .map(|a| match a {
-            Agent::Claude => "claude",
-            Agent::Codex => "codex",
-            Agent::Copilot => "copilot",
-        })
+        .map(|a| a.name())
         .collect::<Vec<_>>()
         .join("|")
+}
+
+impl Call {
+    /// 標準入力を読み、検査の語彙(Claude の形)にして返す。agy の入力は、ここで直る
+    /// ([`crate::antigravity::normalize`])。ほかのエージェントの入力は、そのまま返る。
+    pub fn read_stdin(&self) -> String {
+        normalize_for(self.agent, read_stdin())
+    }
+}
+
+/// `agent` の入力を、検査の語彙にする。
+pub fn normalize_for(agent: Agent, raw: String) -> String {
+    match agent {
+        Agent::Antigravity => crate::antigravity::normalize(&raw),
+        Agent::Claude | Agent::Codex | Agent::Copilot => raw,
+    }
 }
 
 /// 引数(`argv[1..]`)を解析する。純粋関数。
@@ -135,7 +147,7 @@ pub fn run(spec: &Spec, hook: fn(Agent, &str) -> Option<Outcome>) -> ExitCode {
         Ok(call) => call,
         Err(code) => return code,
     };
-    let raw = read_stdin();
+    let raw = call.read_stdin();
     let reply = Reply::from_outcome(hook(call.agent, &raw));
     emit(spec, &call, &raw, &reply)
 }
@@ -187,7 +199,7 @@ pub fn run_stop(spec: &StopSpec, check: impl FnOnce(&StopInput) -> StopResult) -
         Ok(call) => call,
         Err(code) => return code,
     };
-    let input = StopInput::new(read_stdin());
+    let input = StopInput::new(call.read_stdin());
     if !input.permits(spec.reentry) {
         return ExitCode::SUCCESS;
     }

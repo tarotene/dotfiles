@@ -431,7 +431,7 @@ pub fn hook(agent: Agent, raw: &str) -> Option<Outcome> {
     } else if call.tool.starts_with("mcp__") {
         let key = match agent {
             Agent::Copilot => "toolArgs",
-            Agent::Claude | Agent::Codex => "tool_input",
+            Agent::Claude | Agent::Codex | Agent::Antigravity => "tool_input",
         };
         decide_mcp(&call.tool, call.raw.get(key)?, &known, &known_message)
     } else {

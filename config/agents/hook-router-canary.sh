@@ -3,7 +3,8 @@
 #
 # home/modules/agents.nix の home.checks が、generation の build 時にこれを、配備後のレイアウト
 # (`<home-files>/.claude/hooks/hook-router`)に対して走らせる。fixture(cases.jsonl の 1 行 1 件:
-# 入力の JSON と、期待する判定 deny|ask|pass)を、登録と同じ引数(`pre|post`、Codex は `--agent codex`)で
+# 入力の JSON と、期待する判定 deny|ask|pass)を、登録と同じ引数(`pre|post`、Codex は `--agent codex`、
+# agy は `--agent antigravity`)で
 # 流し、判定を比べる。食い違えば generation が build できない。CI は vega・arcturus・altair の 3 構成を
 # build するので、「この hook が拒否するか」を、機体ごとの実機確認なしに全機体で確かめられる
 # (確認の台帳に積まず、ここに fixture を 1 行足す。pr-description スキル §6 の手順 6)。
@@ -29,11 +30,13 @@ while IFS= read -r line; do
   agent="$(jq -r '.agent // "claude"' <<<"$line")"
   expect="$(jq -r '.expect' <<<"$line")"
   args=("$event")
-  if [ "$agent" = codex ]; then
-    args+=(--agent codex)
-  fi
+  case "$agent" in
+    codex) args+=(--agent codex) ;;
+    antigravity) args+=(--agent antigravity) ;;
+  esac
   raw="$(jq -c '.input' <<<"$line" | env -i PATH="$PATH" HOME="$T" "$R" "${args[@]}" 2>&1 || true)"
-  got="$(jq -r '.hookSpecificOutput.permissionDecision // empty' <<<"$raw" 2>/dev/null || true)"
+  # Claude・Codex は `hookSpecificOutput.permissionDecision`、agy は最上位の `decision`。
+  got="$(jq -r '.hookSpecificOutput.permissionDecision // .decision // empty' <<<"$raw" 2>/dev/null || true)"
   [ -n "$got" ] || got=pass
   n=$((n + 1))
   if [ "$got" = "$expect" ]; then

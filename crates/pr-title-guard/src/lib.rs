@@ -122,7 +122,7 @@ pub fn check(call: &ToolCall, claude_project_dir: Option<&str>, allow: bool) -> 
     use agent_session::Agent;
     let env_project = match call.agent {
         Agent::Claude => claude_project_dir.filter(|s| !s.is_empty()),
-        Agent::Codex | Agent::Copilot => None,
+        Agent::Codex | Agent::Copilot | Agent::Antigravity => None,
     };
     let project = match env_project {
         Some(p) => p.to_string(),

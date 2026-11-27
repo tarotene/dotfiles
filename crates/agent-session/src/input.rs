@@ -17,11 +17,16 @@ use std::io::Read;
 use std::path::PathBuf;
 
 /// hook を呼ぶエージェント。入力 JSON の形と、判定出力の形が異なる。
+///
+/// `Antigravity` の入力は camelCase(`toolCall`・`conversationId`)だが、検査に渡る前に
+/// [`crate::antigravity::normalize`] が Claude の形へ直す。検査の中では、入力の形は Claude・Codex と
+/// 同じである(出力だけが [`crate::reply::Reply::render`] で agy の形になる)。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Agent {
     Claude,
     Codex,
     Copilot,
+    Antigravity,
 }
 
 impl std::str::FromStr for Agent {
@@ -31,7 +36,22 @@ impl std::str::FromStr for Agent {
             "claude" => Ok(Agent::Claude),
             "codex" => Ok(Agent::Codex),
             "copilot" => Ok(Agent::Copilot),
-            other => Err(format!("unknown agent: {other} (claude|codex|copilot)")),
+            "antigravity" => Ok(Agent::Antigravity),
+            other => Err(format!(
+                "unknown agent: {other} (claude|codex|copilot|antigravity)"
+            )),
+        }
+    }
+}
+
+impl Agent {
+    /// `--agent` に書く名前。
+    pub fn name(self) -> &'static str {
+        match self {
+            Agent::Claude => "claude",
+            Agent::Codex => "codex",
+            Agent::Copilot => "copilot",
+            Agent::Antigravity => "antigravity",
         }
     }
 }

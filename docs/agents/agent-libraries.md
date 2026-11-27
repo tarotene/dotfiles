@@ -29,7 +29,7 @@ Claude の形に倒れていた。
 
 返答は `Reply`(判定・`additionalContext`・`systemMessage`)で表し、`Reply::render(agent, event)` が JSON にする。
 出力の形式は 1 つ: `jq .` と同じ整形(2 空白インデント、`"k": v`、キーは挿入順、末尾に改行)。Claude と Codex は同じ形で、
-Copilot は PreToolUse の判定だけが平らな形。イベントごとの表は `crates/agent-session/src/reply.rs` の冒頭にある。
+Copilot は PreToolUse の判定だけが平らな形。Antigravity は封筒もキーも別(`antigravity::render`)で、入力は検査の手前で `antigravity::normalize` が Claude の形に直す。イベントごとの表は `crates/agent-session/src/reply.rs` の冒頭にある。
 複数の検査の結果を 1 つにする規則(deny > ask > allow、理由は空行、文脈は改行でつなぐ)は
 `Reply::from_outcomes` が持ち、`hook-router` の併合と同じ。
 
