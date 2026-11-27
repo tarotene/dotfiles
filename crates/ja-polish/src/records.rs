@@ -35,6 +35,12 @@ pub struct Entry {
     /// 「動けない」とみなす([`unavailable`])。古い記録には無いので `false`。
     #[serde(default, skip_serializing_if = "is_false")]
     pub daily_limit: bool,
+    /// 書き直しで、モデル(と後段の textlint)が段落の本文を変えたか。`Some(false)` は、モデルが「直す必要が無い」と
+    /// 返した(または、変えずに返した)段落で、記録上は `polished` のまま通る。この印が無いと、劣化したモデルが
+    /// 何も直さずに返しても、通した段落として数えられて見えない(2026-11-27、予備の軽量モデルが答えた段落が
+    /// 直近 7 日の 89%)。古い記録・素通しの記録には無い(`None`)ので、率は印のある記録だけで数える。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub changed: Option<bool>,
 }
 
 fn is_false(b: &bool) -> bool {
@@ -52,7 +58,14 @@ impl Entry {
             transient: false,
             message: false,
             daily_limit: false,
+            changed: None,
         }
+    }
+
+    /// 書き直しで本文が変わったか([`Entry::changed`])を記録する。
+    pub fn with_changed(mut self, changed: bool) -> Self {
+        self.changed = Some(changed);
+        self
     }
 
     pub fn skipped(sha: String, model: &str, reason: &str) -> Self {
@@ -65,6 +78,7 @@ impl Entry {
             transient: false,
             message: false,
             daily_limit: false,
+            changed: None,
         }
     }
 
@@ -196,6 +210,67 @@ pub fn transient_rate(path: &Path, now_unix: u64, window_secs: u64) -> Transient
     rate
 }
 
+/// 期間内に書き直した(`polished`)段落の数と、そのうち主のモデル以外(予備のモデル)が答えた数、変更の有無を
+/// 記録した段落の数と、そのうち本文を変えなかった数。
+///
+/// [`TransientRate`] は素通しの率しか数えず、素通しにならずに予備の軽量モデルへ流れた段落(無料枠の 1 日の上限のあと、
+/// 直近 7 日で 89%)は、通した段落として数えられて見えなかった。この率は、その劣化を見えるようにする。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct QualityRate {
+    pub polished: usize,
+    pub fallback: usize,
+    /// `changed` の印を持つ書き直しの数(古い記録は印が無く、分母に入らない)。
+    pub marked: usize,
+    pub unchanged: usize,
+}
+
+impl QualityRate {
+    /// 予備のモデルが答えた段落の割合(%)。書き直しが無ければ 0。
+    pub fn fallback_percent(&self) -> f64 {
+        percent(self.fallback, self.polished)
+    }
+
+    /// 本文を変えずに返した段落の割合(%)。印のある記録が無ければ 0。
+    pub fn unchanged_percent(&self) -> f64 {
+        percent(self.unchanged, self.marked)
+    }
+}
+
+fn percent(n: usize, total: usize) -> f64 {
+    if total == 0 {
+        0.0
+    } else {
+        n as f64 * 100.0 / total as f64
+    }
+}
+
+/// `now_unix` から `window_secs` 秒さかのぼった期間の、書き直した段落を数える。`primary` は設定の主のモデル:
+/// 記録の `model` は実際に答えたモデルなので、これと違えば予備が答えたことになる。素通しは数えない。
+pub fn quality_rate(path: &Path, now_unix: u64, window_secs: u64, primary: &str) -> QualityRate {
+    let Ok(text) = std::fs::read_to_string(path) else {
+        return QualityRate::default();
+    };
+    let since = now_unix.saturating_sub(window_secs);
+    let mut rate = QualityRate::default();
+    for e in text
+        .lines()
+        .filter_map(|l| serde_json::from_str::<Entry>(l).ok())
+        .filter(|e| e.ts_unix >= since && e.state == "polished")
+    {
+        rate.polished += 1;
+        if e.model != primary {
+            rate.fallback += 1;
+        }
+        if let Some(changed) = e.changed {
+            rate.marked += 1;
+            if !changed {
+                rate.unchanged += 1;
+            }
+        }
+    }
+    rate
+}
+
 /// `ja-polish` が動けない、と見る直近の件数と、最後の 1 件からの猶予(秒)。
 pub const UNAVAILABLE_RUN: usize = 5;
 pub const UNAVAILABLE_WINDOW: u64 = 60 * 60;
@@ -285,6 +360,7 @@ mod tests {
             transient: false,
             message: false,
             daily_limit: false,
+            changed: None,
         }
     }
 
@@ -342,6 +418,76 @@ mod tests {
         )
         .unwrap();
         assert!(!old.transient);
+    }
+
+    #[test]
+    fn quality_rate_counts_fallback_answers_and_unchanged_among_marked_polishes() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("r.jsonl");
+        let now = 1_000_000u64;
+        let at = |ts: u64, e: Entry| Entry { ts_unix: ts, ..e };
+        append(
+            &path,
+            &[
+                // 期間の外: 数えない。
+                at(
+                    now - 8 * 86_400,
+                    Entry::polished("old".into(), "lite").with_changed(false),
+                ),
+                // 主のモデルが直した。
+                at(
+                    now - 600,
+                    Entry::polished("a".into(), "main").with_changed(true),
+                ),
+                // 予備が、変えずに返した。
+                at(
+                    now - 500,
+                    Entry::polished("b".into(), "lite").with_changed(false),
+                ),
+                // 予備が直した。
+                at(
+                    now - 400,
+                    Entry::polished("c".into(), "lite").with_changed(true),
+                ),
+                // 古い形式の記録: 書き直しには数えるが、変更の有無の分母には入れない。
+                at(now - 300, Entry::polished("d".into(), "lite")),
+                // 素通しは数えない。
+                at(now - 200, Entry::skipped("e".into(), "main", "混雑")),
+            ],
+        )
+        .unwrap();
+        let r = quality_rate(&path, now, TRANSIENT_WINDOW, "main");
+        assert_eq!(
+            r,
+            QualityRate {
+                polished: 4,
+                fallback: 3,
+                marked: 3,
+                unchanged: 1
+            }
+        );
+        assert!((r.fallback_percent() - 75.0).abs() < 1e-9);
+        assert!((r.unchanged_percent() - 100.0 / 3.0).abs() < 1e-9);
+        assert_eq!(
+            quality_rate(
+                &dir.path().join("none.jsonl"),
+                now,
+                TRANSIENT_WINDOW,
+                "main"
+            ),
+            QualityRate::default()
+        );
+    }
+
+    #[test]
+    fn changed_mark_is_omitted_when_unknown_and_survives_a_round_trip() {
+        let none = serde_json::to_string(&Entry::polished("a".into(), "m")).unwrap();
+        assert!(!none.contains("changed"), "{none}");
+        let some =
+            serde_json::to_string(&Entry::polished("a".into(), "m").with_changed(false)).unwrap();
+        assert!(some.contains("\"changed\":false"), "{some}");
+        let back: Entry = serde_json::from_str(&some).unwrap();
+        assert_eq!(back.changed, Some(false));
     }
 
     #[test]

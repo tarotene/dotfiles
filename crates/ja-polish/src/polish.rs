@@ -598,7 +598,12 @@ pub fn polish(
                 if changed {
                     blocks[i].text = restored.clone();
                 }
-                entries.push(Entry::polished(blocks::hash(&restored), &v.model));
+                // 記録の `changed` は、モデル(と後段の textlint)が、前段の直しのあとの本文を変えたか。
+                // 前段の直しだけが入った段落は、モデルが何も直していないので、変えていないと数える。
+                let model_changed = blocks::normalize(&v.text) != blocks::normalize(&base[k]);
+                entries.push(
+                    Entry::polished(blocks::hash(&restored), &v.model).with_changed(model_changed),
+                );
                 paras.push(Para {
                     before: original,
                     after: restored,
@@ -876,6 +881,11 @@ mod tests {
         assert_eq!(r.paras[0].status, Status::Polished);
         assert_eq!(r.entries.len(), 1);
         assert_eq!(r.entries[0].state, "polished");
+        assert_eq!(
+            r.entries[0].changed,
+            Some(true),
+            "モデルが直したので、変更ありと記録する"
+        );
         assert_eq!(r.entries[0].model, "m");
         assert_eq!(
             r.entries[0].sha,
@@ -900,6 +910,11 @@ mod tests {
         assert_eq!(r.text, text);
         assert_eq!(r.paras[0].status, Status::Unchanged);
         assert_eq!(r.entries[0].state, "polished");
+        assert_eq!(
+            r.entries[0].changed,
+            Some(false),
+            "変えずに返した段落は、通した段落のままでも、変更なしと記録する"
+        );
     }
 
     #[test]

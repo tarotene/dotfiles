@@ -94,6 +94,50 @@ fn billing_line(records: &Path, now_unix: u64, percent_threshold: f64) -> Option
     ))
 }
 
+/// 予備のモデルが答えた書き直しの割合(%)の既定の閾値。
+const DEFAULT_FALLBACK_PERCENT: f64 = 10.0;
+
+fn fallback_percent_from(raw: Option<&str>) -> f64 {
+    raw.and_then(|s| s.trim().parse::<f64>().ok())
+        .filter(|p| p.is_finite() && *p > 0.0)
+        .unwrap_or(DEFAULT_FALLBACK_PERCENT)
+}
+
+/// ja-polish の質の劣化の知らせ(ADR-1387 の D17)。直近 7 日に書き直した(`polished`)段落のうち、主のモデル
+/// `primary` でなく予備のモデルが答えた段落の割合が `percent_threshold` を超えたら、1 行の警告を返す。
+/// [`billing_line`] は素通しの率しか見ない。無料枠の 1 日の上限のあとは、素通しにならずに予備の軽量モデルへ
+/// 流れ、変更なしで返した段落も「通した」と記録されるので、素通しの率には映らない(2026-11-27、直近 7 日の
+/// 書き直しの 89% が予備の答え)。記録が `TRANSIENT_MIN_SAMPLES` 件に満たないときは、何も言わない。
+fn fallback_line(
+    records: &Path,
+    now_unix: u64,
+    primary: &str,
+    percent_threshold: f64,
+) -> Option<String> {
+    use ja_polish::records::{quality_rate, TRANSIENT_MIN_SAMPLES, TRANSIENT_WINDOW};
+    let rate = quality_rate(records, now_unix, TRANSIENT_WINDOW, primary);
+    if rate.polished < TRANSIENT_MIN_SAMPLES || rate.fallback_percent() <= percent_threshold {
+        return None;
+    }
+    let unchanged = if rate.marked == 0 {
+        String::new()
+    } else {
+        format!(
+            "変更の有無を記録した {m} 段落のうち、本文を変えずに返したのは {u} 段落({up:.0}%)です。",
+            m = rate.marked,
+            u = rate.unchanged,
+            up = rate.unchanged_percent(),
+        )
+    };
+    Some(format!(
+        "ja-polish が、直近 7 日に書き直した {total} 段落のうち {n} 段落({pct:.0}%)を、主のモデル({primary})でなく予備のモデルが答えています(閾値 {th}%)。{unchanged}主のモデルが無料枠の 1 日の上限(推論)などで使えず、軽量な予備のモデルに流れていると、直すべき日本語が直らないまま通ります。主のモデルの枠を確かめ、足りなければ有料枠を検討してください(判断の材料は docs/adr/1387-ja-polish.md の「有料の API キー・Vertex AI」)。閾値は環境変数 `JA_POLISH_FALLBACK_ADVISORY_PERCENT` で変えられる。",
+        total = rate.polished,
+        n = rate.fallback,
+        pct = rate.fallback_percent(),
+        th = percent_threshold,
+    ))
+}
+
 /// ja-polish がこの機体で有効か(設定ファイルがあるか。`ja_polish::config` の定義と同じ)。
 fn ja_polish_enabled() -> bool {
     ja_polish::config::config_path().is_some_and(|p| p.is_file())
@@ -117,6 +161,19 @@ fn run() -> Option<()> {
             ja_polish::records::records_path().and_then(|p| billing_line(&p, now, percent))
         {
             lines.push(l);
+        }
+        let fallback_percent = fallback_percent_from(
+            std::env::var("JA_POLISH_FALLBACK_ADVISORY_PERCENT")
+                .ok()
+                .as_deref(),
+        );
+        if let (Some(cfg), Some(path)) = (
+            ja_polish::config::load(),
+            ja_polish::records::records_path(),
+        ) {
+            if let Some(l) = fallback_line(&path, now, &cfg.model, fallback_percent) {
+                lines.push(l);
+            }
         }
     }
     if lines.is_empty() {
@@ -203,5 +260,58 @@ mod tests {
         assert!(billing_line(&few, now, 5.0).is_none());
         // 記録が無い: 黙る。
         assert!(billing_line(&d.path().join("none.jsonl"), now, 5.0).is_none());
+    }
+
+    #[test]
+    fn fallback_percent_parsing() {
+        assert_eq!(fallback_percent_from(None), 10.0);
+        assert_eq!(fallback_percent_from(Some(" 25 ")), 25.0);
+        assert_eq!(fallback_percent_from(Some("0")), 10.0, "0 は常時警告になる");
+        assert_eq!(fallback_percent_from(Some("abc")), 10.0);
+    }
+
+    fn write_polished(dir: &Path, now: u64, main: usize, lite: usize) -> std::path::PathBuf {
+        use ja_polish::records::{append, Entry};
+        let path = dir.join("records.jsonl");
+        let mut entries = Vec::new();
+        for i in 0..main {
+            let mut e = Entry::polished(format!("m{i}"), "main").with_changed(true);
+            e.ts_unix = now - 60;
+            entries.push(e);
+        }
+        for i in 0..lite {
+            let mut e = Entry::polished(format!("l{i}"), "lite").with_changed(false);
+            e.ts_unix = now - 60;
+            entries.push(e);
+        }
+        append(&path, &entries).unwrap();
+        path
+    }
+
+    #[test]
+    fn fallback_line_needs_enough_samples_and_a_share_above_the_threshold() {
+        let d = tempfile::tempdir().unwrap();
+        let now = 1_000_000;
+        // 20 件中 18 件(90%)を予備が答えた: 知らせる。変更なしの割合も添える。
+        let p = write_polished(d.path(), now, 2, 18);
+        let line = fallback_line(&p, now, "main", 10.0).expect("90% > 10%");
+        assert!(line.contains("20 段落のうち 18 段落(90%)"), "{line}");
+        assert!(line.contains("主のモデル(main)"), "{line}");
+        assert!(
+            line.contains("20 段落のうち、本文を変えずに返したのは 18 段落(90%)"),
+            "{line}"
+        );
+        // 閾値ちょうどは超えていない: 黙る。
+        assert!(fallback_line(&p, now, "main", 90.0).is_none());
+        // 主のモデルが答えた記録だけ: 黙る。
+        let d2 = tempfile::tempdir().unwrap();
+        let healthy = write_polished(d2.path(), now, 20, 0);
+        assert!(fallback_line(&healthy, now, "main", 10.0).is_none());
+        // 件数が下限(20)に満たない: 黙る。
+        let d3 = tempfile::tempdir().unwrap();
+        let few = write_polished(d3.path(), now, 0, 6);
+        assert!(fallback_line(&few, now, "main", 10.0).is_none());
+        // 記録が無い: 黙る。
+        assert!(fallback_line(&d.path().join("none.jsonl"), now, "main", 10.0).is_none());
     }
 }
