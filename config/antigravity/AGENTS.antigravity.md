@@ -38,6 +38,13 @@ agy は、メッセージを受けるたびに計画のターンから始まり�
 ~/.claude/hooks/plan-scope-gate --check <同上>
 ```
 
+### 検査(hook)
+
+Claude・Codex と同じ検査が、agy の hook として働く(`~/.gemini/config/hooks.json` の `dotfiles` のキー)。
+ツール呼び出しの前後の検査は `hook-router`、Stop・SessionStart の検査(PR の完了、ja-polish、main checkout の
+事後検査、wrap-up など)は `hook-router wrap` 経由で走る。拒否されたら、理由に従って直して出し直す。
+計画の関所(要求インベントリ・先行例との対比)は `exit_plan_mode` の前に deny でかかるため、上の自己検査を先に通す。
+
 ### PR 運用(セッション内チェーン・完了定義)
 
 同一セッション・同一 worktree で複数の PR を作るときは、常に作成順の単一チェーン(stacked PR)に

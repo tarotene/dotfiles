@@ -16,6 +16,7 @@
 //! agent-settings-reconcile claude-mcp-servers <claude.json>   <servers-json>
 //! agent-settings-reconcile codex-config       <config.toml>   <spec-json>
 //! agent-settings-reconcile antigravity-permissions <settings.json> <spec-json>
+//! agent-settings-reconcile antigravity-hooks <hooks.json> <spec-json>
 //! ```
 //!
 //! spec の JSON スキーマは `hooks::HooksSpec` / `settings::PermissionsSpec` /
@@ -24,6 +25,7 @@
 
 pub mod agent_permissions;
 pub mod antigravity;
+pub mod antigravity_hooks;
 pub mod codex_config;
 pub mod hooks;
 pub mod json;
@@ -64,7 +66,8 @@ usage: agent-settings-reconcile <subcommand> <file> ...
   claude-mcp-servers <claude.json> <servers-json>
   codex-config <config.toml> <spec-json>
   codex-permissions <config.toml> <{settings: object, mcp_allow: array}>
-  antigravity-permissions <settings.json> <spec-json>";
+  antigravity-permissions <settings.json> <spec-json>
+  antigravity-hooks <hooks.json> <{name: string, hooks: object}>";
 
 pub fn run(args: &[String]) -> Result<(), Failure> {
     let Some(sub) = args.first() else {
@@ -76,6 +79,9 @@ pub fn run(args: &[String]) -> Result<(), Failure> {
         "copilot-hooks-spec" => hooks_spec(rest, Flavor::Flat),
         "claude-permissions" => claude_permissions(rest),
         "antigravity-permissions" => antigravity_permissions(rest),
+        "antigravity-hooks" => with_json_spec(rest, |root, spec: antigravity_hooks::HooksSpec| {
+            antigravity_hooks::apply(root, &spec)
+        }),
         "claude-statusline" => with_json_spec(rest, |root, spec| settings::statusline(root, &spec)),
         "claude-mcp-servers" => mcp_servers(rest),
         "codex-config" | "codex-permissions" => {

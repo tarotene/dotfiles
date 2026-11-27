@@ -47,6 +47,42 @@ agy の hook は、Claude の hook と形が違う(camelCase の入力、`decisi
 | Stop | deny(Claude の block)だけ `{"decision":"continue","reason"}`。他は `{}` |
 | PermissionRequest | 何も出さない(agy に無いイベント) |
 
+## 登録
+
+登録は `home/modules/agents.nix` の `antigravityHookDeclarations` が、Claude の宣言(`claudeHookDeclarations`)から導く
+(Codex の `codexHookDeclarations` と同じ型。足した共有の hook は、agy に載せ忘れられない)。
+`registerAntigravityHooks`(activation)が、`agent-settings-reconcile antigravity-hooks` で
+`~/.gemini/config/hooks.json` の `dotfiles` のキーだけを置き換える。herdr の連携と `/hooks` が書く
+ほかのキーは触らない。個人の identity だけで有効(`dotfiles.antigravity.enable`)。
+
+| Claude の宣言 | agy の登録 |
+|---|---|
+| `hook-router-pre`・`hook-router-post` | `hook-router pre`・`post` に `--agent antigravity`(規則の表を共有) |
+| 規則の表に無い個別の hook(SessionStart・Stop の bin、bleep、plan-view・plan-fresh-gate・copilot-plan-review) | `hook-router wrap '<Claude の command>' --timeout N` |
+| matcher | 道具名を読み替える(`Bash`→`run_command`、`ExitPlanMode`→`exit_plan_mode`、`mcp__.*`→`mcp.*`)。SessionStart の matcher は落とす |
+| timeout | agy 側は、中の timeout に 5 秒足す(中で先に切れて、空の返答を返せるように)。宣言に無ければ 60 秒 |
+
+載せないもの: `herdr-agent-metadata`(herdr 本体の連携が持つ)、`agent-turn-log`(UserPromptSubmit が無く、ターンの開始を
+取れない)、`atuin-history`(`atuin hook` の対象に agy があるか未確認、PostToolUseFailure も無い)、`git-worktree-allow`・
+`gh-edit-allow-judge`(`if` つきの allow 判定。Codex でも、ネイティブの承認を通すために外している)。
+
+**agy の hook は逐次に走る**(文書の「Hooks run synchronously and block the agent loop」、複数の hook は順に実行)。
+Claude は同じイベントの hook を並列に走らせるので、待ち時間は足し算になる(SessionStart の `gpg-prewarm` が最大 120 秒、
+Stop の `pr-gate` が最大 600 秒など)。
+
+### 計画の関所
+
+`exit_plan_mode` に、PreToolUse で次を掛ける(本人の裁定、2026-11-27: Claude の `ExitPlanMode` と同じ関所を deny で掛ける)。
+
+- `plan-scope-gate`(要求インベントリ)・`plan-precedent-gate`(先行例との対比): `hook-router pre` の規則の表。
+- `plan-fresh-gate`(base の鮮度)・`plan-view`(ブラウザ表示)・`copilot-plan-review`(Copilot のレビュー): `wrap`。
+
+agy は全ターンを計画から始めるので、設計判断を含まない小さな計画は、既存の 1 行の免除
+(`先行例: 該当なし — <理由>`)で通す。実測(手元の `hook-router`、2026-11-27): 節の無い計画は agy の形の deny、
+要求インベントリと免除の 1 行を持つ計画は、何も出さずに通った。
+**ターンごとに `plan-view` が窓を開き、`copilot-plan-review` が Copilot にレビューを頼む**ことになるので、小さな
+追従のたびに走る頻度は、実機で確かめて調整する(確認の台帳 #1718)。
+
 ## agy に同じものが無いもの(Blocked-Upstream)
 
 - Blocked-Upstream: `SessionEnd`・`UserPromptSubmit`・`PostToolUseFailure`・`PermissionRequest` のイベントは、agy の hook に無い
@@ -73,3 +109,5 @@ agy の hook は、Claude の hook と形が違う(camelCase の入力、`decisi
 - crates/hook-router/src/antigravity.rs
 - crates/hook-router/src/main.rs
 - config/agents/hook-router-canary.sh
+- home/modules/agents.nix
+- crates/agent-settings-reconcile/src/antigravity_hooks.rs

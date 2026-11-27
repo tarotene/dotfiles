@@ -1783,6 +1783,102 @@ let
     ];
   };
 
+  # Antigravity CLI(agy)の hook(~/.gemini/config/hooks.json の自分の名前のキー 1 つ)。Codex と同じく、
+  # Claude の宣言から導く: 新しく足した共有の hook が、agy に載せ忘れられない。
+  # ツール呼び出しの検査は `hook-router pre|post --agent antigravity`(規則の表を共有)、それ以外は
+  # `hook-router wrap <Claude の command>` が、Claude の形のまま走らせて出力だけを agy の形にする
+  # (docs/claude/antigravity-hook-parity.md)。agy の hook は逐次に走る(Claude は並列)ので、
+  # 待ち時間は足し算になる。
+  #
+  # 載せないもの(docs/claude/antigravity-hook-parity.md の「agy に同じものが無いもの」):
+  # - herdr-agent-metadata: herdr 本体の連携(`herdr integration install antigravity-cli`)が持つ。
+  # - agent-turn-log: UserPromptSubmit が agy に無く、ターンの開始を取れない。
+  # - atuin-history: `atuin hook` の対象に agy があるかは未確認で、PostToolUseFailure も無い(段4)。
+  # - git-worktree-allow・gh-edit-allow-judge: `if` つきの allow 判定。agy の hook は matcher が道具名だけで、
+  #   Codex でも同じ理由で外している(ネイティブの承認を通す)。
+  # - UserPromptSubmit・SessionEnd・PostToolUseFailure のイベント: agy に無い。
+  # SessionStart の `startup|resume|compact` の絞り込みも agy には無く、全開始で走る。
+  antigravitySkipNodes = [
+    "herdr-agent-metadata"
+    "agent-turn-log"
+    "atuin-history"
+    "git-worktree-allow"
+    "gh-edit-allow-judge"
+  ];
+  antigravityEvents = [
+    "PreToolUse"
+    "PostToolUse"
+    "SessionStart"
+    "Stop"
+  ];
+  # Claude の道具名の matcher を、agy の道具名にする(`mcp__` の名前の形は未確認なので、前方一致にする)。
+  antigravityMatcher =
+    m:
+    builtins.replaceStrings
+      [ "ExitPlanMode" "Bash" "mcp__.*" ]
+      [ "exit_plan_mode" "run_command" "mcp.*" ]
+      m;
+  antigravityTimeout = d: d.timeout or 60;
+  antigravityHookDeclarations = lib.concatMap (
+    d:
+    if builtins.elem d.node antigravitySkipNodes || !(builtins.elem d.event antigravityEvents) then
+      [ ]
+    else
+      [
+        (
+          {
+            inherit (d) event node;
+            timeout = antigravityTimeout d;
+            command =
+              if d.node == "hook-router-pre" then
+                "${hookRouterPreCmd} --agent antigravity"
+              else if d.node == "hook-router-post" then
+                "${hookRouterPostCmd} --agent antigravity"
+              else
+                "'${hooksDir}/hook-router' wrap ${lib.escapeShellArg d.command} --timeout ${toString (antigravityTimeout d)}";
+          }
+          //
+            lib.optionalAttrs
+              (
+                d ? matcher
+                && builtins.elem d.event [
+                  "PreToolUse"
+                  "PostToolUse"
+                ]
+              )
+              {
+                matcher = antigravityMatcher d.matcher;
+              }
+        )
+      ]
+  ) enabledClaudeHookDeclarations;
+  # agy 自身の timeout は、wrap の中の timeout より長くする(中で先に切れて、空の返答を返せるように)。
+  antigravityHandler = d: {
+    type = "command";
+    inherit (d) command;
+    timeout = d.timeout + 5;
+  };
+  antigravityEntry =
+    d:
+    if
+      builtins.elem d.event [
+        "PreToolUse"
+        "PostToolUse"
+      ]
+    then
+      {
+        matcher = d.matcher or "";
+        hooks = [ (antigravityHandler d) ];
+      }
+    else
+      antigravityHandler d;
+  antigravityHooksSpec = builtins.toJSON {
+    name = "dotfiles";
+    hooks = lib.mapAttrs (_: map antigravityEntry) (
+      lib.groupBy (d: d.event) (map declareHook antigravityHookDeclarations)
+    );
+  };
+
   # Copilot CLI(~/.copilot/settings.json)の hook。Claude・Codex と同じく、宣言(行)と所有の記録
   # (managed-hooks-copilot.json)で登録する。行は Copilot の native な event 名(camelCase)で書き、
   # herdr 自身の PascalCase のエントリとは共存する(docs/agents/herdr-sidebar-metadata.md)。Copilot の
@@ -2487,6 +2583,31 @@ assert lib.assertMsg
         touch $out
       ''
     )
+    # agy の hooks.json の宣言の検査。reconcile は、agy が黙って捨てる形(知らないイベント・matcher の無い組・
+    # 空の command など)の宣言を、ファイルを書く前に止める。その同じ検査を build の時に回し、
+    # 適用(hms)で初めて落ちる形を、generation の build で落とす。2 回目の適用で差が出ないことも確かめる。
+    # 宣言は agy を有効にしない機体でも評価されるので、この検査も全機体で回る。
+    (pkgs.runCommand "antigravity-hooks-spec"
+      {
+        nativeBuildInputs = with pkgs; [
+          coreutils
+          jq
+        ];
+      }
+      ''
+        f="$TMPDIR/hooks.json"
+        echo '{"herdr-agent-state":{"Stop":[{"command":"keep"}]}}' > "$f"
+        spec=${lib.escapeShellArg antigravityHooksSpec}
+        ${settingsReconcile} antigravity-hooks "$f" "$spec"
+        cp "$f" "$TMPDIR/once.json"
+        ${settingsReconcile} antigravity-hooks "$f" "$spec"
+        cmp "$f" "$TMPDIR/once.json"
+        jq -e '."herdr-agent-state".Stop[0].command == "keep"' "$f" >/dev/null
+        jq -e '.dotfiles.PreToolUse | map(select(.matcher == "exit_plan_mode")) | length > 0' "$f" >/dev/null
+        jq -e '.dotfiles | keys == ["PostToolUse","PreToolUse","SessionStart","Stop"]' "$f" >/dev/null
+        touch $out
+      ''
+    )
     # スキル配布の検査(#1124)。`checks.<system>.agent-skills`(flake.nix)と同じ定義を、
     # 適用する配布物そのもの(この config の home.file)に掛ける。flake の check は
     # activation build の依存ではなく、`hms .` は検査に落ちた配布物を実ホームへ置けた。
@@ -2643,6 +2764,15 @@ assert lib.assertMsg
     run ${settingsReconcile} claude-hooks "$HOME/.claude/settings.json" \
       ${lib.escapeShellArg claudeHooksSpec}
   '';
+
+  # agy の hooks.json は、herdr の連携と `/hooks` も書くので、自分の名前のキー(`dotfiles`)だけを所有する。
+  home.activation.registerAntigravityHooks = lib.mkIf config.dotfiles.antigravity.enable (
+    lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+      # pipeline-node: hook-router-pre, hook-router-post
+      run ${settingsReconcile} antigravity-hooks "$HOME/.gemini/config/hooks.json" \
+        ${lib.escapeShellArg antigravityHooksSpec}
+    ''
+  );
 
   # 今のモード(Fable / Opus)は保ったまま、その具体モデル ID だけを claude バイナリの
   # `latest_per_family` から引き直す。hooks・statusLine・permissions と同じ DAG 位置で、

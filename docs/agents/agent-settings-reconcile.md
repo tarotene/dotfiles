@@ -18,6 +18,7 @@ home-manager は activation のたびに、**宣言したものだけ**をこれ
 | `codex-config` | `~/.codex/config.toml` | spec(`home/modules/codex.nix` の `codexConfigSpec`) |
 | `codex-permissions` | 同 `default_permissions` の権限 profile と MCP 許可 | `{settings, mcp_allow, state}` |
 | `antigravity-permissions` | `~/.gemini/antigravity-cli/settings.json` の `.permissions.{allow,ask,deny}`・`.toolPermission`・`.enableTerminalSandbox` | spec(`home/modules/antigravity.nix`。`state` は 3 種の規則を記録) |
+| `antigravity-hooks` | `~/.gemini/config/hooks.json` の自分の名前のキー(`dotfiles`) | spec(`antigravityHooksSpec`: `{name, hooks}`。所有の単位はキーなので、`state` は持たない。agy が捨てる形の宣言は書く前に止める) |
 
 ## hook は宣言を正とする
 
