@@ -125,6 +125,32 @@ let
       ${body}
     '';
 
+  # Claude の slash command のうち、手で打つ入口として agy でも使えるもの(`config/claude/commands/`)を、agy の
+  # skill(`~/.gemini/config/skills/<name>/SKILL.md`)にする。agy は frontmatter の `name`(ディレクトリ名と同じ)と
+  # `description` の無い skill を落とすので、ビルド時に足す(`migrate-agent-settings` の変換の規則、取得 2026-11-27)。
+  # `copilot-plan-review`・`plan-view` は、手で打つ入口でなく `exit_plan_mode` の hook として載せる
+  # (docs/claude/antigravity-hook-parity.md)。本文の Claude の道具名・主語だけを agy のものに読み替える。
+  commandSkills = {
+    resolve-pr-threads = "Use this skill to query and resolve GitHub PR review threads through the GraphQL API, with commit traceability and per-thread triage.";
+    promote-permissions = "Use this skill to propose a change to an agent's native permission declaration (Claude, Codex, Antigravity) without exposing private paths or server values.";
+  };
+  agyWording =
+    builtins.replaceStrings
+      [ "AskUserQuestion" "Claude MUST" "Claude SHOULD" ]
+      [ "ask_question" "The agent MUST" "The agent SHOULD" ];
+  skillFiles = lib.mapAttrs' (
+    name: description:
+    lib.nameValuePair ".gemini/config/skills/${name}/SKILL.md" {
+      text = ''
+        ---
+        name: ${name}
+        description: ${builtins.toJSON description}
+        ---
+      ''
+      + agyWording (builtins.readFile (repoConfig + "/claude/commands/${name}.md"));
+    }
+  ) commandSkills;
+
   sharedChunks = packUnits (headingUnits (builtins.readFile (repoConfig + "/agents/AGENTS.md")));
 
   rulesFiles = {
@@ -290,7 +316,7 @@ in
   config = {
     # Read-only store files: agy never writes into rules/ (the TUI's `/permissions` and `/hooks`
     # write settings.json and hooks.json, not rules).
-    home.file = lib.mkIf config.dotfiles.antigravity.enable rulesFiles;
+    home.file = lib.mkIf config.dotfiles.antigravity.enable (rulesFiles // skillFiles);
 
     # `agy mcp add` で本人が足したサーバーは残す(所有の記録に載せた名前だけを管理する)。
     home.activation.registerAntigravityMcpServers = lib.mkIf config.dotfiles.antigravity.enable (

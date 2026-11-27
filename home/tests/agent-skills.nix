@@ -76,6 +76,14 @@ pkgs.runCommand "agent-skills" { } (
           marked=$(grep -c '^user-invocable:' "$dir/SKILL.md" || true)
           test "$marked" -eq "$hide"
         fi
+        # Antigravity CLI は `~/.agents/skills` を自動で発見する(agy 1.5.16 の changelog)。frontmatter の
+        # `name` がディレクトリ名と同じで、`description` が空でない skill だけが読まれる(agy 同梱の
+        # `agy-customizations/docs/skills.md`)ので、`.agents` 側の複写で、その条件を満たすことを見る。
+        if [ "$claude" = 0 ] && [ "$name" != repo-governance-common ]; then
+          test "$(sed -n 1p "$dir/SKILL.md")" = "---"
+          test "$(awk 'NR > 1 && /^---$/ { exit } /^name:/ { sub(/^name: */, ""); print; exit }' "$dir/SKILL.md")" = "$name"
+          awk 'NR > 1 && /^---$/ { exit } /^description:/ { d = 1; v = $0; sub(/^description: */, "", v); if (v != "" && v != ">-" && v != ">" && v != "|") ok = 1; next } d && /^  +[^ ]/ { ok = 1 } END { exit ok ? 0 : 1 }' "$dir/SKILL.md"
+        fi
         # Every source resource survives byte-for-byte, with its execute bit.
         while IFS= read -r -d $'\0' file; do
           relative="''${file#${sourceRoot}/$name/}"
