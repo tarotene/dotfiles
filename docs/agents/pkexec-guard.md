@@ -265,6 +265,40 @@ org.freedesktop.policykit.exec for unix-process:... [...eval
 `sudo` の timestamp キャッシュより強い性質(毎回人間の入力を要求する)を
 意味する。
 
+## sandbox との関係(2026-11-27、段 1)
+
+上の「認証フローの実態」(2026-09-28)は、agent の Bash を sandbox で隔離する前の実測である。sandbox が常時有効になった
+今(#1164)は、pkexec の経路は **sandbox の外でしか動かない**。arcturus で実測した:
+
+- **sandbox の中**: `/proc/self/status` が `NoNewPrivs: 1`・`Seccomp: 2`。`/usr/bin/pkexec /usr/bin/systemctl --version` は
+  `pkexec must be setuid root`(終了コード 127)で落ちる。`sudo -V` も「The "no new privileges" flag is set」で落ちる。
+  setuid 実行ファイルは、no_new_privs の下では root にならない。
+- **sandbox の外**(`dangerouslyDisableSandbox`、本人が許可): 同じコマンドが通り、`systemd 255 …` を返した。`journalctl -b -g ONE-SHOT` に
+  `successfully authenticated as unix-user:… to gain ONE-SHOT authorization for action org.freedesktop.policykit.exec`(22:23:35)が出た。認証は
+  毎回行われ、保持されない。
+
+宣言は、`home/modules/claude.nix` の `excludedCommands` に `"/usr/bin/pkexec *"` を足し、`askRules` の `Bash(/usr/bin/pkexec *)` と対にした。
+`hms *`・`lp *`・`google-chrome --headless=new *` と同じ型である: 外では全権限で動くので、歯止めは ask と polkit のダイアログだけで、
+除外と ask は必ず対にする。除外するのは、guard が通す絶対パスの形(`/usr/bin/pkexec <許可リストの絶対パス> …`)だけで、裸の `pkexec *` は
+除外しない(PATH の先頭の書き込み可能な場所に同名の偽物を置かれうるため)。複合コマンドは、除外パターンに合わず sandbox の中に残るうえに、
+guard が先に deny する。
+
+## askpass の再裁定(2026-11-27、段 1)
+
+「採らなかった設計: SUDO_ASKPASS」の 3 つの理由を、今の知識で読み直した。結論は変わらない: **askpass は再導入しない**。
+
+1. **理由 1(#348 の直叩き)**: sandbox が入り、sandbox の中の agent は D-Bus・鍵束の Unix ソケットに届かない
+   (`docs/agents/agent-permissions.md` が `allowAllUnixSockets` を採らないと明記)ので、sandbox の中から pinentry を直接叩く経路は
+   閉じた見込みがある。ただし未実測で、sandbox の外の経路(`dangerouslyDisableSandbox` の再試行、excludedCommands の道具)が残る。
+   今も閉じ切れていない。
+2. **理由 2(helper の stdout が agent から読める)**: 変わらない。同じ uid のプロセスを通るパスワードは、検出止まりで、表現不可能にならない。
+3. **理由 3(ダイアログに命令が映らない)**: 変わらない。pinentry の画面には、root で動く命令が出ない。polkit なら、pkexec が渡した
+   argv がダイアログに出る(不変条件 1)。
+
+したがって、「承認だけで通す」ための認証は polkit に置く。パスワードの入力そのものはなくせない(U2F の touch は、承認がコマンドに結び付かず、
+polkit の規則で YES にする案は、同じ uid のどのプロセスにも ask を迂回させる)。agent から見えない場所(root 側の検証プログラムと、GUI
+セッションのダイアログ)に入力を置くことが、この設計の要である。
+
 ## 先行例との差分
 
 - **`rulesets-write-guard`**: 同じ「`command_inspection::simple_shell::split` で語分割し、

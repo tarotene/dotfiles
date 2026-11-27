@@ -87,6 +87,9 @@ let
   # 評価される、docs/agents/pkexec-guard.md 参照)。guard 自身が通すのは
   # `/usr/bin/pkexec <許可リスト> ...` の形だけなので、ここも同じ絶対パスで
   # 揃える(裸の `pkexec` はこのルールに一致せず、guard が deny する)。
+  # sandbox の中では no_new_privs で `pkexec must be setuid root` になる(2026-11-27、arcturus で実測)ので、
+  # `/usr/bin/pkexec *` も excludedCommands で外に出す。外では全権限で動くので、歯止めはこの ask と、
+  # polkit の認証ダイアログ(パスワードは root 側の検証プログラムだけが受け取る)で、除外と必ず対にする。
   #
   # `google-chrome --headless=new *`(#1334)も同じ型の ask。headless Chrome は sandbox の中では
   # Unix ソケットを作れず落ちるので excludedCommands で外に出すが、外では全権限で動く。歯止めは
@@ -414,6 +417,17 @@ in
         # above). It only reads, so there is no `askRules` entry: a question per status check would
         # be noise next to the print itself, which does ask.
         "lpstat *"
+        # `/usr/bin/pkexec` is setuid root, and the sandbox runs every command with no_new_privs, so
+        # inside it the call stops at `pkexec must be setuid root` (measured on arcturus 2026-11-27:
+        # `NoNewPrivs: 1` in /proc/self/status, `sudo -V` says the same). Outside it the call went
+        # through, the polkit dialog appeared and journald logged `successfully authenticated … ONE-SHOT
+        # authorization` for it. Excluded only in the absolute-path form the guard lets through
+        # (`/usr/bin/pkexec <allow-listed binary> …`, crates/pkexec-guard), never `pkexec *`: a bare name
+        # can be shadowed from `~/.local/bin`. It runs with full access, so `askRules` above carries the
+        # same pattern and every call asks first, then polkit asks for the password in a dialog the
+        # agent cannot read (docs/agents/pkexec-guard.md). Call it alone (a chained call stays sandboxed,
+        # see the matching note at the top of this list, and the guard denies it anyway).
+        "/usr/bin/pkexec *"
       ]
       # ja-polish calls `llm`, which reads its key from ~/.config/io.datasette.llm (a secret
       # path the sandbox hides) and reaches generativelanguage.googleapis.com (not a declared
