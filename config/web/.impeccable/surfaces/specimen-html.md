@@ -8,7 +8,7 @@ related_targets: []
 # Surface brief: デザインの見本(config/web/specimen.html)
 
 ## Scope
-出発点の世界(デザインシステム)の見本。全面に通す世界ではなく、採る面だけが複写する(ADR-0000)。モード: Operate が主、Read が従。利用者は本人 1 人(スマートフォンと PC)。公開の面・団体の面の読み手は本人以外。
+出発点の世界(デザインシステム)の見本。全面に通す世界ではなく、採る面だけが複写する(ADR-1729)。モード: Operate が主、Read が従。利用者は本人 1 人(スマートフォンと PC)。公開の面・団体の面の読み手は本人以外。
 
 ## Direction contract
 
