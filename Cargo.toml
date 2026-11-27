@@ -24,7 +24,7 @@ futures-util = "0.3"
 globset = "0.4.16"
 headless_chrome = { version = "1.0.22", default-features = false }
 indexmap = "2.14.2"
-jiff = { version = "0.2.37", default-features = false }
+jiff = { version = "1.0.0", default-features = false }
 libc = "0.2.189"
 regex = "1.13.1"
 schemars = "1.0"
