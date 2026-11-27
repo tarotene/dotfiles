@@ -86,6 +86,12 @@ Claude 専用のままとする。`repo-governance-common` は補助ディレク
 ディレクトリ全体へのリンクを配置する。`SKILL.md` 自体をリンクにしない。
 `checks.<system>.agent-skills` が配布範囲、通常ファイル、元資料との一致(Claude 用で隠した `SKILL.md` は、足した 1 行を除く)、実行権限を検査する。
 
+Antigravity CLI(`agy`)は、共有の `.agents/skills/` を自動で発見する(agy 1.5.16 の changelog)ため、skill の配備は
+行わない。その代わり、agy が読み取る条件(frontmatter の `name` がディレクトリ名と一致し、`description` が空でないこと。出典は、agy 同梱の
+`agy-customizations/docs/skills.md`)を、`.agents/skills/` の複写に対して `agent-skills` が検証する。Claude の slash command の
+うち手動で実行する入口(`resolve-pr-threads`・`promote-permissions`)は、`home/modules/antigravity.nix` がビルド時に frontmatter を
+付与して、`~/.gemini/config/skills/<名前>/SKILL.md` に配置する(`copilot-plan-review`・`plan-view` は hook として動作する)。
+
 既存のファイル単位配布からは `hms .` の `-b backup` で移行する。旧ディレクトリは
 同じ場所の `<スキル名>.backup` に残る。同名のバックアップがあれば適用が止まるため、
 既存バックアップを別名へ退避してから再実行する。削除や上書きはしない。

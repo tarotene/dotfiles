@@ -1,14 +1,16 @@
 # Propose a native permission change
 
 `/promote-permissions` reviews permissions against each agent's native settings.
-Claude and Codex have separate declarations; the shared ownership policy and
+Claude, Codex and Antigravity have separate declarations; the shared ownership policy and
 session-boundary promotion queue are retired (ADR-457, 2026-10-27 Amendment).
 
 1. Read the relevant native config and declarations without exposing private
    paths or server values. Claude's rules live in `home/modules/claude.nix`;
-   Codex's declared settings live in `home/modules/codex.nix`. Use
-   `dotfiles.claudePermissions.extraAllow` and
-   `dotfiles.codexPermissions.{secretPaths,domains,mcpAllow,apps}` for scoped inputs.
+   Codex's declared settings live in `home/modules/codex.nix`; Antigravity's live in
+   `home/modules/antigravity.nix`. Use `dotfiles.claudePermissions.extraAllow`,
+   `dotfiles.codexPermissions.{secretPaths,domains,mcpAllow,apps}` and
+   `dotfiles.antigravityPermissions.{secretPaths,domains,extraAllow,extraAsk,extraDeny}`
+   (agy's own `action(target)` syntax) for scoped inputs.
    Private values belong in the private wrapper, following ADR-0034.
 2. Explain the exact proposed rule, its scope, and whether it expands access.
    Present expansions to the owner before applying them. Do not translate a
