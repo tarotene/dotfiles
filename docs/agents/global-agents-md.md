@@ -94,7 +94,7 @@ agy は大域の規則を `~/.gemini/GEMINI.md`・`~/.gemini/AGENTS.md`、また
 - 各ファイルは `trigger: always_on` と `description`(含む見出し名)を持つ。降格の対象と順は agy が決める
   (未確認。実機の確認は台帳に載せる)。
 - agy 固有の施行配線は `config/antigravity/AGENTS.antigravity.md`(`00-antigravity.md`)。道具名の読み替え・
-  計画の自己検査・PR 運用・生成元の 1 行を持つ。
+  計画の書式・PR 運用・生成元の 1 行を持つ。
 - 切った結果の確認: `nix eval` で `home.file` の `.gemini/config/rules/*` のバイト数を読み、各ファイルが 24,000 バイト
   以内であることと、本文を連結すると共有 AGENTS.md と一致することを確かめた(2026-11-27、6 ファイル、
   最大 23,489 バイト)。

@@ -91,8 +91,9 @@ Stop の `pr-gate` が最大 600 秒など)。
 agy は全ターンを計画から始めるので、設計判断を含まない小さな計画は、既存の 1 行の免除
 (`先行例: 該当なし — <理由>`)で通す。実測(手元の `hook-router`、2026-11-27): 節の無い計画は agy の形の deny、
 要求インベントリと免除の 1 行を持つ計画は、何も出さずに通った。
-**ターンごとに `plan-view` が窓を開き、`copilot-plan-review` が Copilot にレビューを頼む**ことになるので、小さな
-追従のたびに走る頻度は、実機で確かめて調整する(確認の台帳 #1718)。
+**ターンごとに `plan-view` が窓を開き、`copilot-plan-review` が Copilot にレビューを頼む**。実測では、小さな計画でも
+`copilot-plan-review` が毎回走り、1 回あたり約 13〜16 秒かかった(下の「実測」)。`plan-view` の窓は未確認。重ければ
+`antigravitySkipNodes` に足して外す(確認の台帳 #1718)。
 
 ## agy に同じものが無いもの(Blocked-Upstream)
 
@@ -104,14 +105,43 @@ agy は全ターンを計画から始めるので、設計判断を含まない�
   「Supported agents: claude-code, codex, pi」(2026-11-27)。agy のコマンドの履歴は、atuin に残らない。上流が agy を足したら、
   `antigravitySkipNodes` から `atuin-history` を外し、`hook-router` に Codex の `atuin` と同じ入口を足す。
 
+## 実測(2026-11-27、vega の agy 1.5.17、実際のセッション 1 回)
+
+`hms .` の適用後に、agy で 4 つの依頼(規則の質問、`git stash`、`ls`、空ファイルの作成)を送り、会話記録
+(`~/.gemini/antigravity-cli/brain/<会話 ID>/.system_generated/logs/transcript.jsonl`)・ログ
+(`~/.gemini/antigravity-cli/log/`)・状態ファイルから確かめた。
+
+| 確かめた点 | 結果 |
+|---|---|
+| 規則 | 読む。モデルが `14-shared.md` と `00-antigravity.md` を名指しで引いて答えた(少なくともこの 2 つは、予算の超過で降格されていない) |
+| PreToolUse の deny | 効く。`git stash` が拒否され、モデルに `tool call denied by pre-tool hook: <理由>` が届いた |
+| PreToolUse の「意見なし」 | 空の標準出力を受け付ける。`ls`・`write_file` は、エラー表示なしに動いた |
+| SessionStart の注入 | 届く。モデルが「朝の机が未実施」の注入を、答えに足した |
+| PostToolUse | 走る。`cmd-hashes.jsonl` に agy の会話 ID が残った |
+| 道具名と引数 | `run_command{CommandLine}`・`write_file{Path,Content}`・`exit_plan_mode{plan}`。入力の対応の表のとおり |
+| `exit_plan_mode` の hook | 走る。`copilot-plan-review` が 2 回(22:27・22:32)走って `pass`。1 回あたり、計画の送信からレビューの記録まで約 13〜16 秒 |
+
+### agy の安全監視は、hook のスクリプトを実行する動きを検知する
+
+agy は、自前の LLM 監視(ログの `Monitor sir_flash_lite`)を持つ。初めの版の指示文は、計画を渡す前に
+`~/.claude/hooks/plan-precedent-gate --check` などを実行する手順を書いていた。モデルがそれに従うと、監視が
+「Risk Signal B(Safety and oversight controls: hook や監視を無効化・編集・停止・回避・探ること)」として 2 回検知した
+(重大度 6 と 7、確信度 9)。計画の一時ファイルを `/tmp` に書こうとして sandbox の境界で失敗し、モデルが
+「境界を回避する」と推論したことも、2 回目の検知の理由だった。
+
+対応: 指示文(`config/antigravity/AGENTS.antigravity.md`)から、`--check` を自分で実行する手順を外し、「hook のスクリプトを
+自分で実行して試さない。計画は書式どおりに書いて渡し、拒否されたら理由に従って直す」に改めた。共有の skill に
+`--check` の手順があっても、agy では実行しない。
+
 ## 未確認(実機の payload で確かめる)
 
-- MCP の道具が `toolCall.name` に載せる名前の形。会話記録に MCP の呼び出しが無く、読めていない。今は名前をそのまま通すので、
+- MCP の道具が `toolCall.name` に載せる名前の形。上のセッションでは、MCP の道具を使っていない。今は名前をそのまま通すので、
   `mcp__` で始まる名前を前提にする規則(外部送信の抑止など)は、agy の MCP には当たらない。
-- PreToolUse で「意見なし」を、何も出さない(空の標準出力)で表してよいか。文書は `decision` を必須とする。
 - `Grep`・`Glob` に当たる道具の名前(`main-checkout-guard` の読み取りの検査が使う)。
 - agy の `error` の文面が `exit status N` 以外の形を取るか。
-- Stop の `continue` を返したあと、`continuationActive` が立って再入するまでの挙動。
+- Stop の hook(`pr-gate`・`ja-polish`・`main-checkout-guard`・`session-wrapup`)が agy のターンの終わりに走ったか。上のセッションでは、
+  状態ファイルに痕跡が残らず、確かめられなかった。Stop の `continue` を返したあとの再入(`continuationActive`)も、同じく未確認。
+- `plan-view` の窓が `exit_plan_mode` ごとに開くか、herdr のサイドバーに agy のペインの状態が出るか(本人の目で確かめる)。
 
 実機での確認は、確認の台帳 #1718 に載せる。
 
