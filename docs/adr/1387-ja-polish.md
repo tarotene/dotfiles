@@ -178,7 +178,9 @@ D17 の原因は、無料枠におけるモデルごとの 1 日の上限(20 回
 
 観点を強めると同義語への置き換え(機体→マシンなど。`bench::WATCHED_SWAPS`)が増えうるため、「点検で当たらない語は、言い換えない。用語・固有の呼び名・略語は、同じ語を保つ」を追加した。測定では、用語の置き換え(`WATCHED_SWAPS` の語の組)は 0 件のままだった(2026-11-28)。ただし、実地で同じ ADR を通すと、`gemini-3.8-flash` + この指示文でも、「主のモデル」→「主モデル」、「使わず」→「使えず」(意味が変わる)、「既定の値は…測って決めた」→「既定は bench とし…決定した」(意味が崩れる)の直しが出た。物差しは語の組だけを数え、意味の反転や崩れは数えない。**出力の差分を確認する運用は、指示文を強めても必要である**。
 
+先行例: PR #1738(取得 2026-11-27)。agy に「不自然な日本語を直す」と頼んだ結果、ja-polish を通した後の文書で大きな差分が出た。差分: 異なる — 直しの型を観点として指示文に明示し、用語の置き換えの禁止を足す。同時に、#1738 の直しには、表記・用語の統一(「窓」→「ウィンドウ」、「無い」→「ない」、全角括弧→半角括弧)も多く混ざっていた。表記は文体規約に従わせ、用語の言い換えは禁じ、括弧の幅の変更は検証(F7)で止める。
 軸: 還元 — 既存の 1 回の依頼の中で、指示だけを変える。
+
 ### 執行点
 
 - `crates/ja-polish/src/llm.rs` — 失敗の 3 種(`FailureKind`)と、標準エラーからの判定(`classify_stderr`)、`-o thinking_level` の受け渡し
@@ -200,6 +202,10 @@ D17 の原因は、無料枠におけるモデルごとの 1 日の上限(20 回
 - `crates/ja-polish/src/bench.rs` — 見本の測定(`measure`・`render_table`、D15)と、参照の文書から直すべき段落を決める読み込み(`load_samples`・`Sample::needs_fix`)、取りこぼしの率(`Row::needs_fix`・`Row::missed`、D18)
 - `crates/ja-polish/bench/samples.txt` — 固定の見本の一覧(D15)
 - `crates/ja-polish/bench/needs-fix.txt` — 参照の文書つきの見本の一覧(D18)
+- `crates/ja-polish/src/llm.rs` — 観点の点検を求める指示文(`system_prompt`、D20)
+- `crates/ja-polish/src/config.rs` — 既定のモデル・予備・思考量(`DEFAULT_MODEL`・`DEFAULT_FALLBACK_MODEL`・`DEFAULT_THINKING_LEVEL`、D19)
+- `home/modules/ja-polish.nix` — 設定ファイルの既定のモデル・予備・思考量(D19)
+- `crates/ja-polish/src/main.rs` — bench の既定の組(`default_variants`、D19)
 
 ## Alternatives considered
 
@@ -223,10 +229,6 @@ D17 の原因は、無料枠におけるモデルごとの 1 日の上限(20 回
 - 4 つの Python パッケージを固定するので、nixpkgs の追従を見て外す作業が残る。
 - 各機体で `llm keys set gemini` の手作業が一度要る。
 - 会社の機体では、送り先の要件を確かめて enable を立てるまで有効にならない(#1385)。
-- `crates/ja-polish/src/llm.rs` — 観点の点検を求める指示文(`system_prompt`、D20)
-- `crates/ja-polish/src/config.rs` — 既定のモデル・予備・思考量(`DEFAULT_MODEL`・`DEFAULT_FALLBACK_MODEL`・`DEFAULT_THINKING_LEVEL`、D19)
-- `home/modules/ja-polish.nix` — 設定ファイルの既定のモデル・予備・思考量(D19)
-- `crates/ja-polish/src/main.rs` — bench の既定の組(`default_variants`、D19)
 - 混雑・時間切れでは、予備のモデルの分だけ、1 つの束の待ちが延びる。時間切れは、同じモデルで待ち直さないので、最悪が 45 秒 + 予備の 45 秒 = 90 秒で、以前の 120 秒より長くならない。混雑の拒否は、すぐ返るのが普通なので、再依頼の待ち(2 秒 + 6 秒)と予備の 45 秒までで 1 分に満たない。拒否が毎回遅く返るときは、この見積りを超える(未観測)。
 
 ## 執行点
@@ -260,6 +262,8 @@ D17 の原因は、無料枠におけるモデルごとの 1 日の上限(20 回
 - D12: 素通しの段落を、`ja-polish` の次の実行で書き直しの対象に戻す。先行例なし: このリポジトリの記録まわりの設計(`docs/agents/ja-polish.md`、`docs/agents/gate-failopen-advisory.md`、取得 2026-11-12)だけを探し、同じ問題の扱いは見つからなかった。外部の例は探していない(未確認)。軸: 還元 — 記録の読み込みを 2 つに分けるだけ。
 - D13: Gemini の前後に textlint の自動修正を挟む。先行例: textlint, "CLI" https://textlint.org/docs/cli/ (取得 2026-11-12、調査の委譲先が `--fix` の説明を逐語で引いたもの)。差分: 一致 — `--fix` の自動修正をそのまま使う。設定は作業ツリーに置かず、ja-polish が実行のたびに作る。既存手段: 採用 — textlint(nixpkgs の固定版 15.7.1)。軸: 還元 — 定型の直しを、決定論の道具へ移す。
 - D14: 一時的な原因の素通しの率が閾値を超えたら、セッションの冒頭で知らせる。先行例: `crates/gate-failopen-advisory`(連続の fail-open を SessionStart で知らせる既存の仕組み、`docs/agents/gate-failopen-advisory.md`、取得 2026-11-12)。差分: 異なる — 連続回数でなく、期間内の率で判定し、件数の下限を持つ。軸: 検出のみ — 課金の判断は本人に残す。
+- D19: 送り先を有料枠のキーとし、主のモデル・思考量・予備を測定で決める。先行例: Google, Gemini API "Billing" https://aistudio.google.com/docs/billing (取得 2026-11-27)、同 "Pricing" https://aistudio.google.com/docs/pricing (取得 2026-11-28。原文の一部は要約でしか読めていない)。差分: 一致 — 有料枠は製品の改善に使わず、切り捨てられにくい。モデルと思考量は、D15・D18 の測定で決める。軸: 還元。本命: 有料の API キー + `llm`。対抗馬: agy の `-p` で Gemini 4 を呼ぶ — 道具を持つエージェントで、D1 の懸念が再発し、データの扱いも一次資料で未確認。外した候補: 無料のまま、モデルごとの 1 日 20 回を順に使う(利用の多い日の件数に足りない。直近 7 日で、1 日 3,000 段落を超えた日がある)。既存手段: 採用 — `llm` + `llm-gemini`。戻せない: 外部契約 — Google Cloud の課金契約(Prepay ¥3,200 は払い戻しできず、1 年で失効)。
+- D20: 指示文に点検観点を入れる。先行例: PR #1738(取得 2026-11-27)。差分: 異なる — 直しの型を観点として明示し、用語の置き換え禁止を加える。軸: 還元。
 - D17: 書き直しの記録に変更の有無を残し、予備のモデルが答えた割合を知らせる。先行例: `crates/gate-failopen-advisory` の `billing_line`(ADR-1387 D14、`docs/agents/gate-failopen-advisory.md`、取得 2026-11-27)。差分: 異なる — 素通しの率でなく、通ったが予備のモデルが答えた段落の率を数える。軸: 検出のみ — 質の劣化を見えるようにするだけで、防がない。
 - D18: 参照の文書と比べた取りこぼしの率を、bench の物差しに足す。先行例: ERRANT https://github.com/chrisjbryant/errant (取得 2026-11-27。リポジトリの説明文だけを読んだ)。差分: 異なる — 誤りの分類はせず、参照が直した段落に手を付けたかだけを、段落の集合で数える。軸: 検出のみ — 測るだけ。
 - D15: 思考量とモデルを、固定の見本の測定で決める。先行例なし: Nejumi Leaderboard 4・Japanese MT-Bench を探した(2026-11-12、本文は取得できず、未確認)。書き直しの前後を、規則の指摘数と括弧の幅で比べる先行例は見つからなかった。軸: 検出のみ — 品質の低下を測るだけで、防がない。
