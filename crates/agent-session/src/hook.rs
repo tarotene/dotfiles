@@ -34,7 +34,7 @@ impl ToolCall {
         let raw: Value = serde_json::from_str(stdin).ok()?;
         let key = match agent {
             Agent::Copilot => "toolName",
-            Agent::Claude | Agent::Codex => "tool_name",
+            Agent::Claude | Agent::Codex | Agent::Antigravity => "tool_name",
         };
         let tool = jq_r_path(&raw, &[key]).ok()?.unwrap_or_default();
         Some(ToolCall { agent, tool, raw })
@@ -45,7 +45,7 @@ impl ToolCall {
     pub fn is_bash(&self) -> bool {
         match self.agent {
             Agent::Copilot => self.tool == "bash",
-            Agent::Claude | Agent::Codex => self.tool == "Bash",
+            Agent::Claude | Agent::Codex | Agent::Antigravity => self.tool == "Bash",
         }
     }
 
@@ -58,7 +58,7 @@ impl ToolCall {
         }
         let key = match self.agent {
             Agent::Copilot => "toolArgs",
-            Agent::Claude | Agent::Codex => "tool_input",
+            Agent::Claude | Agent::Codex | Agent::Antigravity => "tool_input",
         };
         jq_r_path(&self.raw, &[key, "command"])
             .ok()
@@ -71,7 +71,7 @@ impl ToolCall {
     pub fn tool_input_alt(&self, keys: &[&str]) -> Option<String> {
         let key = match self.agent {
             Agent::Copilot => "toolArgs",
-            Agent::Claude | Agent::Codex => "tool_input",
+            Agent::Claude | Agent::Codex | Agent::Antigravity => "tool_input",
         };
         for k in keys {
             match jq_r_path(&self.raw, &[key, k]) {

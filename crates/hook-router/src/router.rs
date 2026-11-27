@@ -163,11 +163,16 @@ fn to_reply(m: &Merged) -> Reply {
 /// Claude Code に返す JSON(整形して末尾に改行)。何も出すものが無ければ `None`。
 /// 出力の形は `Reply::render` が持つ。PostToolUse は判定を出さない。
 pub fn render(event: Event, m: &Merged) -> Option<String> {
+    render_for(Agent::Claude, event, m)
+}
+
+/// [`render`] を、返す相手のエージェントの形でする(Claude と Codex は同じ形、agy は別)。
+pub fn render_for(agent: Agent, event: Event, m: &Merged) -> Option<String> {
     let event = match event {
         Event::Pre => HookEvent::PreToolUse,
         Event::Post => HookEvent::PostToolUse,
     };
-    let out = to_reply(m).render(Agent::Claude, event);
+    let out = to_reply(m).render(agent, event);
     (!out.is_empty()).then_some(out)
 }
 

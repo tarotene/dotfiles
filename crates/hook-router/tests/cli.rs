@@ -551,3 +551,104 @@ mod reply_coverage_through_the_router {
         assert!(denied(&out).is_some());
     }
 }
+
+// ---- Antigravity CLI(agy)。入力は camelCase、出力は `decision`・`reason`。 ----
+
+fn agy_command(event: &str, command: &str) -> String {
+    serde_json::json!({
+        "hookEventName": event,
+        "conversationId": "c1",
+        "cwd": "/tmp",
+        "toolCall": {"id": "t1", "name": "run_command", "args": {"CommandLine": command}},
+    })
+    .to_string()
+}
+
+#[test]
+fn antigravity_a_bare_git_stash_is_denied_in_its_own_shape() {
+    let (out, _h) = run(
+        &["pre", "--agent", "antigravity"],
+        &agy_command("PreToolUse", "git stash"),
+    );
+    assert!(out.status.success());
+    let v = json(&out);
+    assert_eq!(v["decision"], "deny");
+    assert!(v["reason"].as_str().is_some_and(|r| !r.is_empty()), "{v}");
+    assert!(v.get("hookSpecificOutput").is_none(), "{v}");
+}
+
+#[test]
+fn antigravity_uses_its_own_attribution() {
+    let (out, _h) = run(
+        &["pre", "--agent", "antigravity"],
+        &agy_command("PreToolUse", "gh pr comment 1 --body 'hello'"),
+    );
+    let reason = json(&out)["reason"].as_str().unwrap().to_owned();
+    assert!(reason.contains("Antigravity CLI"), "{reason}");
+}
+
+#[test]
+fn antigravity_a_harmless_command_gets_no_opinion() {
+    let (out, _h) = run(
+        &["pre", "--agent", "antigravity"],
+        &agy_command("PreToolUse", "ls"),
+    );
+    assert!(out.status.success());
+    assert!(out.stdout.is_empty(), "{:?}", out.stdout);
+}
+
+#[test]
+fn antigravity_a_file_write_cannot_modify_the_main_checkout() {
+    let repo = tempfile::tempdir().unwrap();
+    assert!(Command::new("git")
+        .args(["init", "-q"])
+        .arg(repo.path())
+        .status()
+        .unwrap()
+        .success());
+    let raw = serde_json::json!({
+        "hookEventName": "PreToolUse", "conversationId": "c-write", "cwd": repo.path(),
+        "toolCall": {"name": "write_file", "args": {
+            "Path": repo.path().join("file.txt"), "Content": "text"}}
+    })
+    .to_string();
+    let (out, _h) = run(&["pre", "--agent", "antigravity"], &raw);
+    assert!(out.status.success());
+    assert_eq!(json(&out)["decision"], "deny");
+    assert!(!repo.path().join("file.txt").exists());
+}
+
+#[test]
+fn antigravity_post_tool_use_answers_an_empty_object() {
+    let (out, _h) = run(
+        &["post", "--agent", "antigravity"],
+        &agy_command("PostToolUse", "ls"),
+    );
+    assert!(out.status.success());
+    assert_eq!(json(&out), serde_json::json!({}));
+}
+
+#[test]
+fn antigravity_wrap_runs_a_claude_shaped_command() {
+    let raw =
+        r#"{"hookEventName":"Stop","conversationId":"c1","cwd":"/tmp","continuationActive":false}"#;
+    let (out, _h) = run(
+        &[
+            "wrap",
+            r#"cat >/dev/null; printf '%s' '{"decision":"block","reason":"未完"}'"#,
+        ],
+        raw,
+    );
+    assert!(out.status.success());
+    let v = json(&out);
+    assert_eq!(v["decision"], "continue");
+    assert_eq!(v["reason"], "未完");
+}
+
+#[test]
+fn antigravity_wrap_rejects_bad_usage() {
+    let (out, _h) = run(&["wrap"], "{}");
+    assert_eq!(out.status.code(), Some(1));
+    let (out, _h) = run(&["wrap", "true", "--timeout", "x"], "{}");
+    assert_eq!(out.status.code(), Some(1));
+}

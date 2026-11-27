@@ -19,6 +19,17 @@ pub fn extract_user_text(transcript: &str) -> String {
     for v in serde_json::Deserializer::from_str(transcript).into_iter::<Value>() {
         let Ok(v) = v else { break };
         let Some(obj) = v.as_object() else { continue };
+        // Antigravity CLI の記録: 本人の入力は `type: USER_INPUT`・`source: USER_EXPLICIT` の行で、
+        // 本文は最上位の `content`(会話記録 `transcript.jsonl` の実測。2026-11-27)。
+        if obj.get("type").and_then(Value::as_str) == Some("USER_INPUT") {
+            if obj.get("source").and_then(Value::as_str) == Some("USER_EXPLICIT") {
+                if let Some(content) = obj.get("content").and_then(Value::as_str) {
+                    out.push_str(content);
+                    out.push('\n');
+                }
+            }
+            continue;
+        }
         if obj.get("type").and_then(Value::as_str) != Some("user") {
             continue;
         }
@@ -195,6 +206,23 @@ pub fn waiting_on_background(transcript_path: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_antigravity_transcript_yields_only_the_users_own_input() {
+        let t = concat!(
+            r#"{"type":"USER_INPUT","source":"USER_EXPLICIT","step_index":0,"content":"first"}"#,
+            "\n",
+            r#"{"type":"PLANNER_RESPONSE","source":"MODEL","step_index":1,"content":"reply"}"#,
+            "\n",
+            r#"{"type":"SYSTEM_MESSAGE","source":"SYSTEM","step_index":2,"content":"injected"}"#,
+            "\n",
+            r#"{"type":"USER_INPUT","source":"USER_IMPLICIT","step_index":3,"content":"not typed"}"#,
+            "\n",
+            r#"{"type":"USER_INPUT","source":"USER_EXPLICIT","step_index":71,"content":"second"}"#,
+            "\n",
+        );
+        assert_eq!(extract_user_text(t), "first\nsecond\n");
+    }
 
     #[test]
     fn transcript_filters_injections_and_notifications() {

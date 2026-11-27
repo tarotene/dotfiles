@@ -396,6 +396,9 @@ pub fn run(agent: Agent, action: &str, input: &str) {
             branch_for,
             oshi_for,
         ),
+        // agy のサイドバーの状態は、herdr 本体の連携(`herdr integration install antigravity-cli`)が
+        // 持つ。この hook は agy に登録しないので、来ても何もしない。
+        Agent::Antigravity => return,
     };
     let Plan::Send(report) = plan else { return };
     let line = request_line(

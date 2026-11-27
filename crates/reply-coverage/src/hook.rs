@@ -32,7 +32,7 @@ pub fn enabled() -> bool {
 fn tool_input(call: &ToolCall) -> Option<&Value> {
     let key = match call.agent {
         Agent::Copilot => "toolArgs",
-        Agent::Claude | Agent::Codex => "tool_input",
+        Agent::Claude | Agent::Codex | Agent::Antigravity => "tool_input",
     };
     call.raw.get(key)
 }

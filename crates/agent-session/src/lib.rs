@@ -1,4 +1,5 @@
 //! agent-session: responsibility-scoped agent tooling.
+pub mod antigravity;
 pub mod cli;
 pub mod decision;
 pub mod entry;

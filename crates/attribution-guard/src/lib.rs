@@ -171,11 +171,20 @@ impl Attribution {
         url: "https://docs.github.com/en/copilot/how-tos/copilot-cli",
     };
 
+    /// Antigravity CLI(`agy`)。URL は、権限の文書(`docs/agents/agent-permissions.md`)が出典に使う
+    /// `antigravity.google` の製品ページ。この機体の sandbox からは到達できず、取得は未確認
+    /// (公式の「自分の名前と URL」の指定は見つかっていない)。
+    pub const ANTIGRAVITY: Attribution = Attribution {
+        name: "Antigravity CLI",
+        url: "https://antigravity.google/",
+    };
+
     pub fn for_agent(agent: Agent) -> Self {
         match agent {
             Agent::Claude => Self::CLAUDE,
             Agent::Codex => Self::CODEX,
             Agent::Copilot => Self::COPILOT,
+            Agent::Antigravity => Self::ANTIGRAVITY,
         }
     }
 

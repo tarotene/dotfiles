@@ -36,6 +36,8 @@ use std::process::{Command, Stdio};
 fn project_env_var(agent: Agent) -> &'static str {
     match agent {
         Agent::Codex => "CODEX_PROJECT_DIR",
+        // agy はプロジェクトの dir を環境変数で渡さない(未設定なら、入力の `cwd` に倒れる)。
+        Agent::Antigravity => "ANTIGRAVITY_PROJECT_DIR",
         Agent::Claude | Agent::Copilot => "CLAUDE_PROJECT_DIR",
     }
 }

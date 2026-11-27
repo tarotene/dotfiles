@@ -135,6 +135,8 @@ impl Reply {
     pub fn render(&self, agent: Agent, event: HookEvent) -> String {
         let mut top: Vec<(&str, J)> = Vec::new();
         match agent {
+            // agy は、封筒もキーの並びも別(`antigravity::render`)。
+            Agent::Antigravity => return crate::antigravity::render(self, event),
             Agent::Claude | Agent::Codex if event == HookEvent::Stop => self.stop_fields(&mut top),
             Agent::Claude | Agent::Codex => {
                 if let Some(specific) = self.specific(event) {

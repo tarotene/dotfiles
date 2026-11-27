@@ -5,3 +5,6 @@
 {"label": "無関係なコマンドは通す", "event": "pre", "agent": "claude", "expect": "pass", "input": {"tool_name": "Bash", "tool_input": {"command": "ls -la"}, "cwd": "/"}}
 {"label": "Codex の pkill -f(pkill-guard)", "event": "pre", "agent": "codex", "expect": "deny", "input": {"tool_name": "Bash", "tool_input": {"command": "pkill -f trial.sh"}, "cwd": "/"}}
 {"label": "Codex の無関係なコマンドは通す", "event": "pre", "agent": "codex", "expect": "pass", "input": {"tool_name": "Bash", "tool_input": {"command": "ls -la"}, "cwd": "/"}}
+{"label": "agy の pkill -f(pkill-guard)", "event": "pre", "agent": "antigravity", "expect": "deny", "input": {"hookEventName": "PreToolUse", "conversationId": "canary", "cwd": "/", "toolCall": {"name": "run_command", "args": {"CommandLine": "pkill -f trial.sh"}}}}
+{"label": "agy の git stash(git-stash-guard)", "event": "pre", "agent": "antigravity", "expect": "deny", "input": {"hookEventName": "PreToolUse", "conversationId": "canary", "cwd": "/", "toolCall": {"name": "run_command", "args": {"CommandLine": "git stash"}}}}
+{"label": "agy の無関係なコマンドは通す", "event": "pre", "agent": "antigravity", "expect": "pass", "input": {"hookEventName": "PreToolUse", "conversationId": "canary", "cwd": "/", "toolCall": {"name": "run_command", "args": {"CommandLine": "ls -la"}}}}

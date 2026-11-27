@@ -10,6 +10,14 @@ Codex も同じ規則表を `pre|post --agent codex` で使う。登録は同じ
 入口で PermissionRequest に返す。Atuin とローカルHookの互換入口も規則表とは別である。
 対応範囲と上流の制約は [Codexとの対応表](../claude/codex-hook-parity.md) を参照。
 
+Antigravity CLI(`agy`)も、同じ規則表を `pre|post --agent antigravity` で使う。入力は camelCase
+(`toolCall`・`conversationId`)なので、検査の手前で `agent_session::antigravity::normalize` が Claude の形
+(`tool_name`・`tool_input`・`session_id`)に直し、返答は同じ型の `render` が agy の形(`decision`・`reason`・
+`injectSteps`)にする。規則の表に載らない個別の hook(SessionStart・Stop・ExitPlanMode の bin)は、
+`hook-router wrap <command> [--timeout <秒>]` が、Claude の形の command をそのまま agy の hook として走らせる
+(`crates/hook-router/src/antigravity.rs`。`compat` と同じ型)。道具名の対応・未確認の点は
+[Antigravity との対応表](../claude/antigravity-hook-parity.md)。
+
 ## 何のための仕組みか
 
 Claude Code の hook は、検査 1 つごとに別々の登録だった(`claude.nix` に約 50 件)。ツール呼び出しに付く
@@ -178,7 +186,7 @@ Amendment ではなく、別の ADR を立てる。
 
 `home.checks` の `hook-router-canary`(`home/modules/agents.nix`、`config/agents/hook-router-canary.sh`)が、
 generation の build のときに、配備後のレイアウトの `~/.claude/hooks/hook-router` に fixture を流し、判定(`deny`・`ask`・
-`pass`)を比べる。Codex 向けの行は `--agent codex` を付けて流す。食い違えば generation が build できない
+`pass`)を比べる。Codex 向けの行は `--agent codex`、agy 向けの行は `--agent antigravity` を付けて流す(agy の判定は最上位の `decision`)。食い違えば generation が build できない
 (`bleep-canary` と同じ型。#604)。
 
 - **何を確かめるか**: 規則の判定そのものは各 crate の `cargo test` が持つ。canary が確かめるのは、配備される binary と

@@ -55,7 +55,7 @@ fn deny_message(slots: &[String]) -> String {
 
 /// hook 本体。`hook-router` の規則(`Tools::Named(&["Agent", "Task"])`)が呼ぶ。対象外・読めないときは `None`。
 pub fn hook(agent: Agent, raw: &str) -> Option<Outcome> {
-    if agent != Agent::Claude {
+    if !matches!(agent, Agent::Claude | Agent::Antigravity) {
         return None;
     }
     let call = ToolCall::parse(agent, raw)?;
