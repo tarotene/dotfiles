@@ -38,6 +38,11 @@
 //!    でも確認を強制することを Claude Code 側で確認できているのは Claude
 //!    のみ(公式ドキュメント参照、docs/agents/pkexec-guard.md)。二段承認
 //!    が成立しない CLI では全 deny にする。
+//! 6. **素の `sudo` は、書き換え案つきで deny する。** agent の Bash では
+//!    `sudo` は必ず失敗する(sandbox の中は no_new_privs、外は制御端末なし)。
+//!    命令位置の `sudo` を見つけたら、許可リストにある命令は
+//!    `/usr/bin/pkexec <絶対パス> …` の形に書き直して返し、それ以外は本人に
+//!    `!` 付きの実行を頼むよう案内する(検出は案内のためで、安全の関所ではない)。
 
 use agent_session::Agent;
 use agent_session::HookInput;
@@ -254,6 +259,91 @@ fn sudo_askpass_reintroduction(cmd: &str) -> Option<&'static str> {
         }
     }
     None
+}
+
+/// 語が `NAME=値` の形(コマンドの前に置く環境変数の代入)か。
+fn is_env_assignment(word: &str) -> bool {
+    let Some((name, _)) = word.split_once('=') else {
+        return false;
+    };
+    !name.is_empty()
+        && !name.as_bytes()[0].is_ascii_digit()
+        && name.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_')
+}
+
+/// 文の語列が、命令位置の `sudo`(先頭の `NAME=値` 代入は読み飛ばす)で始まるなら、
+/// `sudo` に続く語を返す。`man sudo`・`grep sudo f`・`echo sudo` のように、`sudo` が
+/// 引数の位置にあるだけの文は対象にしない。
+fn sudo_invocation(words: &[String]) -> Option<&[String]> {
+    let i = words.iter().position(|w| !is_env_assignment(w))?;
+    (words[i] == "sudo").then(|| &words[i + 1..])
+}
+
+/// シェルの 1 語として安全に並べられる形にする(安全な文字だけなら素のまま、
+/// それ以外は単一引用符で囲む)。書き換え案の表示にだけ使う。
+fn shell_word(word: &str) -> String {
+    let safe = !word.is_empty()
+        && word
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b"_./=:@%+,-".contains(&b));
+    if safe {
+        word.to_string()
+    } else {
+        format!("'{}'", word.replace('\'', "'\\''"))
+    }
+}
+
+/// `sudo <rest>` を、この guard が通す `/usr/bin/pkexec <許可リストの絶対パス> …` の形に
+/// 書き換えられるなら、その文字列を返す。`sudo` のオプション(`-u`・`-E`・`-i` など)は
+/// pkexec に対応が無いので、先頭が `-` で始まるときは書き換えない。許可リスト外も書き換えない。
+fn pkexec_rewrite(rest: &[String]) -> Option<String> {
+    let first = rest.first()?;
+    if first.starts_with('-') {
+        return None;
+    }
+    let target = ALLOWED_TARGETS.iter().copied().find(|t| {
+        if first.starts_with('/') {
+            t == first
+        } else {
+            t.rsplit('/').next() == Some(first.as_str())
+        }
+    })?;
+    let mut out = format!("{PKEXEC_PATH} {target}");
+    for arg in &rest[1..] {
+        out.push(' ');
+        out.push_str(&shell_word(arg));
+    }
+    Some(out)
+}
+
+/// 素の `sudo` を、必ず失敗する呼び出しのまま通さず、次の一手つきの deny にする。
+///
+/// agent の Bash は、sandbox の中は no_new_privs(setuid の sudo が root になれない)、外は制御端末が無く
+/// パスワードを読めないので、`sudo` は常に失敗する。`sudo -A`/`-S` は別の理由で、上の
+/// [`sudo_askpass_reintroduction`] が先に deny する(パスワードが agent の読める経路を通るため)。
+/// 検出は案内のためで、安全の関所ではない(解析できない文の中の `sudo` は素通りし、実行時に失敗する)。
+fn plain_sudo_redirect(rest: &[String], agent: Agent) -> String {
+    const WHY: &str = "sudo は agent の Bash では動きません(制御端末が無く、sandbox の中は \
+                       no_new_privs です)";
+    if agent != Agent::Claude {
+        return format!(
+            "{WHY}。root が要る操作は、本人が端末で実行してください \
+             (docs/agents/pkexec-guard.md)"
+        );
+    }
+    match pkexec_rewrite(rest) {
+        Some(cmd) => format!(
+            "{WHY}。許可リストにある操作は、次の形で書き直してください(Claude Code の確認と、\
+             polkit の認証ダイアログへのパスワード入力が要ります): `{cmd}` \
+             (docs/agents/pkexec-guard.md)"
+        ),
+        None => format!(
+            "{WHY}。この呼び出しは pkexec の形に書き直せません(許可リスト外の命令、または \
+             sudo のオプション付き)。pkexec の許可リストは {} だけです。それ以外は、本人に \
+             `!` 付きの実行を頼んでください (docs/agents/pkexec-guard.md)",
+            ALLOWED_TARGETS.join(", ")
+        ),
+    }
 }
 
 /// `[A-Za-z0-9_-]` かどうか(この crate 自身の名前 `pkexec-guard` のように
@@ -606,6 +696,15 @@ fn check_with(input: &HookInput, agent: Agent, fs: &dyn PathMeta) -> Option<Perm
 
     let segments = shell::split_segments(cmd);
 
+    // 命令位置の素の `sudo` は、必ず失敗するので、書き換え案つきで deny する(全 agent 共通)。
+    if let Some(rest) = segments
+        .iter()
+        .filter_map(|seg| seg.words.as_deref())
+        .find_map(sudo_invocation)
+    {
+        return Some(PermissionDecision::deny(plain_sudo_redirect(rest, agent)));
+    }
+
     if segments.len() <= 1 {
         let words = shell::split(cmd);
         if !mentions_pkexec(cmd, words.as_deref()) {
@@ -936,13 +1035,94 @@ mod tests {
         }
     }
 
-    #[test]
-    fn allows_plain_sudo_without_askpass_flags() {
-        // sudo 自体は本 guard の対象外(tty のある対話端末では従来どおり
-        // sudo のプロンプトが機能する) — askpass/stdin 系フラグの再導入
-        // だけを狙い撃ちする。
+    fn deny_reason(cmd: &str, agent: Agent) -> String {
         let fs = FakeFs::new();
-        assert!(check_claude("sudo whoami", &fs).is_none());
+        let d = check_with(&input(cmd), agent, &fs).expect("deny されるはず");
+        format!("{d:?}")
+    }
+
+    #[test]
+    fn denies_plain_sudo_with_a_pkexec_rewrite_for_allowlisted_commands() {
+        // agent の Bash では sudo は必ず失敗する(sandbox の中は no_new_privs、外は制御端末なし)。
+        // 失敗させず、許可リストにある命令は pkexec の形の書き換え案つきで deny する。
+        let r = deny_reason("sudo apt-get install foo", Agent::Claude);
+        assert!(
+            r.contains("/usr/bin/pkexec /usr/bin/apt-get install foo"),
+            "{r}"
+        );
+        let r = deny_reason("sudo /usr/bin/systemctl restart foo", Agent::Claude);
+        assert!(
+            r.contains("/usr/bin/pkexec /usr/bin/systemctl restart foo"),
+            "{r}"
+        );
+    }
+
+    #[test]
+    fn plain_sudo_rewrite_quotes_unsafe_arguments() {
+        let r = deny_reason("sudo apt-get install 'a b'", Agent::Claude);
+        assert!(r.contains("'a b'"), "{r}");
+    }
+
+    #[test]
+    fn plain_sudo_without_a_rewrite_points_to_the_owner() {
+        // 許可リスト外(tee)、sudo のオプション付き(-u・-E)は、書き換え案を出さない。
+        for cmd in [
+            "sudo tee /etc/x",
+            "sudo -u bob apt-get update",
+            "sudo -E apt-get update",
+            "sudo",
+        ] {
+            let r = deny_reason(cmd, Agent::Claude);
+            assert!(!r.contains("次の形で書き直して"), "{cmd}: {r}");
+            assert!(r.contains("`!` 付き"), "{cmd}: {r}");
+        }
+    }
+
+    #[test]
+    fn plain_sudo_in_compound_commands_and_after_env_assignments_is_denied() {
+        for cmd in [
+            "cd /tmp && sudo apt-get update",
+            "echo x | sudo tee /etc/x",
+            "FOO=1 sudo apt-get update",
+        ] {
+            let fs = FakeFs::new();
+            assert!(check_claude(cmd, &fs).is_some(), "{cmd}");
+        }
+        let r = deny_reason("cd /tmp && sudo apt-get update", Agent::Claude);
+        assert!(r.contains("/usr/bin/pkexec /usr/bin/apt-get update"), "{r}");
+    }
+
+    #[test]
+    fn plain_sudo_is_denied_for_codex_and_copilot_without_a_pkexec_hint() {
+        // Codex・Copilot は pkexec を全 deny するので、書き換え案は出さない。
+        for agent in [Agent::Codex, Agent::Copilot] {
+            let r = deny_reason("sudo apt-get update", agent);
+            assert!(!r.contains("/usr/bin/pkexec /usr/bin/apt-get"), "{r}");
+            assert!(r.contains("本人が端末で実行"), "{r}");
+        }
+    }
+
+    #[test]
+    fn does_not_flag_sudo_that_is_only_an_argument_or_prose() {
+        // `sudo` が命令位置に無い文は、案内の対象にしない(誤検知の回帰)。
+        let fs = FakeFs::new();
+        for cmd in [
+            "grep -rn sudo docs/",
+            "man sudo",
+            "echo sudo apt-get update",
+            "command -v sudo",
+            "git commit -m 'sudo を使わない'",
+            "FOO=sudo env",
+        ] {
+            assert!(check_claude(cmd, &fs).is_none(), "{cmd}");
+        }
+    }
+
+    #[test]
+    fn does_not_flag_sudo_inside_a_quoted_heredoc_body() {
+        let fs = FakeFs::new();
+        let cmd = "cat <<'EOF'\nsudo apt-get update\nEOF";
+        assert!(check_claude(cmd, &fs).is_none());
     }
 
     #[test]
