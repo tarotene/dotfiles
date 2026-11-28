@@ -19,10 +19,10 @@ herdr worktree create --cwd /path/to/repo --branch feature/example
 
 もう一つ、入口を揃えても残る問題がある: Herdr は workspace を閉じても worktree
 checkout を削除しない(v0.8.2 時点、`herdr worktree remove` は `--workspace <ID>`
-必須で、閉じた後の残骸には使えない — upstream にその cleanup 手段自体が無い)。
+必須で、閉じた後の残骸には使えない — upstream にその cleanup 手段自体がない)。
 実測でマシン全体(全リポジトリ)で 100 件超・数十 GB の checkout が据え置きに
 なっていた。これは「checkout ごと残る」問題で、以下の登録メタデータ監査とは
-別クラスの検出・削除が要る。
+別クラスの検出・削除が必要である。
 
 ## 責務の対称形
 
@@ -50,9 +50,9 @@ repository を重複なく走査し、2 つの独立したクラスを検出す�
 - **prunable** — 登録は残っているが checkout ディレクトリが消えている
   (`git worktree list --porcelain` 自身の `prunable` 判定)。
 - **orphaned** — checkout は存在するが、次の条件を**すべて**満たす:
-  clean(未コミットの変更が無い)、Herdr で現在開いていない、
+  clean(未コミットの変更がない)、Herdr で現在開いていない、
   `git shelve` の退避が乗っていない、かつ upstream が `[gone]`
-  **または** upstream 未設定かつ default branch(`origin/HEAD`、無ければ
+  **または** upstream 未設定かつ default branch(`origin/HEAD`、なければ
   `main`/`master`)に対して unique commit が 0(herdr が生成したまま
   何も積まれなかった worktree)。
 
@@ -100,7 +100,7 @@ y/N 確認 → 削除、の流れは共通だが、クラスごとに削除手�
   worktree で、Git は clean かどうかに関係なく plain remove を無条件拒否するため
   (`man git-worktree` remove 節)、自前でより厳格な clean 判定
   (`status --porcelain --ignore-submodules=none` が空、かつ submodule 内容も
-  含めて dirty が無いこと)を通った場合に限り `--force` で再試行する。
+  含めて dirty がないこと)を通った場合に限り `--force` で再試行する。
 
 `--force` フラグを付けると、再検証を通った orphaned 候補全てに対して
 `git worktree remove --force` を直接使う。これは **Git 自身の削除拒否
@@ -120,14 +120,14 @@ git prune-worktrees --force      # orphaned で Git 自身の削除拒否を押�
 根拠にした無人削除の経路がある。根拠は次の3クラスの閉集合で、
 `[gone]` のような upstream tracking 状態は一切使わない。
 
-- **C1**: prunable な登録(checkout が既に無い — 保全すべき内容自体が無い)
+- **C1**: prunable な登録(checkout が既にない — 保全すべき内容自体がない)
 - **C2**: 先端が `origin/<default>` の祖先(main に入っている)
 - **C3:#N**: 先端が MERGED/CLOSED な PR の `headRefOid` と一致
   (`refs/pull/<N>/head` から復元可能)
 
 C2/C3 の worktree 候補は、orphaned クラスと同じ安全ガード(Herdr で
-閉じている・clean・shelve 無し)に加えて `locked` でないことも要求する。
-C1 はこのガードを通らない(checkout 自体が既に無い)。shallow な
+閉じている・clean・shelve なし)に加えて `locked` でないことも要求する。
+C1 はこのガードを通らない(checkout 自体が既にない)。shallow な
 リポジトリでは C2 判定を行わない(祖先判定を信頼できないため)。
 
 ```bash
@@ -167,12 +167,12 @@ prune-branches の対象に入るため)。1分間隔の検出 timer とは別�
 ## 作成直後: `post-checkout` と `.config/post-worktree.sh`(#702)
 
 リポジトリが「clone / worktree 作成後に 1 回流す」手順を AGENTS.md に定めているとき
-(ビルドに要る外部ソースの取得スクリプトなど)、worktree を作るたびに思い出して流す
-必要があった。忘れると最初の `git commit` で pre-commit のビルドが落ち、原因が
+(ビルドに必要な外部ソースの取得スクリプトなど)、worktree を作るたびに思い出して流す
+必要があった。忘れると最初の `git commit` で pre-commit のビルドが失敗し、原因が
 エラーの奥にあって分かりにくい。
 
 herdr は worktree を素の `git worktree add` で作る(herdrdev/herdr `src/worktree.rs`、
-取得 2026-10-05)。herdr 自体には作成後フックの設定が無い(`[worktrees]` は
+取得 2026-10-05)。herdr 自体には作成後フックの設定がない(`[worktrees]` は
 `directory` のみ。upstream への機能追加は CONTRIBUTING で受けない)。そこで git 標準の
 `post-checkout` を使う: `git worktree add` の直後に、第 1 引数が全桁 0 の null-ref、
 第 3 引数が 1 で呼ばれ、cwd は新しい worktree の root になる
@@ -186,7 +186,7 @@ worktrunk の `.config/wt.toml` の `[post-create]`(https://worktrunk.dev/hook/�
 | 条件 | 動作 |
 |---|---|
 | clone 直後(git-dir と common-dir が同じ) | 実行しない |
-| リンク worktree の作成直後で、宣言ファイルが無い | 何もしない |
+| リンク worktree の作成直後で、宣言ファイルがない | 何もしない |
 | 宣言ファイルがあり、リポジトリが opt-in 済み | `bash .config/post-worktree.sh` を実行する |
 | 宣言ファイルがあり、opt-in していない | 実行せず、opt-in の方法を stderr に 1 回出す |
 | スクリプトが失敗した | 失敗を stderr に出し、worktree 作成は成功のまま(post-checkout は作成を取り消せない) |
@@ -200,11 +200,11 @@ git config dotfiles.postWorktreeTrusted true
 リポジトリの中身は clone した相手が書けるので、宣言ファイルだけで実行すると、悪意ある
 リポジトリを clone しただけで任意のコードが走る。opt-in はそのリポジトリの
 `.git/config`(clone した中身からは書けない)に置くので、信頼する判断が本人に残る。
-リンク worktree に限るのも同じ理由(worktree を足せるのは、既に clone 済みの
+リンク worktree に限るのも同じ理由(worktree を追加できるのは、既に clone 済みの
 リポジトリだけ)。
 
 最後に repo-local の `post-checkout`(`git rev-parse --git-common-dir` 配下)へ chain する。
-`core.hooksPath` は `.git/hooks/` を無効にするため、他のリポジトリの hook を落とさない
+`core.hooksPath` は `.git/hooks/` を無効にするため、他のリポジトリの hook を無効化しない
 ための `pre-commit` と同じ規約。
 
 宣言ファイル自体は各リポジトリ側に置く(この dotfiles の外)。回帰テストは
@@ -257,7 +257,7 @@ git prune-branches --auto --dry-run
 `crates/git-prune/tests/prune_worktrees.rs`・`prune_branches.rs` の対話確認の節)と、
 `--auto` モード(スタブの `--evidence` 結果を使い、C1/C2/C3・`--dry-run`・TOCTOU・
 log.tsv への記録を確認する。同じファイルの `--auto` の節)を確認する。実行時の
-`--selftest` は無く(ADR-0024: cases は `#[test]`)、`cargo test` が走らせる。
+`--selftest` はなく(ADR-0024: cases は `#[test]`)、`cargo test` が走らせる。
 
 ```bash
 cargo test -p git-audit-worktrees -p git-prune -p git-worktree-create-guard

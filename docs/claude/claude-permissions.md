@@ -9,7 +9,7 @@ reconciler を通常配備へ戻した。Codex は自身の native 設定を使�
 `~/.claude/settings.json` の `permissions.allow` は、Claude Code が自分の判断で
 "許可プロンプトを毎回出さずに実行してよいコマンド" を宣言する場所。手で書いた
 ルールは他機の同期対象にならず、`home-manager switch` のたびに検証されないので、
-hook 登録（`docs/agents/copilot-plan-review.md`）と同じ「activation 時の冪等マージ」
+hook 登録(`docs/agents/copilot-plan-review.md`)と同じ「activation 時の冪等マージ」
 パターンを allow にも敷いた。
 
 配備は `home/modules/claude.nix` の `permissionRules` /
@@ -19,22 +19,22 @@ activation として `writeBoundary` の後に並べており、片方が失敗�
 
 ## ルール構文
 
-Claude Code の permission rule は `Tool` または `Tool(specifier)` の形（例:
-`Bash(git commit *)`）。裸のコマンド文字列（`git commit *`）は Bash ツールの
+Claude Code の permission rule は `Tool` または `Tool(specifier)` の形(例:
+`Bash(git commit *)`)。裸のコマンド文字列(`git commit *`)は Bash ツールの
 許可ルールとして認識されない — これは一度実際に取り違えて摩擦の原因になった。
 
 ## ルールの撤回: `retiredPermissionRules`
 
 追加の存在判定は `.permissions.allow` に**同一文字列**が含まれているかだけ
-（hook 登録の `(event, command)` キーによる存在判定と同型）。かつては「ルール
+(hook 登録の `(event, command)` キーによる存在判定と同型)。かつては「ルール
 文字列を直すと旧ルールが残り続ける」が既知の制約で、手動 jq が必要だったが、
 現在は削除も宣言的に行える:
 
 - ルールの**文字列そのものを直す・撤回する**場合は、旧文字列を
-  `retiredPermissionRules`（`home/modules/claude.nix`）に移す。activation が
+  `retiredPermissionRules`(`home/modules/claude.nix`)に移す。activation が
   `--retire` パスで全ホストの `.permissions.allow` から該当文字列を削除する
-  （無ければ何もしない = 冪等）
-- 追加は従来どおり `permissionRules` へ（無ければ足す、あれば何もしない）
+  (なければ何もしない = 冪等)
+- 追加は従来どおり `permissionRules` へ(なければ追加、あれば何もしない)
 - どちらのパスも `permissions.defaultMode` や allow 以外のキーには一切触らない
 
 最初の適用例が `Bash(git -C * add *)` / `commit` / `status` / `diff` の 4 件。
@@ -44,13 +44,13 @@ git-worktree-allow hook(検証つきのプログラム的許可 —
 `docs/agents/git-worktree-allow.md`)。
 
 同じ経路は宣言由来のルールに限らない。`Bash(ps -p * -o pid,cmd)` は実行時の
-許可プロンプトで個別ホストの settings.json に直接足された野良ルールだったが、
+許可プロンプトで個別ホストの settings.json に直接追加された野良ルールだったが、
 中間 `*` 警告は同様に発生し、撤回リストへ加えるだけで全ホストから消せた。
 
 `Bash(npx --prefix * playwright *)` も同型の野良ルールだったが、こちらは
 `config/claude/commands/promote-permissions.md` の generic 判定パターンにも
 「昇格すべき」として登録されていた。撤回リストだけでは `/promote-permissions`
-実行のたびに再び足されるため、昇格パターン側も同じ PR で削除した。
+実行のたびに再び追加されるため、昇格パターン側も同じ PR で削除した。
 
 これらを個別に3回撤回した(#453/#460/#461)末に判明したのは、「中間 `*`
 はワイルドカードとして機能せず実際にはマッチしていなかった」という、この
@@ -80,7 +80,7 @@ patterns(<https://code.claude.com/docs/en/permissions>、取得 2026-09-25)は
 `docs/agents/herdr-sidebar-metadata.md`)。この文書の「削除も宣言的に行える」は
 **forward switch にしか効かない**ことに注意: `home-manager switch --rollback`
 は撤回機構自体を含む前の generation の activation を再実行するので、撤回リストが
-まだ無い generation に戻れば「エントリだけ残る」問題が再発する
+まだない generation に戻れば「エントリだけ残る」問題が再発する
 (`docs/operations.md` に孤児チェックの手順がある)。これは `retiredPermissionRules`
 にも等しく当てはまる、activation を generation ごとに固定する home-manager の
 モデル自体の制約であり、settings.json 側の imperative merge を採る限り避けられない。
@@ -88,7 +88,7 @@ patterns(<https://code.claude.com/docs/en/permissions>、取得 2026-09-25)は
 ## 何を入れているか / 入れていないか
 
 破壊的でない読み取り・検査系と、Add / Commit / Create PR という主目的に直接効く
-4 件（`git add` / `git commit` / `git push` / `gh pr create`）だけを入れている。
+4 件(`git add` / `git commit` / `git push` / `gh pr create`)だけを入れている。
 `gh pr edit` / `gh issue create` / `gh issue edit` のような外部への書き込みは
 ワイルドカードでは入れていない。`Bash(gh pr edit *)` と書くと、他人の PR の編集まで
 許すことを表してしまうためである。
@@ -113,19 +113,19 @@ patterns(<https://code.claude.com/docs/en/permissions>、取得 2026-09-25)は
 | `sandbox.allowed_domains` | `sandbox.network.allowedDomains` | `dotfiles.claudePermissions.sandboxDomains` |
 | `sandbox.deny_read` | `sandbox.filesystem.denyRead` | `dotfiles.claudePermissions.secretPaths` |
 | `sandbox.excluded_commands` | `sandbox.excludedCommands` | `dotfiles.claudePermissions.excludedCommands` |
-| `sandbox.allow_write` / `retire_allow_write` | `sandbox.filesystem.allowWrite` | `dotfiles.claudePermissions.allowWrite`(各モジュールが足す。claude.nix は `~/.local/state/claude`、obsidian.nix は vault) |
+| `sandbox.allow_write` / `retire_allow_write` | `sandbox.filesystem.allowWrite` | `dotfiles.claudePermissions.allowWrite`(各モジュールが追加する。claude.nix は `~/.local/state/claude`、obsidian.nix は vault) |
 
 - 宣言したキーだけを合わせる。真偽値は異なるときだけ書き、配列は「宣言との和 − `retire_*`」で、
-  本人が `/sandbox` や承認で足した値(`allowWrite`・別の `denyRead` など)は残す。
-  宣言に無いキー(`allowUnsandboxedCommands`・`autoMode.environment`・`permissions.defaultMode`)には触れない。
+  本人が `/sandbox` や承認で追加した値(`allowWrite`・別の `denyRead` など)は残す。
+  宣言にないキー(`allowUnsandboxedCommands`・`autoMode.environment`・`permissions.defaultMode`)には触れない。
 - 宣言も撤回も空の配列は作らない(`allow` / `ask` だけは従来どおり空配列を作る)。
 - `excludedCommands` は sandbox の外で全権限で動く。パターンは狭く保つ。外のコマンドは通常の
   権限フロー(上の狭い allow、自動モードの分類器)を通る。
-- 秘密パスに足す基準(#1160): 上流のツールが既定で使う資格情報の保存先のうち、このリポジトリが導入または
+- 秘密パスに追加する基準(#1160): 上流のツールが既定で使う資格情報の保存先のうち、このリポジトリが導入または
   文書化しているもの(`rclone` の `~/.config/rclone`、`clasp` の `~/.clasprc.json`・`~/.config/clasp`、
-  `secret-tool` が読む GNOME の鍵束 `~/.local/share/keyrings`)。足すと、sandbox の中のコマンドと Read ツール
+  `secret-tool` が読む GNOME の鍵束 `~/.local/share/keyrings`)。追加すると、sandbox の中のコマンドと Read ツール
   から読めなくなる。そのため `rclone`・`clasp` を sandbox の中で呼ぶ手順(`drive-upload`・`gas-clasp-ops`
-  スキル)は、設定を読めずに失敗する可能性がある(2026-10-28 時点で未実測。失敗したら、除外コマンドに足す
+  スキル)は、設定を読めずに失敗する可能性がある(2026-10-28 時点で未実測。失敗したら、除外コマンドに追加する
   かどうかを別に判断する)。
 - 通信先・秘密パスの実値で公開できないものは private wrapper で `dotfiles.claudePermissions.*` を上書きする
   (ADR-0034)。Codex の `dotfiles.codexPermissions.{domains,secretPaths}` と同じ元(`agentPermissions`)が既定値。

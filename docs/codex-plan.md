@@ -1,7 +1,7 @@
 # codex-plan — Plan と実行のモデルを切り替える
 
 `codex-plan` は標準 Codex TUI を起動し、同じ会話内で Plan を
-`gpt-6.1-sol`、Auto（実行／native Default）も `gpt-6.1-sol` にする。
+`gpt-6.1-sol`、Auto(実行／native Default)も `gpt-6.1-sol` にする。
 未設定時の推論量は両方 `medium`。保存済みのペアは維持する。
 比較表と手元の使用量を見て、追加課金なしで普段の一日を続けられるか判断する。
 品質・消費削減率・一日持続は未実測。API 単価から定額枠のドル上限は推計しない。
@@ -34,14 +34,14 @@ native の「running work continues」という案内と異なり、専用サー
 `configure` は番号選択で Plan のモデルと推論量、Auto のモデルと推論量を選ぶ。
 Enter は現在の選択を維持し、`q`・EOF・保存確認での否定は保存しない。
 4引数による明示指定も引き続き使える。非TTYでは明示指定の使い方を表示し、保存しない。
-native の `model/list` 全ページ（hiddenを含む）とモデルID・推論量を
+native の `model/list` 全ページ(hiddenを含む)とモデルID・推論量を
 照合してから、`$XDG_CONFIG_HOME/codex-plan/settings.toml`
 (未指定時 `~/.config/codex-plan/settings.toml`)を一括で保存する。
 未設定の場合だけ既定値を使う。壊れた設定や部分的な設定から既定値へ戻さない。
 変更は次回起動から有効。モデル世代は推測して更新せず、このコマンドで明示する。
 
 利用不可・利用枠枯渇時は native のエラーを表示する。TUI終了後には観測した
-構造化エラーを capacity（供給混雑）、利用枠枯渇、コンテキスト不足、その他／不明に
+構造化エラーを capacity(供給混雑)、利用枠枯渇、コンテキスト不足、その他／不明に
 分け、native の候補と `configure` → `resume` の手順を案内する。
 `serverOverloaded` は残枠があっても起こり、利用枠枯渇とは区別する。
 短期の `rateLimitExceeded` も定額枠の枯渇とは断定しない。
@@ -56,8 +56,8 @@ home-manager はバイナリだけを配備し、ペア設定も Codex の `conf
 
 ## 比較表を読む
 
-公開仕様は `crates/model-catalog/catalog.toml`（ベンダー中立のモデルカタログ。同等性の判定も同じ正本を読む）にモデルID、単価、
-課金条件、著者、資料名、公開日（判明分）、URL、取得日をまとめてある。
+公開仕様は `crates/model-catalog/catalog.toml`(ベンダー中立のモデルカタログ。同等性の判定も同じ正本を読む)にモデルID、単価、
+課金条件、著者、資料名、公開日(判明分)、URL、取得日をまとめてある。
 可用性の正本は毎回取得する native `model/list`。Claude の3モデルは比較専用。
 未知のモデルを native が返した場合も選択できるが、価格・仕様は他世代から補わない。
 一覧取得に失敗しても `compare` の公開資料は読める。新しいペアの保存は拒否する。
@@ -97,7 +97,7 @@ OpenAIの書込TTLは30分／12時間、Claudeは5分／1時間で別単価。
 リクエスト境界が不明な集計量を扱う計算APIも、短文〜長文の範囲を明示する。
 creditsは独立した料金表で算出し、APIの長文割増や書込割増を転用しない。
 
-`compare` は `$CODEX_HOME`（未指定時 `~/.codex`）の `sessions` と
+`compare` は `$CODEX_HOME`(未指定時 `~/.codex`)の `sessions` と
 `archived_sessions` を読み、ローカルタイムゾーンの当日を含む直近7暦日を集計する。
 会話本文を送信・表示しない。未知の本文フィールドはデシリアライズ時に捨て、
 モデル・モード・推論量・時刻・使用量だけを使う。JSONには判明したservice tierと
@@ -117,7 +117,7 @@ context観測も含む。料金表示は常にStandard相当で、実請求額�
 履歴の作成アカウントIDはresume後も固定され、現在アカウントの証拠にはならない。
 そのため `compare` 時のアカウントに結び付いたAPI観測だけを
 `$XDG_STATE_HOME/codex-plan/rate-observations.jsonl`
-（未指定時 `~/.local/state/codex-plan/`）に保存する。ディレクトリ0700、ファイル0600。
+(未指定時 `~/.local/state/codex-plan/`)に保存する。ディレクトリ0700、ファイル0600。
 このローカル記録には照合用のアカウントIDを含み、比較出力にはIDを出さない。
 既存履歴から導けない対応関係を保存するための記録であり、手で台帳を更新する必要はない。
 
@@ -133,38 +133,38 @@ API価格やcreditsから定額枠のドル上限や持続比を逆算しない�
 ## 実行推論量の観測
 
 公開ベンチは「依頼から PR ができるまでの時間」を測らない。そこで普段の仕事を
-そのまま実験にする。Plan は固定のまま、実行（Auto）の推論量だけを抽選する。
+そのまま実験にする。Plan は固定のまま、実行(Auto)の推論量だけを抽選する。
 
-`experiment start` は、候補の推論量（2 つ以上）と最終日を
+`experiment start` は、候補の推論量(2 つ以上)と最終日を
 `settings.toml` の `[experiment]` に書く。候補は、実行モデルが native の
 `model/list` で対応している値に限る。開始日はその日のローカル日付が入る。
 実験が走っている間は、**新規起動のたび**に候補から一様に 1 つを選び、起動時に
-「観測中: 今回の実行は gpt-6.1-sol low（〜日付）」を 1 行出す。選んだ値は
-そのセッションの実行ペアとして使う（TUI の起動引数と、モード切替で戻すペアの
-両方）。`resume` は抽選せず、保存済みのスレッドの値を使う。保存済みのペア自体は
+「観測中: 今回の実行は gpt-6.1-sol low(〜日付)」を 1 行出す。選んだ値は
+そのセッションの実行ペアとして使う(TUI の起動引数と、モード切替で戻すペアの
+両方)。`resume` は抽選せず、保存済みのスレッドの値を使う。保存済みのペア自体は
 書き換えない。`/model` による手動変更は従来どおり尊重する。
-走っている実験に同じ候補で `start` を実行すると、最終日だけが延びる（開始日と割当て済みの
-期間は変わらない）。候補が違うときは拒否する。
+走っている実験に同じ候補で `start` を実行すると、最終日だけが延びる(開始日と割当て済みの
+期間は変わらない)。候補が違うときは拒否する。
 `experiment stop` は抽選を止め、`ended` に日付を書く。`[experiment]` を消さない
 のは、あとから「抽選で割り当てた期間」を導けるようにするため。割当ての台帳は
-作らない。選ばれた値は Codex 自身の履歴（各ターンの `effort`）に残る。
+作らない。選ばれた値は Codex 自身の履歴(各ターンの `effort`)に残る。
 実験中は `/fast` を使わない。使うとそのスレッドは別枠に分かれる。
 
 `compare` は、直近の暦日に作られたスレッドを実行モードの推論量で分け、次を出す。
 各値は中央値と p90。
 
-- 割当てあり: スレッドの開始が実験期間（`start`〜`ended`、停止前は `until`）に入る
+- 割当てあり: スレッドの開始が実験期間(`start`〜`ended`、停止前は `until`)に入る
 - 観察のみ: それ以外。設定を自分で選んだので、仕事の偏りが混ざる
 - PR まで: エージェントの稼働時間、最初のターン開始からの壁時計、人が割り込んだ往復数
-- 1 ターン: 所要時間と最初のトークンまでの時間（native の `task_complete`）
+- 1 ターン: 所要時間と最初のトークンまでの時間(native の `task_complete`)
 - 別枠で数えるだけ: 実行モードの推論量が途中で変わったスレッド、service tier が
-  既定以外のターンを含むスレッド、実行モードのターンが無いスレッド。腕には混ぜない
+  既定以外のターンを含むスレッド、実行モードのターンがないスレッド。腕には混ぜない
 - PR 到達が 5 件未満の腕は「件数不足」とだけ表示し、比較に使わない
 
 「PR ができた」は、`gh pr create` を含む呼び出しの結果に、PR の URL が 1 行として
 出たときだけ数える。`--help` や失敗は URL を出さないので数えず、その後の再試行が
 手戻りとして計測に残る。URL の規則は `crates/gh-edit-allow/src/gh.rs` の
-`parse_url`（PR のみ）と同じで、テストで同じ入力を照合している。呼び出しと結果の
+`parse_url`(PR のみ)と同じで、テストで同じ入力を照合している。呼び出しと結果の
 本文は照合したらすぐ捨て、保存も表示もしない。同じコマンドで PR の URL を echo
 するような場合は、既存の hook と同じく区別できない。子エージェントの履歴は親の
 仕事に含まれるので、スレッドとして数えない。
@@ -200,7 +200,7 @@ IDは整数と文字列を区別し、サーバーからの承認要求とは別
 `thread/start`・`thread/resume`・`thread/fork` の `sandbox` を除き、
 起動前に取得した名前を `permissions` に指定する。再開・派生でも現在の権限宣言を
 選び、保存済みの履歴・モデル・推論量は書き換えない。要求の `config` に
-`sandbox_mode`・`sandbox_workspace_write`（ドット区切りの子キーを含む）が
+`sandbox_mode`・`sandbox_workspace_write`(ドット区切りの子キーを含む)が
 あれば、競合した要求を転送せず終了する。権限名やポリシーは中継に固定しない。
 開始後の明示的な権限変更はそのまま native に渡す。
 未知のフィールドは保持する。それ以外の要求・応答・
@@ -223,7 +223,7 @@ native が保存モデルを上書きするため、渡さない。
 configure 中の事前検証にも同じシグナル回収を適用する。
 対話入力中もSIGINT・SIGTERM・SIGHUPを受け、ペアを保存せず終了する。
 Tokioのシグナル登録は受信側を破棄しても残るため、入力待ちは別workerで行う
-（Tokio 1.54.1、[unix.rs:331](https://github.com/tokio-rs/tokio/blob/tokio-1.54.1/tokio/src/signal/unix.rs#L331)、取得2026-10-26）。
+(Tokio 1.54.1、[unix.rs:331](https://github.com/tokio-rs/tokio/blob/tokio-1.54.1/tokio/src/signal/unix.rs#L331)、取得2026-10-26)。
 TUI を強制終了した場合はランチャーが起動前の端末状態を復元する。
 SIGKILLやマシンクラッシュではプロセス内の cleanup は実行できない。
 
@@ -305,21 +305,21 @@ Unix socket を作れる実行環境が必要。
 既存手段: `crates/codex-plan` と `home/modules/codex.nix` — 拡張 —
 既存の起動前検査・中継・設定反映を使う。ポリシーの複写や独自の表示フィルタは増やさない。
 
-根拠（OpenAI, Codex rust-v0.164.0、取得2026-10-27）:
+根拠(OpenAI, Codex rust-v0.164.0、取得2026-10-27):
 
 - D14: native の設定から権限名を取得し、起動要求に選択名だけを渡す。
   [config/read の作業ディレクトリ](https://github.com/openai/codex/blob/rust-v0.164.0/codex-rs/app-server-protocol/src/protocol/v2/config.rs#L389-L407)、
   [remote の権限選択と旧形式への変換](https://github.com/openai/codex/blob/rust-v0.164.0/codex-rs/tui/src/app_server_session.rs#L2160-L2199)、
   [名前付き指定と sandbox の排他](https://github.com/openai/codex/blob/rust-v0.164.0/codex-rs/app-server-protocol/src/protocol/v2/thread.rs#L94-L100)。
-  差分: remote の変換を中継で補正する（軸: 表現不可能 — 単一正本と排他的な選択）。
+  差分: remote の変換を中継で補正する(軸: 表現不可能 — 単一正本と排他的な選択)。
 - D15: 開発中機能の注意書きは native の設定で抑止する。
   [設定定義](https://github.com/openai/codex/blob/rust-v0.164.0/codex-rs/core/src/config/mod.rs#L1162-L1163)、
-  [Configuration Reference](https://learn.chatgpt.com/docs/config-file/config-reference)（公開日不明）。
-  差分: 一致。本人了承済みの標準設定を使う（軸: 還元 — 独自フィルタを作らない）。
+  [Configuration Reference](https://learn.chatgpt.com/docs/config-file/config-reference)(公開日不明)。
+  差分: 一致。本人了承済みの標準設定を使う(軸: 還元 — 独自フィルタを作らない)。
 - D16: 合成資格情報で実際のツール実行とモデルへの送信内容を検査する。
   [upstream の資格情報マスク試験](https://github.com/openai/codex/blob/rust-v0.164.0/codex-rs/core/tests/suite/scenarios_credential_masking.rs#L128-L193)、
   [ネットワーク無効時の警告](https://github.com/openai/codex/blob/rust-v0.164.0/codex-rs/core/src/config/mod.rs#L4916-L4951)。
-  差分: 中継を含む native app-server の実行で検査する（軸: 検出のみ — 外部バイナリの動作確認）。
+  差分: 中継を含む native app-server の実行で検査する(軸: 検出のみ — 外部バイナリの動作確認)。
 
 `tests/native_permissions.rs` は一時HOME、合成GitHub資格情報、ループバックの
 模擬Responsesを使う opt-in 試験。実トークンや有料推論は使わない。
@@ -331,7 +331,7 @@ cargo test -p codex-plan --test native_permissions -- --ignored --nocapture
 
 他のCodex sandbox内ではホストのdaemon socketが見えないため、通常のホスト権限で実行する。
 一時HOMEに対するPATH補助バイナリの作成拒否は、nativeが意図して出す診断として
-起動警告の通知とは区別する。試験は新規・再開・派生の実効権限名・通信許可と履歴・
+起動警告の通知とは区別する。テストは新規・再開・派生の実効権限名・通信許可と履歴・
 モデル・推論量を読み戻し、通常の `exec_command` のshell起動で資格情報が置換値になり、
 秘密パスが拒否されることを検査する。旧形式と通信無効の負の対照も含む。
 
@@ -361,53 +361,53 @@ sandbox_policy を読み、応答と対応づける。利用枠削減率は未�
 
 - D6: 既存configure・native discoveryを拡張する。OpenAI、
   [Codex 0.164.0 model/list](https://github.com/openai/codex/blob/6aaac694803004a63c6f393d153c96d22521a6b9/codex-rs/app-server-protocol/src/protocol/v2/model.rs#L54)。
-  差分は番号選択と比較表。既存の検証・一括保存を再利用する（軸: 還元）。
+  差分は番号選択と比較表。既存の検証・一括保存を再利用する(軸: 還元)。
 - D7: API相当額、credits、定額枠、capacityを分ける。OpenAI、
   [API Pricing](https://developers.openai.com/api/docs/pricing)、
   [Codex Pricing](https://learn.chatgpt.com/docs/pricing)、
   [構造化エラー](https://github.com/openai/codex/blob/6aaac694803004a63c6f393d153c96d22521a6b9/codex-rs/protocol/src/error.rs#L491)。
-  先行例と同じ単位・状態の区別を保ち、不明を枯渇やゼロに変換しない（軸: 表現不可能）。
+  先行例と同じ単位・状態の区別を保ち、不明を枯渇やゼロに変換しない(軸: 表現不可能)。
 - D8: 未設定時の両モードをSol 6.1 mediumにする。OpenAI、
   [GPT-6.1 Sol](https://developers.openai.com/api/docs/models/gpt-6.1-sol)、
   [Model selection](https://learn.chatgpt.com/docs/model-selection)。
-  差分は一日継続を重視した初期値と手元の観測。品質や持続の保証は加えない（軸: 検出のみ）。
+  差分は一日継続を重視した初期値と手元の観測。品質や持続の保証は加えない(軸: 検出のみ)。
 - D9: 既存rolloutのリクエスト記録と累積差分を採用する。OpenAI、
   [TokenUsageRecord](https://github.com/openai/codex/blob/6aaac694803004a63c6f393d153c96d22521a6b9/codex-rs/protocol/src/protocol.rs#L2393)、
   [作成アカウントは固定](https://github.com/openai/codex/blob/6aaac694803004a63c6f393d153c96d22521a6b9/codex-rs/protocol/src/protocol.rs#L3261)、
   [account-bound snapshot](https://github.com/openai/codex/blob/6aaac694803004a63c6f393d153c96d22521a6b9/codex-rs/app-server-protocol/src/protocol/v2/account.rs#L331)。
-  差分はアカウント帰属がない過去の使用率から日数を出さず、読取APIの観測で補うこと（軸: 表現不可能）。
+  差分はアカウント帰属がない過去の使用率から日数を出さず、読取APIの観測で補うこと(軸: 表現不可能)。
 
-実行推論量の観測の根拠。取得日は 2026-10-27（D10 の上流ソースは 2026-10-26 に確認、
-2026-10-27 時点で最新リリースは rust-v0.164.0 のまま）。
+実行推論量の観測の根拠。取得日は 2026-10-27(D10 の上流ソースは 2026-10-26 に確認、
+2026-10-27 時点で最新リリースは rust-v0.164.0 のまま)。
 
 - D10: Plan は gpt-6.1-sol medium に固定し、観測の対象から外す。OpenAI、
   [Plan プリセット](https://github.com/openai/codex/blob/rust-v0.164.0/codex-rs/models-manager/src/collaboration_mode_presets.rs#L13)
   は Plan の推論量を medium に固定し、Default はモデルの既定に従う。
-  差分は一致。Plan は計画の質が手戻りを決めるので試さない（軸: 検出のみ）。
+  差分は一致。Plan は計画の質が手戻りを決めるので試さない(軸: 検出のみ)。
 - D11: 実行の推論量は、新規起動ごとに一様に抽選する。Kohavi, Tang, Xu,
-  [Trustworthy Online Controlled Experiments](https://experimentguide.com/)（2020）。
+  [Trustworthy Online Controlled Experiments](https://experimentguide.com/)(2020)。
   差分は、割当ての単位が利用者でなく起動であること。被験者が 1 人なので、
-  曜日や作業の偏りを無作為化で均す目的に絞り、有意性を主張しない（軸: 還元）。
+  曜日や作業の偏りを無作為化で均す目的に絞り、有意性を主張しない(軸: 還元)。
 - D12: 時間は native が保存する `task_complete` から導く。OpenAI、
   [TurnCompleteEvent](https://github.com/openai/codex/blob/rust-v0.164.0/codex-rs/protocol/src/protocol.rs#L2273)
   の `duration_ms`・`time_to_first_token_ms`、および
   [常に保存する判定](https://github.com/openai/codex/blob/rust-v0.164.0/codex-rs/rollout/src/policy.rs#L137)。
-  差分は一致。独自の時刻記録は足さない（軸: 還元）。
-- D13: 観測中は Fast を使わない。OpenAI、
-  [Speed](https://learn.chatgpt.com/docs/agent-configuration/speed)（公開日の記載なし）は
+  差分は一致。独自の時刻記録は追加しない(軸: 還元)。
+- D13: 観測中は Fast を使わない。OpenAI,
+  [Speed](https://learn.chatgpt.com/docs/agent-configuration/speed)(公開日の記載なし)は
   Fast を「利用枠を 2.5 倍の速さで消費」と説明する。差分は一致。観測の外に置く
-  （軸: 検出のみ）。
+  (軸: 検出のみ)。
 
-実行側の既定値を決める入力（観測の前の手元の根拠。値は取得時点のもの）:
+実行側の既定値を決める入力(観測の前の手元の根拠。値は取得時点のもの):
 
 | 項目 | 値 | 出典 |
 |---|---|---|
-| gpt-6.1-sol の既定推論量（Codex） | low | OpenAI, [models.json L213](https://github.com/openai/codex/blob/rust-v0.164.0/codex-rs/models-manager/models.json#L213) |
-| gpt-6.1-sol の既定推論量（API） | medium | OpenAI, [GPT-6.1 Sol](https://developers.openai.com/api/docs/models/gpt-6.1-sol)。Codex と食い違うので、どちらも断定せず観測で決める |
-| 知能指数（low / medium） | 42 / 48 | Artificial Analysis, [low](https://artificialanalysis.ai/models/gpt-6-1-sol-low)・[medium](https://artificialanalysis.ai/models/gpt-6-1-sol-medium)（ページに公開日の記載なし） |
-| 出力速度（low / medium） | 49.9 / 53.0 tokens/s | 同上。出力速度は推論量でほぼ変わらない |
-| 最初の回答トークンまで（low、medium プロンプト / long / 100k） | 1.47 / 2.71 / 6.10 秒 | 同上。プロンプト種別は同ページの区分で、各区分の入力量は未確認 |
-| 同（medium） | 3.39 / 4.38 / 21.8 秒 | 同上。文脈が長いほど、推論量による待ちの差が開く |
+| gpt-6.1-sol の既定推論量(Codex) | low | OpenAI, [models.json L213](https://github.com/openai/codex/blob/rust-v0.164.0/codex-rs/models-manager/models.json#L213) |
+| gpt-6.1-sol の既定推論量(API) | medium | OpenAI, [GPT-6.1 Sol](https://developers.openai.com/api/docs/models/gpt-6.1-sol)。Codex と食い違うので、どちらも断定せず観測で決める |
+| 知能指数(low / medium) | 42 / 48 | Artificial Analysis, [low](https://artificialanalysis.ai/models/gpt-6-1-sol-low)・[medium](https://artificialanalysis.ai/models/gpt-6-1-sol-medium)(ページに公開日の記載なし) |
+| 出力速度(low / medium) | 49.9 / 53.0 tokens/s | 同上。出力速度は推論量でほぼ変わらない |
+| 最初の回答トークンまで(low、medium プロンプト / long / 100k) | 1.47 / 2.71 / 6.10 秒 | 同上。プロンプト種別は同ページの区分で、各区分の入力量は未確認 |
+| 同(medium) | 3.39 / 4.38 / 21.8 秒 | 同上。文脈が長いほど、推論量による待ちの差が開く |
 
 Claude比較はAnthropic、[Pricing](https://platform.claude.com/docs/en/about-claude/pricing)と
 [Fable 5.1](https://platform.claude.com/docs/en/models/fable-5-1/overview)、
@@ -437,11 +437,11 @@ issue-inbox --check-dup '<TITLE>' <OWNER/REPO>
 ```
 
 資格情報を引数・設定・会話へコピーせず、broker が tool 用の置換値へ変換する。
-合成資格情報の `codex-launcher` 試験は両起動入口の取得順序、失敗時の未起動、
+合成資格情報の `codex-launcher` テストは両起動入口の取得順序、失敗時の未起動、
 探索・TUI の資格情報除去を検査する。実際の native broker とモデル送信の確認は
-上の opt-in 試験で行う。コードの根拠は
+上の opt-in テストで行う。コードの根拠は
 [GitHub provider](https://github.com/openai/codex/blob/6aaac694803004a63c6f393d153c96d22521a6b9/codex-rs/network-proxy/src/credential_broker/providers/github.rs#L14-L51)
-（OpenAI *Codex*、公開日不明、取得日 2026-10-27）。
+(OpenAI *Codex*、公開日不明、取得日 2026-10-27)。
 
 認証情報を持つ中継では、起動時だけでなく、新規・再開・派生と各 turn の明示的な
 作業ディレクトリを再検査する。設定の上書きで masking・proxy・承認方式を弱める要求、
@@ -462,7 +462,7 @@ JSON-RPC エラーを返し、接続と他の要求は継続する。TUI が Git
 [masking 無効時の扱い L4915–4951](https://github.com/openai/codex/blob/6aaac694803004a63c6f393d153c96d22521a6b9/codex-rs/core/src/config/mod.rs#L4915-L4951)。
 通常の remote TUI の起動・turn は cwd を送り、モデル操作はこの保護の対象外である。
 
-### 起動ラッパーの版固定（#1162）
+### 起動ラッパーの版固定(#1162)
 
 `codex-launcher` は、GitHub 資格情報を渡す前に `codex --version` の出力を確かめ、
 `crates/codex-launcher/reviewed.toml` の release と
@@ -485,16 +485,16 @@ Codex 自身が起動時に更新を確認して、更新の画面から新し�
 上流の記述: 「Set to `false` only if your Codex updates are centrally managed」。`config_toml.rs` と
 `tui/src/updates.rs` の `get_upgrade_version`・`get_upgrade_version_for_popup` を、rust-v0.165.0 と
 rust-v0.169.0 の両方で読んだ。取得 2026-11-15)。宣言が外れると
-`crates/codex-launcher/tests/cli.rs` の `codex_self_update_check_stays_declared_off` が落ちる。
+`crates/codex-launcher/tests/cli.rs` の `codex_self_update_check_stays_declared_off` が失敗する。
 
 すでに新しすぎる版が入ってしまったときの直し方は `codex update` で、レビュー済みの版を入れ直す
 (`main.rs` は `update` を版の確認より先に処理するので、新しい版が入っていても使える)。新しい版を
 受け入れたいときは、下の 1〜3 の順でレビューしてから `reviewed.toml` を更新する。
 
-1. 検出した版の OpenAI *Codex* のソース（`codex-rs/core/src/config/mod.rs` の設定と、
-   起動引数の定義）を読み、`lib.rs` の語彙の表（`// Closed vocabulary` 以下）との差を確かめる。
-2. `crates/codex-launcher/tests/` の受け入れ試験を、新しい版の出力で通す。
+1. 検出した版の OpenAI *Codex* のソース(`codex-rs/core/src/config/mod.rs` の設定と、
+   起動引数の定義)を読み、`lib.rs` の語彙の表(`// Closed vocabulary` 以下)との差を確かめる。
+2. `crates/codex-launcher/tests/` の受け入れテストを、新しい版の出力で通す。
 3. `reviewed.toml` の release と commit、および `lib.rs` 冒頭の版・取得日を更新する。
 
-資格情報を渡さない起動（保護なしの通常のサブコマンド）は、この確認の対象外で止まらない。
+資格情報を渡さない起動(保護なしの通常のサブコマンド)は、この確認の対象外で止まらない。
 Renovate は新しい release と commit を PR に提案するが、自動マージはしない。

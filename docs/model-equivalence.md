@@ -13,7 +13,7 @@ opusplan(Plan 役 = Opus、実行役 = Sonnet)と同じ使用感を、codex-plan
 - **同じ課題を解き直した結果ではない。** 公開ベンチの数値から、(モデル × エフォート)の関係を崩さずに引いただけで、
   自分の仕事での使い心地を測っていない。実地の使い心地は、`codex-plan compare` の観測(`docs/codex-plan.md`)が別の材料になる。
 - **隠れた変数がある。** ハーネス(Claude Code・Codex)の違い、プロンプトの癖、レート制限は、この判定に入っていない。
-- **「差が無い」ことを「同等」と言わない。** 点数が同じでも、課題数が少ない公開ベンチでは区間が広く、同等と言えない。
+- **「差がない」ことを「同等」と言わない。** 点数が同じでも、課題数が少ない公開ベンチでは区間が広く、同等と言えない。
 
 ## 判定の規則
 
@@ -22,20 +22,20 @@ opusplan(Plan 役 = Opus、実行役 = Sonnet)と同じ使用感を、codex-plan
 | 能力 | ベンチごとに、差の 90% 区間を許容幅 ±δ と比べる(TOST)。区間が ±δ の内側なら「同等」、全体が −δ より下なら「弱い分野あり」、+δ より上なら「上回る」、またぐか作れなければ「データ不足」。境界ちょうどは内側と言わない。 | Lakens 2017 |
 | 区間 | 2 つのモデルを独立な 2 標本とみなし、Wilson 区間を組み合わせる Newcombe の方法で作る。同じ課題での対応を無視するので、区間は広めに出る(同等を言い過ぎない側)。 | Newcombe 1998 |
 | 速さ | 出力速度と最初のトークンまでの時間を、点推定の「良さの比」で見る。1/(1+δ)〜(1+δ) の内側なら「同等」。AA は区間を公開していないので「点推定のみ」と書く。 | — |
-| 役 | 総合点は作らない。判定に使うベンチすべてを見る。1 つでも「弱い分野あり」があれば「弱い分野あり」、無ければ「データ不足」が 1 つでもあれば「データ不足」、全部「上回る」なら「上回る」、それ以外は「同等」。能力のベンチが 0 件なら、速さが同等でも「データ不足」。 | — |
+| 役 | 総合点は作らない。判定に使うベンチすべてを見る。1 つでも「弱い分野あり」があれば「弱い分野あり」、なければ「データ不足」が 1 つでもあれば「データ不足」、全部「上回る」なら「上回る」、それ以外は「同等」。能力のベンチが 0 件なら、速さが同等でも「データ不足」。 | — |
 | 組 | Plan 役と実行役の判定を同じ規則で束ねる(両方が同等以上のときだけ「同等」)。 | — |
 
 許容幅の既定値は、速さが `catalog.toml` の `[equivalence]` の値(±20%)。能力は**役ごと**に決める(下の「分解能」)。ページのスライダーで動かせ、
 「既定に戻す」は表示中の役の既定に戻す。
 
 **分解能。** 公開ベンチは課題数が少なく、同じ点数でも区間が広がる(Terminal-Bench 4.0 は 66 課題で ±14pt ほど、AA-LCR は 100 問で
-±12pt ほど、HLE は 2158 問で ±2.5pt ほど)。許容幅がこの分解能より狭いと、差が無くても「同等」と言えない。各ベンチの分解能は
+±12pt ほど、HLE は 2158 問で ±2.5pt ほど)。許容幅がこの分解能より狭いと、差がなくても「同等」と言えない。各ベンチの分解能は
 判定の根拠欄に出る。能力の許容幅を ±5pt に固定すると、多くの行が「データ不足」になり、Plan 役では「同等」が 1 つも出なかった(#1150)。
 
 **役ごとの既定(#1150)。** 能力の既定の許容幅は、役の判定に使うベンチの分解能の最大値(点数 0.5 のとき。`judge::role_resolution`)を
 スライダーの刻み(0.5pt)に切り上げた値で、`[equivalence]` の `capability_margin_points`(±5pt)が下限。
 履歴の内訳で判定に使うベンチが絞られる役は、絞ったあとのベンチで決める。いまのカタログでは、Plan 役が約 ±12pt、実行役が約 ±14.5pt。
-「この許容幅より狭くは言えない」ことは、ページの許容幅のスライダーの下に常に文で出し(許容幅が分解能より狭いと、その旨も足す)、
+「この許容幅より狭くは言えない」ことは、ページの許容幅のスライダーの下に常に文で出し(許容幅が分解能より狭いと、その旨も追記する)、
 CLI の `compare` も役の見出しに許容幅と分解能の最大値を出す。`--margin-points` を渡すと、全部の役がその値になる。
 同等を言い過ぎないために、区間の計算は従来どおり独立 2 標本(同じ課題での対応を無視)。対応のある検定にして区間を狭める案(Issue の D)は、
 課題ごとの結果が公開されているか未確認のため、この変更では扱わない。
@@ -44,21 +44,21 @@ CLI の `compare` も役の見出しに許容幅と分解能の最大値を出�
 
 `model-equivalence lens` が、自分のマージ済み PR を種類に分けて、種類ごとの件数と期間だけを書く(タイトル・リポジトリ名・
 ファイル名は残さない)。分類は決定論的で、LLM を使わない。規則は `catalog.toml` の `[category.*]` の宣言が持つ(コードに
-prefix の表は無い)。
+prefix の表はない)。
 
 **種類を決める順序**
 
 1. **PR タイトルの conventional prefix**(`prefixes`)。型の一覧は Conventional Commits 1.0.0(
    <https://www.conventionalcommits.org/en/v1.0.0/>、取得 2026-10-28)が「`fix:` と `feat:` 以外の型も使ってよい。例として
    `build:`・`chore:`・`ci:`・`docs:`・`style:`・`refactor:`・`perf:`・`test:` を勧める」と書くものに合わせた。`revert`(取り消し)と
-   慣用の別名(`feature`・`bugfix`・`hotfix`・`doc`・`tests`)を足している。`style` は構造・書式を直す仕事としてリファクタ、
+   慣用の別名(`feature`・`bugfix`・`hotfix`・`doc`・`tests`)を追加している。`style` は構造・書式を直す仕事としてリファクタ、
    `chore` は依存・雑務として設定・インフラ、`revert` は壊れた変更を戻す修正としてバグ修正に入れる。`feat(x):`・`feat!:`・
    大文字小文字の違いは同じ型として読む。同じ prefix を 2 つの種類に宣言すると、読み込みで拒否する。
-2. **変更ファイルの名前**(`files`)。prefix で決まらなかった PR(prefix が無い、または宣言に無い型)にだけ、PR の変更ファイルを
+2. **変更ファイルの名前**(`files`)。prefix で決まらなかった PR(prefix がない、または宣言にない型)にだけ、PR の変更ファイルを
    REST(`repos/OWNER/REPO/pulls/N/files`、1 回 100 件)で取る。prefix で決まった PR には取りに行かない(呼び出しは prefix で決まらない PR の数だけ。
    従来の表で「その他」が 15.5% だった実機の履歴〔2026-10-27、1915 件、#1151〕でも、取る PR はその一部になる)。**全ファイルが同じ 1 つの種類に当たるときだけ**その種類にする。
    `dirs`(`docs/`・`.github/`・`tests/` など。パスの先頭か、任意の `/` の直後から始まる一致。最も長い一致が勝つ)を先に見て、
-   無ければ拡張子(`md`・`nix`・`yml` など)で決める。混在、どれにも当たらないファイルがある、ファイルが無いときは `other` のまま。
+   なければ拡張子(`md`・`nix`・`yml` など)で決める。混在、どれにも当たらないファイルがある、ファイルがないときは `other` のまま。
 3. どちらでも決まらなければ `other`。
 
 ファイルの取得に失敗した(レート制限、権限、削除されたリポジトリ)PR、または 100 件に届いて全体を見られない PR は、その PR を
@@ -67,8 +67,8 @@ prefix の表は無い)。
 
 **運用**
 
-- 既定の対象は自分のアカウントだけ。組織は `--owners` で明示したものだけを足す(会社の業務リポジトリを巻き込まないため)。
-  新しい組織は `model-equivalence lens --list-orgs` で名前を確かめ、`--owners 自分のアカウント,組織` に足して再実行する。
+- 既定の対象は自分のアカウントだけ。組織は `--owners` で明示したものだけを追加する(会社の業務リポジトリを巻き込まないため)。
+  新しい組織は `model-equivalence lens --list-orgs` で名前を確かめ、`--owners 自分のアカウント,組織` に追加して再実行する。
   再実行は、履歴の使い方が変わったとき(担当や仕事の種類が変わった)でよく、定期実行はしない。
 - **会社の業務リポジトリ(#1151 の扱い)。** 初手では数えない(既定のまま)。数えるなら会社の機体の上で、件数だけを分類する。
   `lens` はタイトルを読んでメモリ上で分類するだけで、書き出すのは件数と期間(`lens.json`)だけ。タイトル・リポジトリ名・ファイル名は
@@ -82,8 +82,8 @@ prefix の表は無い)。
 - **実行役** は、履歴で 10% 以上を占める種類に対応するベンチだけで判定する。**Plan 役** は種類を問わず、設計・推論・長い文脈の読解に
   効く力として同じベンチで判定する。
 - 種類とベンチの対応(`[category.*]`)は、仕事そのものを測るもの(direct)と、近い力を測っているだけの代理(proxy)を分ける。
-  SWE-bench 系は、現行モデルに値のある行が無い(更新停止)ので載せられず、バグ修正・機能追加・テストは代理になる。
-  対応するベンチが無い種類は、判定から黙って外さず、「測れていない割合」としてページに出す。
+  SWE-bench 系は、現行モデルに値のある行がない(更新停止)ので載せられず、バグ修正・機能追加・テストは代理になる。
+  対応するベンチがない種類は、判定から黙って外さず、「測れていない割合」としてページに出す。
 - 窓の長さ(既定 365 日)と、最近の仕事を重く見るかは、この段では変えていない(`--days` で変えられる)。実機の内訳が
   窓によってどう動くかを見てから決める。
 
@@ -92,13 +92,13 @@ prefix の表は無い)。
 - 主データは Artificial Analysis(AA、第三者の計測機関)の API。Claude と GPT-6.1 Sol を low〜max の 5 段階ずつ、別の行で測っている。
   ハーネスは mini-swe-agent に固定(Claude Code・Codex では測っていない)。他社のモデルも同じ形で載る。
 - 価格を載せていないモデル(Claude Haiku 5.5、GPT-6.1 Terra)は、測定値だけを持ち、費用の比較(codex-plan)には出ない。`catalog.toml` の `[[model]]` は、価格の欄が全部そろったときだけ費用の比較に出る。
-- 取り込みは `model-catalog fetch-aa`。AA の行 ID(uuid)で突き合わせる(AA 公式が、名前や slug は変わりうるので ID を主キーに
+- 取り込みは `model-catalog fetch-aa`。AA の行 ID(uuid)で突き合わせる(AA 公式が、名前や slug は変わる可能性があるため ID を主キーに
   するよう推奨している)。生成ブロックだけを書き換え、手登録の部分には触れない。規則は次の「自動登録」の節。
-- 鍵は環境変数 `ARTIFICIAL_ANALYSIS_API_KEY`、無ければ login keyring(`secret-tool`、application=model-catalog
+- 鍵は環境変数 `ARTIFICIAL_ANALYSIS_API_KEY`、なければ login keyring(`secret-tool`、application=model-catalog
   credential=artificial-analysis-api-key)から読み、標準入力で `curl` に渡す(`ps` に出ない)。リポジトリには置かない。
 - 利用条件: AA への出典表示が必要(ページの脚注とデータの出典欄に出す)。上限は 1 日 1000 リクエスト。
 - 採点の偏り: AA-LCR と HLE は GPT 系の LLM(GPT-5.6 Luna (medium))が等価判定をしている。Claude の答えを GPT が採点する構図で、
-  この 2 つでは GPT が有利に出る偏りがありうる(大きさは未確認。「未確認だった点の確認」参照)。ページの出典欄に書く。
+  この 2 つでは GPT が有利に出る偏りがある可能性がある(大きさは未確認。「未確認だった点の確認」参照)。ページの出典欄に書く。
 - 純正ハーネス(Claude Code・Codex)での値は、Terminal-Bench 公式の leaderboard にある(max のみ)。AA の値との差の向きが
   モデルごとに揃わない(2026-10-27 時点で、Opus 5.5 は +5.2pt、Sonnet 5.5 は −1.8pt、GPT-6.1 Sol は +2.1pt)ので、補正に使わず、
   注記として並べる。
@@ -111,13 +111,13 @@ prefix の表は無い)。
 
 | 規則 | 内容 |
 |---|---|
-| 対象 | 公開日が `aa_release_since` 以降で、役の判定に使うベンチ(`[role.*].benchmarks`)のどれかに値がある行。既に自動登録した行は、日付の外に出ても、値が null になっても残る。`[discovery]` が無ければ、新しい登録はしない。 |
-| 手登録の保護 | 生成ブロックの外の `[[provider]]`・`[[model]]` は読むだけ。手登録の `aa_ids` の行は、測定値だけを更新する。手登録と同名(大文字小文字・空白を無視した基本名が一致し、提供元の `aa_creator` も合う)の別の行は、取り込まずに報告する。手登録の部分へ、自動登録済みと同じ ID のモデルを足したら、手登録が優先され、自動登録側が外れる。 |
+| 対象 | 公開日が `aa_release_since` 以降で、役の判定に使うベンチ(`[role.*].benchmarks`)のどれかに値がある行。既に自動登録した行は、日付の外に出ても、値が null になっても残る。`[discovery]` がなければ、新しい登録はしない。 |
+| 手登録の保護 | 生成ブロックの外の `[[provider]]`・`[[model]]` は読むだけ。手登録の `aa_ids` の行は、測定値だけを更新する。手登録と同名(大文字小文字・空白を無視した基本名が一致し、提供元の `aa_creator` も合う)の別の行は、取り込まずに報告する。手登録の部分へ、自動登録済みと同じ ID のモデルを追加したら、手登録が優先され、自動登録側が外れる。 |
 | エフォート | 名前の末尾の括弧の、カンマの前の先頭語が、閉じた語彙(low・medium・high・xhigh・max・minimal・reasoning・non-reasoning)に当たるときだけエフォートとし、括弧を外した名前を基本名にする。それ以外(`(Dec '24)`・`(Preview)`・`(Adaptive Reasoning, …)` など)は名前の一部のままで、エフォートは `default` の 1 行。公式の段階名かの確認は別(「未確認だった点の確認」の 2)。 |
 | まとめ方 | (提供元, 基本名)で 1 モデルにまとめる。同じ (基本名, エフォート) の行が複数あれば、公開が新しい方を取り(同日なら ID の大きい方)、取らなかった行を報告する。 |
-| 提供元 | 手登録の提供元の `aa_creator` に合えばそこへ(Anthropic・OpenAI の新モデルは既存の提供元に入る)。無ければ、提供元名のスラッグで新しい `[[provider]]` を作る。 |
+| 提供元 | 手登録の提供元の `aa_creator` に合えばそこへ(Anthropic・OpenAI の新モデルは既存の提供元に入る)。なければ、提供元名のスラッグで新しい `[[provider]]` を作る。 |
 | ID の安定 | 前回の生成ブロックの AA の行 ID を逆引きし、同じモデル ID を再利用する(名前が変わっても別モデルにならない。表示名は追従する)。新しいモデルは基本名のスラッグ。手登録・既存と衝突したら提供元の ID を付け、それでも衝突したら番号を付ける。 |
-| 引退 | 応答に 1 行も無くなった自動登録のモデルは `status = "retired"` で残り、応答に戻れば active に戻る。応答に無い行の最後の値は、行ごとの取得日(`retrieved`)つきで持ち越す。ページは、取得から 90 日を超えた値のセルを薄くし、根拠の欄に日数を出す。手登録のモデルの `status` は手登録の部分にあるので書き換えず、応答に 1 行も無いときは報告だけをする。 |
+| 引退 | 応答に 1 行もなくなった自動登録のモデルは `status = "retired"` で残り、応答に戻れば active に戻る。応答にない行の最後の値は、行ごとの取得日(`retrieved`)つきで持ち越す。ページは、取得から 90 日を超えた値のセルを薄くし、根拠の欄に日数を出す。手登録のモデルの `status` は手登録の部分にあるので書き換えず、応答に 1 行もないときは報告だけをする。 |
 | 価格 | 自動登録のモデルは価格を持たない(費用の比較には出ず、ページには「価格は未登録」と出る)。 |
 
 実 API を呼ばずに確かめるため、テストは `crates/model-catalog/tests/fixtures/aa-small.json` と、テスト内で作った 330 行の応答を使う。
@@ -129,14 +129,14 @@ prefix の表は無い)。
 
 | # | 点 | 結論 | 根拠(出典・取得日 2026-10-28) |
 |---|---|---|---|
-| 1 | Claude の行名の `Default Fallback` | **未確認**(意味を書いた一次資料が見つからない) | AA の方法論ページ(<https://artificialanalysis.ai/methodology/intelligence-benchmarking>)に `Default Fallback` は無い(取得結果: `NOT FOUND: Default Fallback`)。API リファレンス(<https://artificialanalysis.ai/api-reference>)のモデルの項目は `id`・`name`・`slug`・`model_creator`・`evaluations`・`pricing`・速度の欄で、`reasoning_effort` や `Default Fallback` の欄は無い。モデルのページ(`/models/claude-opus-5-5-medium`)の取得結果にも説明は無かった。検索では、Claude の全行が `(Adaptive Reasoning, <段階> Effort, Default Fallback)` と付く事実だけが確認できた(例: <https://artificialanalysis.ai/models/claude-fable-5-1>)。GPT の行には付かない。 |
-| 2 | `Non-reasoning` の扱い | **未確認**(`reasoning.effort` の `none` と同じかは言えない) | OpenAI の文書(<https://developers.openai.com/api/docs/guides/reasoning>)は、"Supported values are model-dependent and can include `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, and `max`." と書き、"GPT-6.1 Sol does not support `none` or `minimal` and defaults to `medium`." と書く。GPT-6.1 Terra が `none` に対応するかは、取得した範囲に記述が無い。AA の方法論ページに `Non-reasoning` という行名の説明は無いが、"Non-reasoning models: 16,384 tokens … Reasoning models: Maximum output tokens allowed" と "Temperature: 0 for non-reasoning models, 0.6 for reasoning models" のように、AA は測定条件の設定を非推論モデルと推論モデルで分けている。これは AA の分類で、OpenAI の `none` との対応を示す文ではない。**扱いは、エフォートの段階ではなく別の軸のまま**(カタログは公式の段階名を持つ方針で、`Non-reasoning` は公式の段階名として確認できていない)。 |
+| 1 | Claude の行名の `Default Fallback` | **未確認**(意味を書いた一次資料が見つからない) | AA の方法論ページ(<https://artificialanalysis.ai/methodology/intelligence-benchmarking>)に `Default Fallback` はない(取得結果: `NOT FOUND: Default Fallback`)。API リファレンス(<https://artificialanalysis.ai/api-reference>)のモデルの項目は `id`・`name`・`slug`・`model_creator`・`evaluations`・`pricing`・速度の欄で、`reasoning_effort` や `Default Fallback` の欄はない。モデルのページ(`/models/claude-opus-5-5-medium`)の取得結果にも説明はなかった。検索では、Claude の全行が `(Adaptive Reasoning, <段階> Effort, Default Fallback)` と付く事実だけが確認できた(例: <https://artificialanalysis.ai/models/claude-fable-5-1>)。GPT の行には付かない。 |
+| 2 | `Non-reasoning` の扱い | **未確認**(`reasoning.effort` の `none` と同じかは言えない) | OpenAI の文書(<https://developers.openai.com/api/docs/guides/reasoning>)は、"Supported values are model-dependent and can include `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, and `max`." と書き、"GPT-6.1 Sol does not support `none` or `minimal` and defaults to `medium`." と書く。GPT-6.1 Terra が `none` に対応するかは、取得した範囲に記述がない。AA の方法論ページに `Non-reasoning` という行名の説明はないが、"Non-reasoning models: 16,384 tokens … Reasoning models: Maximum output tokens allowed" と "Temperature: 0 for non-reasoning models, 0.6 for reasoning models" のように、AA は測定条件の設定を非推論モデルと推論モデルで分けている。これは AA の分類で、OpenAI の `none` との対応を示す文ではない。**扱いは、エフォートの段階ではなく別の軸のまま**(カタログは公式の段階名を持つ方針で、`Non-reasoning` は公式の段階名として確認できていない)。 |
 | 3 | 採点者の偏り | **採点者は確認できた。偏りの大きさは未確認** | AA の方法論ページ。AA-LCR: "Model responses are evaluated using GPT-5.6 Luna (medium) as an equality checker with pass@1 scoring"。HLE: "Evaluated with an equality checker LLM prompt adapted from the original HLE paper, using GPT-5.6 Luna (medium), with pass@1 scoring"。どちらも参照解答との等価判定で、主観的な採点ではない。自己選好の研究 Panickssery, Bowman, Feng, "LLM Evaluators Recognize and Favor Their Own Generations"(<https://arxiv.org/abs/2404.13076>、公開日は取得ページに記載なし)は、"an LLM evaluator scores its own outputs higher than others' while human annotators consider them of equal quality" と述べるが、それは評価者が自分の出力を採点する場面で、参照解答との等価判定でどれだけ出るかは、この文献からは言えない。採点者を替えた他の評価は見つけていない。 |
-| 4 | SWE-bench 系の再開 | **まだ現行モデルの行を確認できない** | Aider の leaderboard(<https://aider.chat/docs/leaderboards/>)は "last updated November 20, 2025" で、上位は `gpt-5 (high)` など。SWE-bench の実験リポジトリ(<https://github.com/SWE-bench/experiments>)は、"submissions must include a link to an arXiv preprint or technical report" とする方針を 2025-11-18 から適用すると書くが、新しい提出の有無は取得した範囲から読めない。swebench.com の leaderboard は取得結果にテーブルが無く(動的描画)、更新日も読めなかった。**四半期ごとに確かめる**(対応表 `[category.*]` を直接測るベンチに替える条件は変えない)。 |
-| 5 | 課題ごとの結果 | **公開されていない(文書に記述なし)** | API リファレンスの取得結果は、課題・問・サンプルごとの結果と標準誤差の欄を `NOT FOUND` とした。信頼区間 `ci95` を返すのは画像・動画の Elo の endpoint だけ。方法論ページにも課題ごとの結果の公開の記述は無い(`per-question` は `NOT FOUND`)。したがって、同じ課題での対応のある検定はできず、区間は今の Newcombe の方法(独立な 2 標本)のまま。 |
+| 4 | SWE-bench 系の再開 | **まだ現行モデルの行を確認できない** | Aider の leaderboard(<https://aider.chat/docs/leaderboards/>)は "last updated November 20, 2025" で、上位は `gpt-5 (high)` など。SWE-bench の実験リポジトリ(<https://github.com/SWE-bench/experiments>)は、"submissions must include a link to an arXiv preprint or technical report" とする方針を 2025-11-18 から適用すると書くが、新しい提出の有無は取得した範囲から読めない。swebench.com の leaderboard は取得結果にテーブルがなく(動的描画)、更新日も読めなかった。**四半期ごとに確かめる**(対応表 `[category.*]` を直接測るベンチに替える条件は変えない)。 |
+| 5 | 課題ごとの結果 | **公開されていない(文書に記述なし)** | API リファレンスの取得結果は、課題・問・サンプルごとの結果と標準誤差の欄を `NOT FOUND` とした。信頼区間 `ci95` を返すのは画像・動画の Elo の endpoint だけ。方法論ページにも課題ごとの結果の公開の記述はない(`per-question` は `NOT FOUND`)。したがって、同じ課題での対応のある検定はできず、区間は今の Newcombe の方法(独立な 2 標本)のまま。 |
 | 6 | Terminal-Bench の機械可読なデータ | **安定した取得方法は確認できなかった** | tbench.ai の leaderboard ページ(<https://www.tbench.ai/leaderboard/terminal-bench/4.0>)の取得結果は列の見出しだけで、行は読めなかった。リポジトリ(<https://github.com/harbor-framework/terminal-bench>)は "Dataset & leaderboard: Terminal-Bench on Harbor Hub"(<https://hub.harborframework.com/datasets/terminal-bench/terminal-bench/latest>)へ案内するが、そのページは取得時に "Loading leaderboard…" で、API・CSV・JSON の書き出しの記述は見つからなかった。Harbor の文書(<https://docs.harborframework.com/>)にも、leaderboard を機械で読む方法の記述は見つからなかった。提出の様式(`metadata.yaml` と `result.json`)は検索結果で目にしたが、一次資料では確認できていない。**今のところ、ブラウザで読んだ表の手転記を続ける**。 |
 
-試した手段の限界: 公式ページの多くは JS で描画され、WebFetch の取得結果は本文の一部だけだった。「見つからなかった」は「資料に無い」ではない。
+試した手段の限界: 公式ページの多くは JS で描画され、WebFetch の取得結果は本文の一部だけだった。「見つからなかった」は「資料にない」ではない。
 点 1・2・6 は、AA の担当や Harbor の保守者に問い合わせるまで未確認として扱う(問い合わせは人の作業で、ここでは行っていない)。
 
 ## 近さの地図(#1147)
@@ -161,11 +161,11 @@ prefix の表は無い)。
 - 分解能を基準側でなく中点で測るのは、距離を 2 点に対して対称にするため(判定の分解能は基準の点数で測る)。判定の式を変えない。
 - 成分の部分集合が組ごとに違うので、厳密な距離の公理(三角不等式)は保証しない。対称と、自己距離 0 は保証する(テストで縛る)。
 - L∞ にする理由: 役の判定が「1 つでも弱ければ弱い」(最悪の成分で決まる)と束ねているのに合わせた。平均や二乗和にすると、1 つのベンチで大きく負けている点が
-  近く見えてしまう。この定義は本リポジトリ独自で、先行例は無い(下の先行例の節)。
+  近く見えてしまう。この定義は本リポジトリ独自で、先行例はない(下の先行例の節)。
 
 **2 次元への射影(古典的 MDS)。** 距離行列を二重中心化し、上位 2 つの固有値・固有ベクトルを取って座標にする。固有ベクトルは、直交化つきの累乗法で
-自前実装した(外部の線形代数 crate は足さない)。同じ入力は同じ座標になるよう、初期ベクトルを決定的な擬似乱数にし、固有ベクトルの符号を
-「絶対値が最大の成分を正にする」に固定する。軸の向きに意味は無い。距離を直接出せない組があるときは、距離を出せた組だけを辺とみなした最短経路で補い
+自前実装した(外部の線形代数 crate は追加しない)。同じ入力は同じ座標になるよう、初期ベクトルを決定的な擬似乱数にし、固有ベクトルの符号を
+「絶対値が最大の成分を正にする」に固定する。軸の向きに意味はない。距離を直接出せない組があるときは、距離を出せた組だけを辺とみなした最短経路で補い
 (補った組の数はページに出す)、辺でつながらない行は地図に載せない。
 
 **stress の読み方。** 地図の歪みは Kruskal の stress-1(`sqrt(Σ(d − d̂)² / Σ d²)`、d = 元の距離、d̂ = 地図の上の距離)で測る。直接の距離がある組だけで計算する。
@@ -223,18 +223,18 @@ model-equivalence render --observations /tmp/observations.json --out /tmp/model-
   `golden` として埋め込み、ページが読み込み時に自分の計算と突き合わせて縛る。ずれたら警告を出す。埋め込みは行数に比例する。
   突き合わせの件数は `<html data-selfcheck="一致/総数">` にも出る。
 - JS の核(`CORE BEGIN`〜`CORE END`)は DOM に触れず、`cargo test`(`render.rs`)が node で実行して golden と突き合わせる(360 行、12 通りの基準、
-  埋め込みを書き換えたときに検知することまで)。node が無い環境ではこの突き合わせだけを省く(ブラウザの読み込み時の突き合わせは残る)。
+  埋め込みを書き換えたときに検知することまで)。node がない環境ではこの突き合わせだけを省く(ブラウザの読み込み時の突き合わせは残る)。
 - 列(エフォート)の並びは、語彙の段階順 → `default` → その他。モデル名・提供元で絞り込める。先頭列は固定で、表は横に動かせる。
 - 生成した HTML は、自分だけが見る private なページとして公開する。公開先の URL は private な場所に置き、このリポジトリには書かない。
 
 ## 追従
 
 - 新しい提供元・モデル・エフォートの段階: `[discovery]` の範囲なら、`fetch-aa --write` が自動で登録する。コードは変えない。価格や、
-  公式の段階名・出典を持たせたいモデルだけ、`catalog.toml` の生成ブロックの外に `[[model]]`(と `aa_ids`)を手で足す(手登録が優先される)。
+  公式の段階名・出典を持たせたいモデルだけ、`catalog.toml` の生成ブロックの外に `[[model]]`(と `aa_ids`)を手で追加する(手登録が優先される)。
 - 引退したモデル: 自動登録のモデルは `fetch-aa` が `status = "retired"` にして残す(以前の組合せとの比較のため)。手登録のモデルは人が
   `status = "retired"` にする。ページに「提供終了」と出る。
 - 測定値の更新と自動登録: `model-catalog fetch-aa --file crates/model-catalog/catalog.toml --write`。標準出力に、新しく登録したモデル・
-  retired にしたモデル・応答に無い行・同じ名前とエフォートの衝突・手登録と同名で取り込まなかった行が出る。
+  retired にしたモデル・応答にない行・同じ名前とエフォートの衝突・手登録と同名で取り込まなかった行が出る。
 - `catalog.toml` は `cleanCargoSource` の対象(`*.toml`)なので、更新は workspace の Rust ビルドのキャッシュを無効にする。
 
 ## 執行点

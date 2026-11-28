@@ -25,7 +25,7 @@ vega の机に Osmo Pocket 3(Creator Combo)を据え置き、会議で内蔵カ�
    電源を入れると自動でリンクする(取説 "Microphone Connection" の "DJI Mic 2
    Transmitter Connection" 節)。
 
-毎回「Webcam」のタップが要る。USB モードを記憶する設定は、取説に見つかっていない。
+毎回「Webcam」のタップが必要。USB モードを記憶する設定は、取説に見つかっていない。
 タップしていない状態では、USB ID が `2ca3:0020` で見え、カメラも音声も vega に現れない
 (2026-10-23 に実際に起きた。そこから Webcam に戻す手順は、この日は確かめていない)。
 
@@ -44,7 +44,7 @@ Firefox は Meet で、カメラを v4l2 で直接開くことを実測した(�
 - **Slack**(vega の正は nix 版。`home/modules/desktop.nix` の宣言、#957): 環境設定の音声と動画で、
   カメラに DJIPocket3 を選ぶ。**画面名・項目名は未確認**(Slack のこのバージョンで確かめていない)。
   手で入れた Flatpak 版 `com.slack.Slack`(2026-10-23 の読み取りでは `devices=all` で `/dev/video*` が
-  見えた)は宣言に無く、撤去する対象である(#957)。nix 版でカメラが見えることは、vega の実機では未確認。
+  見えた)は宣言になく、撤去する対象である(#957)。nix 版でカメラが見えることは、vega の実機では未確認。
 
 ## 3. 既定マイクの仕組み
 
@@ -69,7 +69,7 @@ OpenFit Pro との関係(#892、**実機では未確認**): ヘッドセット�
 ```sh
 wpctl status | sed -n '/Sources:/,/^$/p'          # DJIPocket3 Analog Stereo に * が付くか
 pw-metadata 0 | grep default.audio.source          # alsa_input.usb-DJI… か
-systemctl --user restart wireplumber               # ドロップインを足した直後は要る
+systemctl --user restart wireplumber               # ドロップインを追加した直後は必要
 ```
 
 別のマイクを使いたいときは、Osmo を抜くか、Osmo の USB モードを Webcam 以外にする。
@@ -77,12 +77,12 @@ systemctl --user restart wireplumber               # ドロップインを足し
 
 カメラ側には規則を置いていない。使うアプリが PipeWire を経由しないので、効く相手が
 いない。Chrome(nix)が PipeWire 経由でカメラを開くと分かったら、同じドロップインに
-`monitor.v4l2.rules` を足す。
+`monitor.v4l2.rules` を追加する。
 
 ## 4. 実測値(2026-10-23、vega、Pop!_OS、カーネル 6.17.4)
 
 Osmo のファームウェアのバージョンは、本体の画面で確かめていない(未確認)。
-数値はファームウェアで変わりうる。
+数値はファームウェアで変わる可能性がある。
 
 | 項目 | 結果 |
 |---|---|
@@ -108,7 +108,7 @@ Mic 2 の音が USB に乗ることは、DJI の取説・FAQ・リリースノ�
 
 ## 5. まだ確かめていないこと
 
-人の操作が要る確認は #954(Osmo の常用で、抜いたときの復帰・OpenFit Pro との併用・
+人の操作が必要な確認は #954(Osmo の常用で、抜いたときの復帰・OpenFit Pro との併用・
 Chrome の経路・給電を実機で確かめる)に手順がある。結果が出たらこの節を更新する。
 
 - **Osmo を抜いたとき、既定の入力が内蔵マイクに戻るか。**
@@ -117,11 +117,11 @@ Chrome の経路・給電を実機で確かめる)に手順がある。結果が
   で刺した状態でヘッドセットを繋ぎ、`pw-metadata 0 | grep default.audio` と
   `wpctl status` の Sinks / Sources を読む。
 - **Webcam モードで電池が減るか。** DJI の FAQ は「録画中は外部電源から直接給電し、録画が
-  止まったときだけ充電する」と書く。取説の LED の表には、連続点灯の緑という項目が無い
+  止まったときだけ充電する」と書く。取説の LED の表には、連続点灯の緑という項目がない
   (緑の点滅が「充電中」)。2026-10-23 に本人が見たステータス LED は、緑の連続点灯だった。
   意味は未確認。
 - **Auto Power Off が Webcam モードの待機中に効くか。** 設定はある(取説 Settings)が、
-  Webcam モードでの挙動は確かめていない。会議の途中で電源が落ちるかを、長時間使って確かめる。
+  Webcam モードでの挙動は確かめていない。会議の途中で電源が切れるかを、長時間使って確かめる。
 - **Chrome(nix)がカメラを PipeWire 経由で開くか。** Chromium の PipeWire カメラは
   `about:flags` の背後にあった(2024 時点の情報)。現行の 155 は未計測。
 - **Slack(Flatpak)の設定画面の名称。**

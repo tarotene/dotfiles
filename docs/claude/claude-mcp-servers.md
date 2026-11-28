@@ -13,15 +13,15 @@ hook 登録 / permissions(`docs/claude/claude-permissions.md`)と
 
 宣言は 1 か所で、Antigravity CLI(`agy`)にも配る: `home/modules/antigravity.nix` が、同じ宣言から agy の
 `mcp_config.json` が許すキー(`command`・`args`・`env`・`cwd`・`url`・`headers`・`disabled`・`variables`)だけを残し
-(Claude の `type` などは落とす)、`~/.gemini/config/mcp_config.json` へ `agent-settings-reconcile antigravity-mcp-servers`
-で書く。agy へは**所有の記録に載せた名前だけ**を管理し、`agy mcp add` で本人が足したサーバーは消さない(Claude と
-違い、宣言外を消さない)。agy に出さないサーバーは `dotfiles.antigravity.mcpServers` で上書きして外す
+(Claude の `type` などは除外する)、`~/.gemini/config/mcp_config.json` へ `agent-settings-reconcile antigravity-mcp-servers`
+で書く。agy へは**所有の記録に載せた名前だけ**を管理し、`agy mcp add` で本人が追加したサーバーは消さない(Claude と
+違い、宣言外を消さない)。agy に出さないサーバーは `dotfiles.antigravity.mcpServers` で上書きして除外する
 (agy のツールの出力は、別の事業者のモデルに送られる)。
 
 ## 宣言集合が user scope の完全状態である(reconcile)
 
 `dotfiles.agents.mcpServers` に挙がったサーバーが user scope の望ましい完全状態で、
-activation は宣言外の user-scope サーバーを**削除する**。`claude mcp add` で足した
+activation は宣言外の user-scope サーバーを**削除する**。`claude mcp add` で追加した
 野良サーバーは次の `hms` で消える — 残したいなら宣言に格上げする。
 
 当初この option は加法的 merge(宣言 key だけ上書きし、野良には触れない)だった。
@@ -45,7 +45,7 @@ home-manager 自身の宣言モデル(宣言 = 望ましい完全状態。`home.
    (esa 自体、company のカードでは復号できず毎セッション起動に失敗する登録
    だった — ADR-0022)。
 2. **宣言 key は deep merge(`*`)で書く。** 丸ごと置換にすると、リモート
-   サーバーの認証時に Claude Code が書き足す `oauth` ブロック(clientId /
+   サーバーの認証時に Claude Code が書き加える `oauth` ブロック(clientId /
    callbackPort)を switch のたびに剥がし、再認証を強いる。宣言した field 自体は
    毎回上書きされるので「宣言が正」は変わらない。
 3. **削除は activation ログに出す。** 不可逆操作で、しかも野良サーバーで実験して
@@ -62,7 +62,7 @@ Gmail/Calendar/Drive/Claude Docs)はいずれも別の管理主体を持つの�
 ## populate する場所は 1 つに決め打たない
 
 identity 層(`home/identities/personal.nix` / `home/identities/company.nix`)からも
-`home/modules/claude.nix` 自身からも、同じ属性に足せる。会社 workspace 専用の
+`home/modules/claude.nix` 自身からも、同じ属性に追加できる。会社 workspace 専用の
 接続情報を common 層に書いてしまう事故(全ホストへの意図しない配備)を、
 モジュール分割そのもので防ぐ。現在の populate は `home/identities/personal/esa.nix` の `esa`
 (personal 限定、ADR-0022)と `home/identities/personal.nix` の `playwright` —
@@ -73,7 +73,7 @@ identity 層(`home/identities/personal.nix` / `home/identities/company.nix`)か�
 transcript 全件を確認したところ利用実績が 0 セッションで、未認証のまま
 起動のたびに `⚠ 1 MCP server needs authentication` を出すだけの状態が続いていた。
 使っていない外部サービス経路を認証だけして残す判断はせず、宣言ごと削除した。
-reconcile が次の switch で `~/.claude.json` 側の該当エントリ(認証時に書き足された
+reconcile が次の switch で `~/.claude.json` 側の該当エントリ(認証時に書き加えられた
 `oauth` ブロックごと)も消す。
 
 ### playwright の運用上の裁定(#849、#841)
@@ -93,17 +93,17 @@ reconcile が次の switch で `~/.claude.json` 側の該当エントリ(認証�
      Firefox が `Firefox is already running, but is not responding` で起動に失敗する
      (#1286)。使用中でない世代(持ち主のラッパーも `lock` の指す process も死んでいる)は
      起動のたびに消し、使用中の世代が 8 つ(`MAX_GENERATIONS`)に達していたら、世代を
-     作らず診断して exit 1 する。`lock` が無い・死んだ pid を指すときは、従来どおり
+     作らず診断して exit 1 する。`lock` がない・死んだ pid を指すときは、従来どおり
      複製へ同期する。`--sync-only` は世代を作らず、使用中の複製の同期を飛ばす。
      **持ち主の記録**(F62): Playwright MCP は、ブラウザを最初の操作まで起動しない。ラッパーが同期を終えてから
-     Firefox が `lock` を張るまでの間(分単位になりうる)は、`lock` だけでは使用中と分からず、その間に別のセッションの
+     Firefox が `lock` を張るまでの間(分単位になる可能性がある)は、`lock` だけでは使用中と分からず、その間に別のセッションの
      ラッパーが同じ複製を選ぶと、あとから起動した Firefox が `already running` で失敗する。そこで、複製を使うと決めた
-     ラッパーは、複製の隣の `<複製>.owner` に自分の pid を書く。`.owner` の pid が自分以外の生きた process なら、`lock` が無くても
+     ラッパーは、複製の隣の `<複製>.owner` に自分の pid を書く。`.owner` の pid が自分以外の生きた process なら、`lock` がなくても
      使用中として、世代へ移る(`live_owner`)。持ち主のラッパーは、npx を `exec` で引き継ぐので、その MCP が動く間は生きている
      (そのセッションが閉じて死ぬまで、複製はそのセッションのもの。同時に使えるのは、複製 1 つと世代 8 つ)。
      2026-11-16 の失敗(`~/.cache/playwright-mcp-profile/firefox` を別セッションの Firefox が占有して起動できない)は、この仮説から
-     導き、`.owner` が生きているのに `lock` が無い複製を、同じ複製で起動する試験で再現した(2026-11-20。原因が
-     これだけかは、実際の失敗の記録が無く未確認)。
+     導き、`.owner` が生きているのに `lock` がない複製を、同じ複製で起動するテストで再現した(2026-11-20。原因が
+     これだけかは、実際の失敗の記録がなく未確認)。
   3. `npx @playwright/mcp@<pin> --browser moz-firefox --user-data-dir <複製>` を exec する。
      Linux は PATH の `firefox` を `--executable-path` に渡す(Playwright の既定は
      `/snap/bin/firefox` で、apt の Firefox では合わない)。
@@ -114,14 +114,14 @@ reconcile が次の switch で `~/.claude.json` 側の該当エントリ(認証�
   (`playwright-core` 1.64.0-alpha の `lib/coreBundle.js` の `writePreferences` と
   `defaultProfilePreferences`、取得 2026-10-27)。普段のプロファイルを直接渡すと、
   その設定が普段の Firefox にも効いて残る。複製だけを渡す構成なら、その書き込みが
-  普段のプロファイルへ届く経路が無い。起動中の Firefox につなぐ手段も無い
+  普段のプロファイルへ届く経路がない。起動中の Firefox につなぐ手段もない
   (README の `--extension` は Edge/Chrome 専用、`--cdp-endpoint` は CDP)。Chrome も 136 から
   既定のプロファイルへの `--remote-debugging-port` を無視し、別の `--user-data-dir` を
   求めている(Will Harris, Google,
   <https://developer.chrome.com/blog/remote-debugging-port>、2025-03-17、取得 2026-10-27)。
 
   同期は一方向で、エージェント側のログインや変更は次の起動の同期で消える。ログインが
-  要るサービスは、普段の Firefox でログインして `/mcp` から再接続する
+  必要なサービスは、普段の Firefox でログインして `/mcp` から再接続する
   (`config/agents/skills/browser-login-handoff/SKILL.md` §5)。
   実測(vega、Firefox 158、普段の Firefox を起動したまま、2026-10-27): プロファイル
   約 1.1GB の 1 回目の同期は 1.2 秒、2 回目は 0.2 秒。複製の素の Firefox は headed でも
@@ -129,11 +129,11 @@ reconcile が次の switch で `~/.claude.json` 側の該当エントリ(認証�
   プロファイルには `user.js` も `prefs.js.playwright` も作られなかった。
   未確認: Firefox が「起動中」と判定するのが、`lock` の symlink だけか、`.parentlock` の
   fcntl ロックも関わるか(#1286 の失敗は `lock` が生きた pid を指していたが、`lock` が
-  無く `.parentlock` だけが効く場合を、世代の選び方は見ない)。
+  なく `.parentlock` だけが効く場合を、世代の選び方は見ない)。
   未確認: darwin(altair)の Firefox の場所と `installs.ini` の節の数。darwin では
-  `lock` の symlink が無い(`.parentlock` の fcntl ロックを使う)ので、複製の使用中の
+  `lock` の symlink がない(`.parentlock` の fcntl ロックを使う)ので、複製の使用中の
   検出は Linux でだけ働く。
-- **headless で動かす(2026-10-28)。** 引数 `--headless` を `--` の後ろに足している
+- **headless で動かす(2026-10-28)。** 引数 `--headless` を `--` の後ろに追加している
   (`home/identities/personal.nix`)。headed のままだと、普段の Firefox のほかにウィンドウが
   2 つ増えて計 3 つになり、作業の邪魔になった。
   - 原因: 複製の Firefox 1 プロセスがウィンドウを 2 つ持つ。1 つは Firefox が起動時に開く
@@ -148,9 +148,9 @@ reconcile が次の switch で `~/.claude.json` 側の該当エントリ(認証�
   - 起動時のウィンドウを出さない Firefox の `-silent` は使えない。ウィンドウが 0 だと Firefox
     が起動直後に終了し、BiDi の接続が `400 Bad Request` で失敗した(vega、2026-10-28)。
   - 普段の Firefox のウィンドウを使う案は採らない。(1) Playwright MCP 0.0.83 に、起動中の
-    Firefox につなぐ手段が無い(`--extension` は Edge/Chrome 専用、`--cdp-endpoint` は
+    Firefox につなぐ手段がない(`--extension` は Edge/Chrome 専用、`--cdp-endpoint` は
     CDP 専用)。(2) つなげる状態にするには、普段の Firefox を常時
-    `--remote-debugging-port` 付きで起動する必要がある。そのポートには認証が無く、手元の
+    `--remote-debugging-port` 付きで起動する必要がある。そのポートには認証がなく、手元の
     任意のプロセスが、ログイン済みの普段のブラウザを操作し、Cookie を読める。エージェントの
     操作(ページの移動、ログイン状態の変更)も普段のプロファイルに直接残り、複製を挟む理由
     (上の user.js の書き込み)も崩れる。
@@ -163,10 +163,10 @@ reconcile が次の switch で `~/.claude.json` 側の該当エントリ(認証�
     を含めて複製を使う process が残らなかった。
   - 運用への影響: エージェントの操作の様子は画面で見えない。screenshot は撮れる。
     `--idle-timeout` の既定は、headless では 1 時間(headed は無期限、0.0.83 の `--help`)。
-    1 時間呼び出しが無いとブラウザが閉じ、次の呼び出しで起動し直す。起動し直しても、
+    1 時間呼び出しがないとブラウザが閉じ、次の呼び出しで起動し直す。起動し直しても、
     同期は走らず、複製のログイン状態は前回のまま。
-- **screenshot を本人に見せるときは、`show-image <screenshot の絶対パス>`(単体で呼ぶ)で手元の別窓に出す。** headless の画面は本人に見えない。
-  `~/.cache/playwright-mcp/` の PNG をそのまま渡せる。終了コード 3(画面が無いセッション、ブラウザが無いホスト)のときは、確認用のページに載せる
+- **screenshot を本人に見せるときは、`show-image <screenshot の絶対パス>`(単体で呼ぶ)で手元の別ウィンドウに出す。** headless の画面は本人に見えない。
+  `~/.cache/playwright-mcp/` の PNG をそのまま渡せる。終了コード 3(画面がないセッション、ブラウザがないホスト)のときは、確認用のページに載せる
   (`config/agents/reference/browser-operations.md`、`docs/agents/show-image.md`)。
 - **版は pin する。** `@playwright/mcp@latest` のままだと、npx のキャッシュが更新される
   たびに別のサーバーが動く。2026-10-21 の npm の `latest`(0.0.83)に pin し、pin は
@@ -175,12 +175,12 @@ reconcile が次の switch で `~/.claude.json` 側の該当エントリ(認証�
 - **出力先は XDG の cache に逃がす。** 既定ではセッションの cwd 直下に `.playwright-mcp/`
   (ページのスナップショットとコンソールログ)を作り、worktree を汚す。引数 `--output-dir`
   で `~/.cache/playwright-mcp` に向ける。ただし screenshot に `filename` を明示すると cwd
-  側に落ちる(0.0.83 の README)ので、`.playwright-mcp/` は `home/modules/git.nix` の
+  側に出力される(0.0.83 の README)ので、`.playwright-mcp/` は `home/modules/git.nix` の
   グローバル ignore にも入れてある。
 - **`filename` を渡すときは、`~/.cache/playwright-mcp/` 配下の絶対パスにする。scratchpad は渡さない**(F14)。`filename` が
   書ける許可ルートは `~/.cache/playwright-mcp` と作業ツリーだけであり、scratchpad は許可の対象外となるため、
   `File access denied … outside allowed roots` になるか、相対パスで作業ツリーの直下に書かれる(2026-11-15、`li-list.yml`・
-  `li-sent.json` が作業ツリーに落ちたため、scratchpad へ移動した)。`browser_snapshot` の `filename` を許可ルート配下の絶対パスで
+  `li-sent.json` が作業ツリーに出力されたため、scratchpad へ移動した)。`browser_snapshot` の `filename` を許可ルート配下の絶対パスで
   使う手順は、`config/agents/reference/browser-operations.md`「返信を下書きする前に、会話の全文を保存する」を参照。
 - **`browser_evaluate` の `filename` は使わず、戻り値(結果の文字列)を `Write` で書く**(F61・F76)。許可ルート配下の無害な名前であっても、
   bleep の `repo-ref` の検査が `filename` の値を非公開名との一致として拒否した(2026-11-16 と 11-17、別々の名前で同じ
@@ -192,34 +192,34 @@ reconcile が次の switch で `~/.claude.json` 側の該当エントリ(認証�
   原因は、サーバー自身が Chromium 系に付ける `--disable-blink-features=AutomationControlled`
   である(0.0.83 の `coreBundle.js` が付ける。Chromium の `bad_flags_prompt.cc` の
   警告対象リストに `kDisableBlinkFeatures` が載っている。取得 2026-10-21)。0.0.83 には
-  この旗を外す設定が無く、`--disable-infobars` では抑止されない。設定ファイルの
+  この旗を外す設定がなく、`--disable-infobars` では抑止されない。設定ファイルの
   `launchOptions` で旗の追加を回避するハックは、自動化検知の回避が消える副作用があり、
-  先行例も無いので採らない。帯は表示だけで動作に影響しない。上流への Issue は出さない
+  先行例もないので採らない。帯は表示だけで動作に影響しない。上流への Issue は出さない
   (本人の裁定、2026-10-21)。
 
 ## 画面に出す Chrome: `playwright-chrome`(2026-11-26)
 
 デザインの目視(localhost・`file://`・公開ページ)は、本人が同じ画面で見られる必要がある。上の `playwright` は、ログイン状態を引き継ぐ
-Firefox の複製を headless で動かすので、本人には見えない(`show-image` で PNG を別窓に出せるが、見るだけで、往復して操作はできない)。
+Firefox の複製を headless で動かすので、本人には見えない(`show-image` で PNG を別ウィンドウに出せるが、見るだけで、往復して操作はできない)。
 そこで、ログインを持たない用途だけを、別のサーバー `playwright-chrome` に分けた(`home/identities/personal.nix`)。
 
 - **形**: 同じ起動ラッパーの `--chrome`。`npx @playwright/mcp@0.0.83 --browser chrome --isolated`(`chrome_npx_args`)。`--isolated` はプロファイルを
   メモリだけに置く(ディスクに残さず、ログインも持ち込まない)。`--headless` は付けない(画面に出すのが目的)。版の pin は `PLAYWRIGHT_MCP` の 1 か所のまま。
   `--chrome` と `--rsync`・`--clone` などの併用は、引数の解釈が拒否する(複製を持つ Chrome を作れない型。`Cli::Chrome`)。
-- **窓は 1 つ**(実測、vega、2026-11-26): `@playwright/mcp` 0.0.83 と同じ `playwright-core`(1.64.0-alpha)で、Chrome 152 を headed の persistent
+- **ウィンドウは 1 つ**(実測、vega、2026-11-26): `@playwright/mcp` 0.0.83 と同じ `playwright-core`(1.64.0-alpha)で、Chrome 152 を headed の persistent
   context で起動し、CDP で数えた。ページ 1、`Browser.getWindowForTarget` の windowId は 1 種類(`about:blank`)。Firefox の BiDi 版が、
   起動時のウィンドウを拾えず 2 枚目を作る(上の「headless で動かす」)のと違い、Chrome は起動時のウィンドウをそのまま使う。
   Chrome の実体は、Playwright の `chrome` チャンネルの探索先 `/opt/google/chrome/chrome`(この機体では Nix の `google-chrome` への symlink)。
-- **使い分け**: ログインが要る作業(LinkedIn・Gmail の画面など)は `playwright`(Firefox の複製、headless)。ログイン不要の目視(デザインの見本・
-  `localhost`・公開ページ)は `playwright-chrome`。`playwright-chrome` で、ログインが要るページを開かない。
+- **使い分け**: ログインが必要な作業(LinkedIn・Gmail の画面など)は `playwright`(Firefox の複製、headless)。ログイン不要の目視(デザインの見本・
+  `localhost`・公開ページ)は `playwright-chrome`。`playwright-chrome` で、ログインが必要なページを開かない。
 - **出力先**: `--output-dir ~/.cache/playwright-mcp-chrome`(`playwright` の `~/.cache/playwright-mcp` と分ける)。`filename` を渡すときは、この配下の絶対パスにする。
-- **未確認**: GUI の Chrome を、エージェントのセッションのサンドボックスの中から起動できるか(`show-image` は、GUI の Chrome が sandbox の中では窓を出せないので
+- **未確認**: GUI の Chrome を、エージェントのセッションのサンドボックスの中から起動できるか(`show-image` は、GUI の Chrome が sandbox の中ではウィンドウを出せないので
   除外コマンドにしている。MCP サーバーは、Claude Code が sandbox の外で起動する想定だが、この機体の実セッションでは未確認。反映後に確かめる)。
 
 ## 使い方(populate する側)
 
 ```nix
-# home/identities/company.nix — 秘密の要らない stdio server の例
+# home/identities/company.nix — 秘密の不要な stdio server の例
 {
   dotfiles.agents.mcpServers.playwright = {
     type = "stdio";
@@ -233,7 +233,7 @@ Firefox の複製を headless で動かすので、本人には見えない(`sho
   `command`/`args`/`env`、remote なら `type = "http"`/`url`/`oauth`)にそのまま従う。
 - `${ENV_VAR}` はセッション起動時のプロセス環境変数として実際に展開される
   (Claude Code 公式ドキュメント確認済み)。ただし秘密がホストローカルの
-  ファイル(gpg 暗号化など)にしか無い場合、`${VAR}` を機能させるには
+  ファイル(gpg 暗号化など)にしかない場合、`${VAR}` を機能させるには
   ログインシェル起動のたびにその変数を復号・export する必要があり、これは
   ADR-0010 が明示的に退役させたパターン(シェル起動時の GPG PIN プロンプト・
   全プロセスへの秘密展開)に戻ってしまう。そのケースでは `${VAR}` に頼らず、
@@ -244,13 +244,13 @@ Firefox の複製を headless で動かすので、本人には見えない(`sho
   トークン(例: 別プロセスが供給する company workspace のトークン)なら
   `${ENV_VAR}` 間接参照のままでよい(`claude-permissions.md` と同じ規律)。
 - 宣言した key は merge のたびに上書きされる。宣言していない key(`claude mcp add`
-  で手で足したもの、他ツールが書いたもの)には一切触れない。
+  で手で追加したもの、他ツールが書いたもの)には一切触れない。
 
 ## 撤回
 
 この option から値を削除すれば、次の switch で `~/.claude.json` 側のエントリも
 消える。reconcile なので撤回のための別機構(`claude-permissions.md` の
-`retiredPermissionRules` に相当するもの)は要らない。
+`retiredPermissionRules` に相当するもの)は不要。
 
 ただし、そのサーバー向けに配った `permissions.allow` のルール
 (`mcp__<server>__<tool>`)は `~/.claude/settings.json` 側の話であり、こちらは

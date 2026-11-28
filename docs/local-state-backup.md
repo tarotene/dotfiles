@@ -27,9 +27,9 @@ source の application key は、restic の読み書きと保持・prune に必�
 replication 状態の取得に使う。bucket を source に限定できる。どちらかの権限や bucket の
 照合結果が得られないとき、maintenance は forget/prune の前に失敗する。
 [Backblaze, b2_list_buckets](https://www.backblaze.com/apidocs/b2-list-buckets)
-（更新 2026-09-11、取得 2026-10-28）と
+(更新 2026-09-11、取得 2026-10-28)と
 [b2_list_file_versions](https://www.backblaze.com/apidocs/b2-list-file-versions)
-（更新 2026-09-11、取得 2026-10-28）を参照。
+(更新 2026-09-11、取得 2026-10-28)を参照。
 
 | BWS のキー | 内容 |
 | --- | --- |
@@ -90,7 +90,7 @@ Mozc の staging 前に入力サービスが動いていた場合、その状態
 `local-state-backup/mozc-input-service-was-active` に記録してから停止する。SIGKILL や
 停電で復帰前に終了した場合、次の `local-state-backup` 起動時に BWS へ接続するより先に
 サービスの再起動と稼働確認を試み、成功後だけ記録を消す。次の実行まで即座に復旧する
-仕組みではなく、実機での停電試験は未実施である。
+仕組みではなく、実機での停電テストは未実施である。
 
 データと manifest は別の暗号化 snapshot として保存する。データ snapshot には
 `local-state`、manifest には `local-state-manifest` と `for-<データ snapshot の完全 ID>` の
@@ -181,7 +181,7 @@ git -C "$RESTORE_TARGET" status --short
 同じ `worktree repair` に引数として追加する。ここでの対象は common-dir が通常の `.git`
 ディレクトリである場合であり、bare repository や submodule の復旧は未検証である。
 [Git, git-worktree 2.54.0](https://git-scm.com/docs/git-worktree/2.54.0) の `repair` 仕様
-（取得 2026-10-28）に基づく。
+(取得 2026-10-28)に基づく。
 
 表示されたディレクトリで、Git は `git status` と必要な commit・untracked file、SQLite は
 `sqlite3 <復元ファイル> 'PRAGMA integrity_check'` が `ok`、JSONL は必要な行、Mozc は
@@ -192,6 +192,6 @@ git -C "$RESTORE_TARGET" status --short
 destination bucket を作成して replication を切り替える。新 destination の復元を確認してから
 旧 bucket を手動で廃棄する。B2 の replication 完了の判定は
 [Backblaze, b2_list_file_versions](https://www.backblaze.com/apidocs/b2-list-file-versions)
-（更新 2026-09-11、取得 2026-10-28）、復元は
+(更新 2026-09-11、取得 2026-10-28)、復元は
 [restic, Restoring a backup](https://restic.readthedocs.io/en/v0.18.1/050_restore.html)
-（取得 2026-10-28）に基づく。
+(取得 2026-10-28)に基づく。

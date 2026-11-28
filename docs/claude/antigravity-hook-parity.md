@@ -27,25 +27,25 @@ agy の hook は、Claude の hook と形が違う(camelCase の入力、`decisi
 | `ExitPlanMode`・`tool_input.plan` | `exit_plan_mode`・`args.plan` |
 | `Agent`・`tool_input.prompt` | `invoke_subagent`・`args.Prompt`(`TypeName` は `subagent_type`) |
 | `session_id` | `conversationId` |
-| `cwd` | `cwd`(無ければ `workspacePaths` の先頭) |
+| `cwd` | `cwd`(なければ `workspacePaths` の先頭) |
 | `transcript_path` | `transcriptPath` |
 | `hook_event_name` | `hookEventName` |
 | `stop_hook_active` | `continuationActive` |
 | `prompt` | `lastUserInput` |
-| `tool_response.exitCode`(PostToolUse の Bash) | `error` の `exit status N`。`error` が無ければ 0、読めなければ -1(不明) |
+| `tool_response.exitCode`(PostToolUse の Bash) | `error` の `exit status N`。`error` がなければ 0、読めなければ -1(不明) |
 
-知らない道具の名前と引数は、そのまま通す。transcript は、`type: USER_INPUT`・`source: USER_EXPLICIT` の行を、本人の
+未知の道具名と引数は、そのまま通す。transcript は、`type: USER_INPUT`・`source: USER_EXPLICIT` の行を、本人の
 発言として読む(`agent_session::transcript::extract_user_text`)。
 
 ## 出力の対応
 
 | イベント | agy の出力 |
 |---|---|
-| PreToolUse | 判定(allow・ask・deny)があれば `{"decision","reason"}`。無ければ何も出さない。文脈だけの返答は、届け先が無いので捨てる。理由が空なら定型文にする(agy は理由の無い決定を受けない) |
+| PreToolUse | 判定(allow・ask・deny)があれば `{"decision","reason"}`。なければ何も出さない。文脈だけの返答は、届け先がないため捨てる。理由が空なら定型文にする(agy は理由のない決定を受け付けない) |
 | PostToolUse | 常に `{}` |
-| SessionStart | 文脈と `systemMessage` を、`injectSteps` の `systemMessage` にする。無ければ `{}` |
+| SessionStart | 文脈と `systemMessage` を、`injectSteps` の `systemMessage` にする。なければ `{}` |
 | Stop | deny(Claude の block)だけ `{"decision":"continue","reason"}`。他は `{}` |
-| PermissionRequest | 何も出さない(agy に無いイベント) |
+| PermissionRequest | 何も出さない(agy にないイベント) |
 
 ## herdr のサイドバー・statusline・モデルの固定
 
@@ -59,12 +59,12 @@ agy の hook は、Claude の hook と形が違う(camelCase の入力、`decisi
   こちらの設定では変えられない。
 - モデルの固定(`claude-plan-model sync`): Claude の `opusplan` の別名を具体 ID に引き直す機構。agy の `model` は
   `settings.json` に本人が選んで書く値で、#1726 が「書かないキー」と決めた(宣言しない)。agy に、別名の追従に当たる機構が
-  あるかは未確認(`agy models` は認証が要り、この機体の sandbox からは読めない)。
+  あるかは未確認(`agy models` は認証が必要で、この機体の sandbox からは読めない)。
 
 ## 登録
 
 登録は `home/modules/agents.nix` の `antigravityHookDeclarations` が、Claude の宣言(`claudeHookDeclarations`)から導く
-(Codex の `codexHookDeclarations` と同じ型。足した共有の hook は、agy に載せ忘れられない)。
+(Codex の `codexHookDeclarations` と同じ型。追加した共有の hook は、agy に載せ忘れられない)。
 `registerAntigravityHooks`(activation)が、`agent-settings-reconcile antigravity-hooks` で
 `~/.gemini/config/hooks.json` の `dotfiles` のキーだけを置き換える。herdr の連携と `/hooks` が書く
 ほかのキーは触らない。個人の identity だけで有効(`dotfiles.antigravity.enable`)。
@@ -72,13 +72,13 @@ agy の hook は、Claude の hook と形が違う(camelCase の入力、`decisi
 | Claude の宣言 | agy の登録 |
 |---|---|
 | `hook-router-pre`・`hook-router-post` | `hook-router pre`・`post` に `--agent antigravity`(規則の表を共有) |
-| 規則の表に無い個別の hook(SessionStart・Stop の bin、bleep、plan-fresh-gate・copilot-plan-review) | `hook-router wrap '<Claude の command>' --timeout N` |
-| matcher | 道具名を読み替える(`Bash`→`run_command`、`ExitPlanMode`→`exit_plan_mode`、`mcp__.*`→`mcp.*`)。SessionStart の matcher は落とす |
-| timeout | agy 側は、中の timeout に 5 秒足す(中で先に切れて、空の返答を返せるように)。宣言に無ければ 60 秒 |
+| 規則の表にない個別の hook(SessionStart・Stop の bin、bleep、plan-fresh-gate・copilot-plan-review) | `hook-router wrap '<Claude の command>' --timeout N` |
+| matcher | 道具名を読み替える(`Bash`→`run_command`、`ExitPlanMode`→`exit_plan_mode`、`mcp__.*`→`mcp.*`)。SessionStart の matcher は削除する |
+| timeout | agy 側は、中の timeout に 5 秒加算する(中で先に切れて、空の返答を返せるように)。宣言になければ 60 秒 |
 
-載せないもの: `plan-view`(下の「計画の関所」)、`herdr-agent-metadata`(herdr 本体の連携が持つ)、`agent-turn-log`(UserPromptSubmit が無く、ターンの開始を
+載せないもの: `plan-view`(下の「計画の関所」)、`herdr-agent-metadata`(herdr 本体の連携が持つ)、`agent-turn-log`(UserPromptSubmit がなく、ターンの開始を
 取れない)、`atuin-history`(下の Blocked-Upstream)、`git-worktree-allow`・
-`gh-edit-allow-judge`(`if` つきの allow 判定。Codex でも、ネイティブの承認を通すために外している)。
+`gh-edit-allow-judge`(`if` つきの allow 判定。Codex でも、ネイティブの承認を通すために除外している)。
 
 **agy の hook は逐次に走る**(文書の「Hooks run synchronously and block the agent loop」、複数の hook は順に実行)。
 Claude は同じイベントの hook を並列に走らせるので、待ち時間は足し算になる(SessionStart の `gpg-prewarm` が最大 120 秒、
@@ -92,14 +92,14 @@ Stop の `pr-gate` が最大 600 秒など)。
 - `plan-fresh-gate`(base の鮮度)・`copilot-plan-review`(Copilot のレビュー): `wrap`。`plan-view`(ブラウザ表示)は載せない(下記)。
 
 agy は全ターンを計画から始めるので、設計判断を含まない小さな計画は、既存の 1 行の免除
-(`先行例: 該当なし — <理由>`)で通す。実測(手元の `hook-router`、2026-11-27): 節の無い計画は agy の形の deny、
+(`先行例: 該当なし — <理由>`)で通す。実測(手元の `hook-router`、2026-11-27): 節のない計画は agy の形の deny、
 要求インベントリと免除の 1 行を持つ計画は、何も出さずに通った。
 **ターンごとに `copilot-plan-review` が Copilot にレビューを頼む。** 実測では、小さな計画でも毎回走り、1 回あたり約
-13〜16 秒かかった(下の「実測」)。重ければ `antigravitySkipNodes` に足して外す(確認の台帳 #1718)。
+13〜16 秒かかった(下の「実測」)。重ければ `antigravitySkipNodes` に追加して除外する(確認の台帳 #1718)。
 
-**`plan-view` は agy に載せない**(本人の裁定、2026-11-27)。`plan-view` は Chrome の専用窓を毎回新しく開く。実測で、
+**`plan-view` は agy に載せない**(本人の裁定、2026-11-27)。`plan-view` は Chrome の専用ウィンドウを毎回新しく開く。実測で、
 `exit_plan_mode` ごとに HTML(`~/.claude/plan-views/`)が作られた。agy は全ターンを計画から始めるので、小さな追従の
-たびに窓が開き続ける。Claude は、明示的な Plan mode のときだけ開く。
+たびにウィンドウが開き続ける。Claude は、明示的な Plan mode のときだけ開く。
 
 ## 実測(2026-11-27、vega の agy 1.5.17、実際のセッション 1 回)
 
@@ -112,7 +112,7 @@ agy は全ターンを計画から始めるので、設計判断を含まない�
 | 規則 | 読む。モデルが `14-shared.md` と `00-antigravity.md` を名指しで引いて答えた(少なくともこの 2 つは、予算の超過で降格されていない) |
 | PreToolUse の deny | 効く。`git stash` が拒否され、モデルに `tool call denied by pre-tool hook: <理由>` が届いた |
 | PreToolUse の「意見なし」 | 空の標準出力を受け付ける。`ls`・`write_file` は、エラー表示なしに動いた |
-| SessionStart の注入 | 届く。モデルが「朝の机が未実施」の注入を、答えに足した |
+| SessionStart の注入 | 届く。モデルが「朝の机が未実施」の注入を、答えに加えた |
 | PostToolUse | 走る。`cmd-hashes.jsonl` に agy の会話 ID が残った |
 | 道具名と引数 | `run_command{CommandLine}`・`write_file{Path,Content}`・`exit_plan_mode{plan}`。入力の対応の表のとおり |
 | `exit_plan_mode` の hook | 走る。`copilot-plan-review` が 2 回(22:27・22:32)走って `pass`。1 回あたり、計画の送信からレビューの記録まで約 13〜16 秒 |

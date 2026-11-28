@@ -52,11 +52,11 @@ public preview が GA したときは、このファイルだけを差し替え�
   (`allow_merge_commit: false`, `allow_rebase_merge: false`)、
   `delete_branch_on_merge: true`。ruleset `Ephemeral Initial` は
   `~DEFAULT_BRANCH` スコープで `deletion` / `non_fast_forward` /
-  `pull_request`(承認 0)のみ。署名必須ルールは無い。
+  `pull_request`(承認 0)のみ。署名必須ルールはない。
 - 会社側で運用している別のリポジトリ: squash-merge のみ許可。
   `main-protection` ruleset は `deletion` / `non_fast_forward` /
-  `pull_request` / `required_status_checks`。署名必須ルールは無い。
-  dotfiles には `required_status_checks` が無く、ここには有る、という
+  `pull_request` / `required_status_checks`。署名必須ルールはない。
+  dotfiles には `required_status_checks` がなく、ここには有る、という
   ruleset のぶれが 2026-09-09 まで存在した(#129)。同日、dotfiles の
   `Ephemeral Initial` にも `required_status_checks`(6 context)を追加して
   解消した。ぶれの棚卸し・再発防止の仕組みは別 Issue(#130)で追跡する。
@@ -74,7 +74,7 @@ public preview が GA したときは、このファイルだけを差し替え�
 GitHub Docs の「中段 PR にも default-branch 向け CI が適用される」は
 矛盾していなかった — それは **CI が実行される**ことを述べており、
 `pr-gate.md` の前提は **ruleset が適用される**かどうかを述べている。
-両 workflow の `pull_request:` トリガーにブランチフィルタが無い
+両 workflow の `pull_request:` トリガーにブランチフィルタがない
 (`.github/workflows/ci.yml:9-13`, `.github/workflows/nix.yml:7-10`)ため、
 CI は base を問わず走る。一方 ruleset `Ephemeral Initial` の条件は
 `~DEFAULT_BRANCH` のままなので、非 default branch 向け PR には

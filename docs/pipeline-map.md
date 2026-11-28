@@ -25,11 +25,11 @@
 
 エージェントが計画を出して `ExitPlanMode` を呼ぶと、5 つの機構が並列に走る。
 Copilot CLI が批評者として計画を読み(LLM)、gate が指摘の重さで通すか止めるかを決める。
-`plan-view` は計画を HTML にして窓に出す(表示だけで承認には干渉しない)。
+`plan-view` は計画を HTML にしてウィンドウに出す(表示だけで承認には干渉しない)。
 `plan-scope-gate` は依頼と参照 Issue の項目が要求インベントリに載っているかを、`plan-precedent-gate` は先行例の節の書式を、`plan-fresh-gate` は base が進んで計画が参照するファイルが変わっていないかを見る。
 どれかが止めたら、エージェントは計画を直して `ExitPlanMode` をやり直す。
 skill の requirements-inventory・precedent-grounding・technology-selection は、提出前に同じ gate を自分で呼んで確かめる手順を持つ。
-Codex の Plan mode には `ExitPlanMode` が無いので、`codex-plan-gate` が Stop で同じ gate を再利用する。
+Codex の Plan mode には `ExitPlanMode` がないので、`codex-plan-gate` が Stop で同じ gate を再利用する。
 批評のラウンドの上限と終わらせ方は [`copilot-plan-review.md`](agents/copilot-plan-review.md)。
 
 ### P2 実装から PR
@@ -37,7 +37,7 @@ Codex の Plan mode には `ExitPlanMode` が無いので、`codex-plan-gate` �
 ![実装から PR のパイプライン](assets/pipeline-map/implement-to-pr.svg)
 
 セッションの開始時に、issue-index・esa-mirror-context・wrapup-session-start が文脈を注入し、worktree-base-sync が作業ツリーを base へ fast-forward し、gpg-prewarm が署名の pinentry を前倒しする。
-ツール呼び出しのたびに、Bash や MCP への PreToolUse hook が並ぶ: 本物の checkout を変更させない、`git stash` を止める、`gh` の投稿に生成元の footer・Conventional Commits のタイトル・未チェックの task list の禁止・決定成果物の執行点を求める、stacked PR の base を親にそろえる、新しい道具に既存手段の検討を求める、非公開の名前の流出を止める(bleep)。
+ツール呼び出しのたびに、Bash や MCP への PreToolUse hook が並ぶ: 本物の checkout を変更させない、`git stash` を止める、`gh` の投稿に生成元の footer・Conventional Commits のタイトル・未チェックの task list の禁止・決定成果物の執行点を求める、stacked PR の base を親にそろえる、新しいツールに既存手段の検討を求める、非公開の名前の流出を止める(bleep)。
 `git commit` と `git push` では git hook が走る(main への直接の commit を止める、push 前に bleep が走査する)。
 `gh pr create` で PR ができると、GitHub が CI の workflow を起動し、必須の check の結果が `pr-gate` に戻る。
 Stop で `pr-gate` が、push・PR・Issue のリンク・見た目の証跡・stack・CI がそろうまで止める。
@@ -49,9 +49,9 @@ Stop で `pr-gate` が、push・PR・Issue のリンク・見た目の証跡・s
 
 作業のスコープ外で見つけた気づきは、エージェントが wrap-up inbox に追記する。
 Stop で `wrapup-stop-gate` が inbox に未起票の行があれば止め、エージェントが `gh issue create` で Issue にする。
-bleep と pre-push の走査は verdict ledger に判定を書き、同じ指紋の deny / ask が 3 回たまると、Stop の gate が呼ぶ `verdict-escalate` が inbox に行を足す([`verdict-escalate.md`](agents/verdict-escalate.md))。
-`promotion-detect`(日次)は、実行したコマンドのハッシュと feedback の Issue を読み、決定論へ昇格させる候補を inbox に足す。
-retro の skill は振り返りの行を足し、my-cleanup の skill は溜まった inbox を 1 回の GO で stacked PR にまとめる。
+bleep と pre-push の走査は verdict ledger に判定を書き、同じ指紋の deny / ask が 3 回たまると、Stop の gate が呼ぶ `verdict-escalate` が inbox に行を追加する([`verdict-escalate.md`](agents/verdict-escalate.md))。
+`promotion-detect`(日次)は、実行したコマンドのハッシュと feedback の Issue を読み、決定論へ昇格させる候補を inbox に追加する。
+retro の skill は振り返りの行を追加し、my-cleanup の skill は溜まった inbox を 1 回の GO で stacked PR にまとめる。
 
 ### P4 repo governance
 
@@ -93,19 +93,19 @@ herdr のサイドバーには、hook の metadata、statusline、claude-usage�
 `agent-turn-log` がプロンプトと Stop の事実を、atuin が shell の履歴を、別リポジトリの daily-report へ渡す。
 `cmd-hash-log` は実行したコマンドの正規化ハッシュだけを記録し、`promotion-detect` が逐語の反復を見つける入力になる。
 
-## 機構を足す・消すとき
+## 機構を追加する・消すとき
 
-1. [`pipeline-map.toml`](../pipeline-map.toml) にノードを足す(自動発火するなら `auto = true`)。lane・group・stack・pipelines・entity を書き、必要なら edge も足す。hook のレーン(`session = true`)の自動ノードは `doc` も必須で、設計を読める文書を 1 つ指す(ADR-0007 §5「孤立 hook を作らない」。専用の `docs/agents/<名前>.md` が無ければ、機能全体の文書か、記録の方式を決めた ADR でよい)。
+1. [`pipeline-map.toml`](../pipeline-map.toml) にノードを追加する(自動発火するなら `auto = true`)。lane・group・stack・pipelines・entity を書き、必要なら edge も追加する。hook のレーン(`session = true`)の自動ノードは `doc` も必須で、設計を読める文書を 1 つ指す(ADR-0007 §5「孤立 hook を作らない」。専用の `docs/agents/<名前>.md` がなければ、機能全体の文書か、記録の方式を決めた ADR でよい)。
 2. 登録箇所にポインタを書く(timer と launchd agent の定義は `home/lib/timer-pair.nix` の `timerPair` で書けるが、`timerNodes` の行は呼び出し側に手で書く。ADR-872 の 2026-11-09 の Amendment)。Claude Code の hook 宣言は nix 属性 `node = "<id>";`、timer・launchd agent・ログインで起動する常駐のものは定義のそばの `dotfiles.pipeline.timerNodes.<名前> = "<id>";`(名前は `systemd.user.timers.<名前>` / `launchd.agents.<名前>` / `Install.WantedBy` を持つ `systemd.user.services.<名前>` と同じ。XDG autostart の `autostart/<X>.desktop` は `autostart-<X>`)、それ以外は登録の直前のコメント `pipeline-node: <id>`(Codex / Copilot の登録呼び出し、workflow、git hook、herdr の command 行、statusline の定義、`systemd.user.tmpfiles.rules`)。
-3. `cargo test -p pipeline-map` で、ポインタの漏れ・未定義の id・登録の無い自動ノードを確かめる。nix の評価時には、hook 宣言と、timer・launchd agent・常駐のものの対応付けの漏れが検査される(`hms` で早く気づく)。
-4. 図を作り直す: `nix develop` の中で `cargo run -p pipeline-map -- render`。`docs/assets/pipeline-map/` の差分をコミットする。CI が同じ手順で再生成し、差分があれば落とす。
-   Claude Code の sandbox の中では、`hms` で `~/.cargo/registry` の書き込み許可(`home/modules/runtimes.nix`)と PATH 上の `d2`(`home/modules/packages.nix`)が入った後なら、`nix develop` なしで `cargo run -p pipeline-map -- render` が通る。入る前は、`nix develop` が nix daemon のソケットを要するので、sandbox の外(`dangerouslyDisableSandbox`)で行う。
+3. `cargo test -p pipeline-map` で、ポインタの漏れ・未定義の id・登録のない自動ノードを確かめる。nix の評価時には、hook 宣言と、timer・launchd agent・常駐のものの対応付けの漏れが検査される(`hms` で早く気づく)。
+4. 図を作り直す: `nix develop` の中で `cargo run -p pipeline-map -- render`。`docs/assets/pipeline-map/` の差分をコミットする。CI が同じ手順で再生成し、差分があれば失敗させる。
+   Claude Code の sandbox の中では、`hms` で `~/.cargo/registry` の書き込み許可(`home/modules/runtimes.nix`)と PATH 上の `d2`(`home/modules/packages.nix`)が入った後なら、`nix develop` なしで `cargo run -p pipeline-map -- render` が通る。入る前は、`nix develop` が nix daemon のソケットを必要とするので、sandbox の外(`dangerouslyDisableSandbox`)で行う。
 5. 図を目視する(矢印の接続、はみ出し、重なり)。
 
-消すときも同じで、manifest のノードを消す。登録箇所が無くなった `auto = true` のノードは `cargo test` が落とす。
+消すときも同じで、manifest のノードを消す。登録箇所がなくなった `auto = true` のノードは `cargo test` が失敗させる。
 
 ## 限界
 
-- 網羅が保証されるのは、自動発火する登録箇所の `Class` の列挙(ADR-872 D4 と、Amendment のルータの表)だけ。手動の CLI と skill は、手渡し先として描くが、足し忘れは検出されない。
-- 図のラベルは ASCII だけ。D2 が埋め込むフォントに CJK が無く、閲覧側のフォールバックで幅が変わるため。日本語の説明はこの文書の散文に書く。
+- 網羅が保証されるのは、自動発火する登録箇所の `Class` の列挙(ADR-872 D4 と、Amendment のルータの表)だけ。手動の CLI と skill は、手渡し先として描くが、追加し忘れは検出されない。
+- 図のラベルは ASCII だけ。D2 が埋め込むフォントに CJK がなく、閲覧側のフォールバックで幅が変わるため。日本語の説明はこの文書の散文に書く。
 - 配線の向きと件数は manifest に手書きする。機構の中身(何を次に渡すか)は、manifest から実体を読んで導いてはいない。登録箇所のポインタが保証するのは、機構の存在と、地図に載っていることまで。

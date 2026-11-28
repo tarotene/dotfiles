@@ -4,7 +4,7 @@ Issue と PR は同じ番号の列を共有する。その番号がキリ番に�
 ホームページの作法で祝う: 祝福のコメント、ラベル、そして大キリ番とゾロ目では
 キリリク(キリ番を踏んだ人が、お題をリクエストできる権利)の受付。
 
-遊びの機構であり、required check ではない。落ちても PR や Issue を止めない。
+遊びの機構であり、required check ではない。失敗しても PR や Issue を止めない。
 
 ## 規則
 
@@ -86,10 +86,10 @@ PR タイトル検査(`.github/actions/pr-title`)と同じ形。
   fork のコードに書き込み権限を渡す経路を作るので採らない。取りこぼした番号は
   `workflow_dispatch` で後から祝える。
 - Discussion も同じ番号の列を使う。Issue / PR でない番号は、notice を出して何もしない。
-- この機能を入れる PR 自身の `opened` では、action が `@main` にまだ無いので job が
+- この機能を入れる PR 自身の `opened` では、action が `@main` にまだないので job が
   1 回失敗する。以後は起きない。
 
-## 既存のリポジトリに足す
+## 既存のリポジトリに追加する
 
 governance の `copy-files.sh` を `--only` で呼ぶと、この workflow の 1 ファイルだけを置く。
 
