@@ -18,7 +18,7 @@ DEST=""
 WITH_REVIEW=false
 DRY_RUN=false
 # #222: constraints.rust (renovate.json) は "実在する MSRV pin" を表明する
-# 明示フラグが無い限り埋めない — 適用先が dtolnay/rust-toolchain@stable 等
+# 明示フラグがない限り埋めない — 適用先が dtolnay/rust-toolchain@stable 等
 # チャンネル名運用(pin なし)のとき、機械的な既定値がRenovateの依存更新を
 # 黙って阻害する事故を防ぐ。
 HAS_MSRV_PIN=false

@@ -64,7 +64,7 @@ def classify_events($events; $config; $source_url):
   | .soft_days |= unique
   | .validated_days |= unique;
 
-# 検証のみを行い、問題が無ければ null を返す(呼び出し側は `as $_` で
+# 検証のみを行い、問題がなければ null を返す(呼び出し側は `as $_` で
 # 受けて後続処理を続ける)。jq の `empty` をパイプの途中で返すと、それ
 # 以降のパイプ全体が空ストリームになり後続処理が一切実行されなくなる
 # ため、意図的に `empty` を避けている。

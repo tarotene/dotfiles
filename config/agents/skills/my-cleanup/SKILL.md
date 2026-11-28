@@ -1,6 +1,6 @@
 ---
 name: my-cleanup
-description: 本人が習慣として手で打つ「片付け」の入口(/my-cleanup)。wrap-up inbox(vault の inbox/ のノート。vault の無い機体では jsonl)に溜まった未裁定の気づきと、open Issue 全件をまとめて triage し、裁定が要る項目は triage フェーズ内で AskUserQuestion により決着させたうえで、1 回の GO(ExitPlanMode)後は stacked PR で一括対処する手順。open Issue の親子の整理(sub-issue 化・腐った tracking Issue の清算・昇格候補の洗い出し)も、この手順の中の 1 段として行う。inbox 消化・wrapup 消化・chores をまとめて・雑務を片付けて・片付けて・溜まった Issue を一掃・Issue 整理・tracking Issue 整理・Issue を束ねる・sub-issue 化・tracking を清算、sweep the wrap-up inbox, batch chores PR, clean up wrapup issues, organize open issues, clean up stale tracking issue といった文脈で使う。新しい Tracking Issue を書く/更新する規約は `tracking-issue` スキルを使う。全リポジトリの監査結果のずれを一括で直すときは `github-audit-triage`、他リポジトリの Issue 参照の鮮度は `issue-ref-freshness` を、この手順の中から呼ぶ。
+description: 本人が習慣として手で打つ「片付け」の入口(/my-cleanup)。wrap-up inbox(vault の inbox/ のノート。vault のない機体では jsonl)に溜まった未裁定の気づきと、open Issue 全件をまとめて triage し、裁定が要る項目は triage フェーズ内で AskUserQuestion により決着させたうえで、1 回の GO(ExitPlanMode)後は stacked PR で一括対処する手順。open Issue の親子の整理(sub-issue 化・腐った tracking Issue の清算・昇格候補の洗い出し)も、この手順の中の 1 段として行う。inbox 消化・wrapup 消化・chores をまとめて・雑務を片付けて・片付けて・溜まった Issue を一掃・Issue 整理・tracking Issue 整理・Issue を束ねる・sub-issue 化・tracking を清算、sweep the wrap-up inbox, batch chores PR, clean up wrapup issues, organize open issues, clean up stale tracking issue といった文脈で使う。新しい Tracking Issue を書く/更新する規約は `tracking-issue` スキルを使う。全リポジトリの監査結果のずれを一括で直すときは `github-audit-triage`、他リポジトリの Issue 参照の鮮度は `issue-ref-freshness` を、この手順の中から呼ぶ。
 ---
 
 `/my-cleanup` は、本人が習慣として手で打つ入口の 1 つ(もう 1 つは朝の机)である。旧名の
@@ -11,13 +11,13 @@ wrap-up inbox と起票済み wrapup 由来 Issue を 1 件ずつ Issue → PR �
 定式化する。**確認の総数ではなく位置を変えるのがこのスキルの核**: 確認は
 triage フェーズ(§2〜§4)に全部前倒しし、`ExitPlanMode` が GO を兼ねたあとは
 一切止まらない。除外は閉じたタグでしか成立しないので、「規模が大きい」
-「よく分からない」は agent が独断で母集団から落とす理由にならず、必ず
+「よく分からない」は agent が独断で母集団から除外する理由にならず、必ず
 ユーザーへの問いに変換される。
 
 気づき(inbox)は Stop で Issue にならない(ADR-1136)。vault の
 `inbox/` に 1 件 1 ノートで溜まり、**ここで裁定したものだけ**が PR で直されるか、Issue になる。
 直せるものは Issue を経ずに PR で直す。Issue にするのは、chores の PR に入らない大物(L3)と、
-本人の作業が要るもの(L5)だけである。
+本人の作業が必要なもの(L5)だけである。
 
 ## 1. 候補収集
 
@@ -27,8 +27,8 @@ triage フェーズ(§2〜§4)に全部前倒しし、`ExitPlanMode` が GO を�
   `first_seen`・`rows`(日付つきの行)・`note`(vault からの相対パス。jsonl の機体では `jsonl:<8 桁>`。§8 の `--set-status` の第 1 引数に、題名の代わりに渡せる)・`source`(`vault` / `jsonl`)・
   `signal`・`mechanism`・`existing`(as-code 化の候補のときだけ値がある。retro の `codify` などの行が渡す。
   `signal` が兆候、`mechanism` が次から防ぐ手段、`existing` が採用|拡張|自前。§4 の選択肢の根拠に添える)。
-  vault の無い機体では inbox の jsonl の行が同じ形で出る(`source: jsonl`、1 行 = 1 回)。
-  **読むのは `--list-open` だけにする** — vault の絶対パスを知る必要も、ノートを直接読み書きする必要も無い
+  vault のない機体では inbox の jsonl の行が同じ形で出る(`source: jsonl`、1 行 = 1 回)。
+  **読むのは `--list-open` だけにする** — vault の絶対パスを知る必要も、ノートを直接読み書きする必要もない
   (状態の変更は `--set-status`、追記は `--add` に限る。この制約はこのスキルでも不変)。再発の回数が
   多いものは、直す価値の根拠として §3 の起草と §4 の選択肢に添える(ADR-543 の昇格の合図)。
   この結果も scratchpad のファイル(例 `findings-<取得時刻>.json`)に保存する(§5 で取り直して比べる)。
@@ -42,7 +42,7 @@ triage フェーズ(§2〜§4)に全部前倒しし、`ExitPlanMode` が GO を�
   **この収集と差分は 1 コマンドにしてある**: `~/.claude/hooks/issue-inbox --collect <scratchpad のディレクトリ> --repo <owner/repo>`
   が、除外ラベルを除いた open な Issue(番号・題・更新日時)を `population.json` に、open な気づき(`--list-open --json` と同じ形)を
   `findings.json` に保存する。`--limit` と同数が返ったら、limit を倍にして取り直す(§1 の規則)のも、このコマンドが行う。本文
-  (`body`)は保存しない(§2 の粗振り分けで本文が要る Issue は、`gh issue view` か、1 回の `gh issue list --json number,body` で
+  (`body`)は保存しない(§2 の粗振り分けで本文が必要な Issue は、`gh issue view` か、1 回の `gh issue list --json number,body` で
   読む)。open な PR(番号・題・head・更新日時・変えるファイル)も `prs.json` に保存する(#1561)。§5 の差分は
   `--collect-diff`(同じ引数)。#1421。
   **取得件数が `--limit` と一致したら打ち切りの可能性がある**ので、その場合は limit を倍にして再実行する。wrap-up フッター regex(統合形 `Filed from [Claude Code](...) wrap-up inbox` と旧 2 行形式の両方にマッチする `test("Filed from \\[?Claude Code.*wrap-up inbox")`)は廃止しない — マッチする Issue は粗振り分けを経ずに無条件で候補に含める**ヒント**として使う。
@@ -61,7 +61,7 @@ triage フェーズ(§2〜§4)に全部前倒しし、`ExitPlanMode` が GO を�
 | L5 本人操作 | 実機のブラウザ・カードの解錠・本人の判断・アカウント設定の画面など、**本人が操作しないと閉じない**。かつ第三者を介さず、そのセッションの作業領域に関わる | §7a の「本人作業フェーズ」(除外しない) |
 
 **L3 の候補は、§4 の選択肢に載せる前に、本文の全文と最新 3 件のコメントを読む。** 振り分けは title + body の先頭だけで
-済ませてよいが、L3 は §3 の起草(L2 だけが通る)を通らないので、全文を読む段が無いと、すでに済んでいる Issue を
+済ませてよいが、L3 は §3 の起草(L2 だけが通る)を通らないので、全文を読む段がないと、すでに済んでいる Issue を
 「これから実装する段」として計画に載せてしまう(2026-11-15、本文の先頭 420 字とラベルだけで L3 に振った 2 件が、本文の末尾の
 「現在の状態」と最新のコメントで、リポジトリ側は済んでいると分かった。計画の承認後に気づき、段の中身を作り直した)。
 読むのは、「現在の状態」の節、完了条件がすでに満たされていないか、関連する PR・ADR(§3 の逆引き)。満たされていれば、
@@ -72,16 +72,16 @@ L3 でなく、`Obsolete:` か、残りだけの L2・L5 に振り直す。
 - **「規模が大きい」は L4 にならない。** 必ず L3 に入れ、刈り取るかどうかは
   ユーザーが決める。規模・工数・セッション長・コンテキスト残量を理由にした除外は
   誤用であり、書いてはいけない(`requirements-inventory` §2 と同文)。
-- **「よく分からない」で母集団から落とさない。** 分からなければ L2 に入れ、
+- **「よく分からない」で母集団から除外しない。** 分からなければ L2 に入れ、
   §3 のサブエージェントに調べさせる。
 - **同一母集団内の Issue 待ちは L4 にならない。** `Blocked-Upstream:` は
   `requirements-inventory` §2 の定義どおり**リポジトリ外**の事情に限る。母集団の中に
   先行 Issue が居るなら、今回それを刈れば後続も着手可能になるので、後続は
   L2 または L3 に入れて**裁定に載せる**。
 
-- **「本人の操作が要る」「実機・カード・同意が要る」は棄却の理由にならない。**
+- **「本人の操作が必要」「実機・カード・同意が必要」は棄却の理由にならない。**
   規模・工数と同じ誤用で、問題は誰がいつ操作するかであって、やるかどうかではない。
-  第三者(同僚・事務局・編集部・情シス・上長)の協力が要るもの、そのセッションの
+  第三者(同僚・事務局・編集部・情シス・上長)の協力が必要なもの、そのセッションの
   作業領域の外のものだけが、裁定で `User-Excluded:`(理由に「第三者」「領域外」と
   書く)になる。判別は L5 の条件(第三者を介さない・作業領域に関わる)で行い、
   迷ったら §4 の問いに載せる(本人の裁定 — tarotene/dotfiles#691)。
@@ -174,7 +174,7 @@ subagent への指示・返値の契約:
 - ホストの設定リポジトリの正本は `~/.ghr/github.com/<owner>/<repo>` の置き場。
   ホーム直下の複製(`~/dotfiles` など)は履歴が分岐した古い写しのことがあるので、
   参照も、手順の根拠にもしない。導入・適用の手順を書く前に、`hms --help` の出力で
-  適用手段を確かめる(適用は `hms` 1 本で、`git pull` は要らない。#817)。人に渡す
+  適用手段を確かめる(適用は `hms` 1 本で、`git pull` は不要。#817)。人に渡す
   手順は、本線が実体(コマンドの `--help`、`git status`)と突き合わせてから出す
 
 先行例と軸をここで取らせることで、§5 の Plan の `## 先行例との対比` がほぼ
@@ -239,7 +239,7 @@ plan mode でなければ `EnterPlanMode` を呼ぶ。Plan を書く直前に `g
   再起動が半日続く間に、別セッションが起票した Issue が母集団に 1 件増え、`ExitPlanMode` を
   本人に差し戻された)。次の 4 つを取り直して、§1 に保存した結果・Plan を書いたときの値と比べる:
   - open Issue と気づき: `~/.claude/hooks/issue-inbox --collect-diff <§1 のディレクトリ> --repo <owner/repo>` が、取り直して、
-    保存した結果との差分だけを出す(`+` 増えた、`-` 消えた、`~` 更新日時が変わった。気づきは `再発 N -> M 回`)。差分が無ければ
+    保存した結果との差分だけを出す(`+` 増えた、`-` 消えた、`~` 更新日時が変わった。気づきは `再発 N -> M 回`)。差分がなければ
     `no changes`(終了コード 0)、あれば差分の行(終了コード 1)、取得の失敗は終了コード 2。保存した結果は書き換えない。
     別のセッションが起票した Issue や、`--add` した新しい気づき、再発の増えたものが見つかる
   - **open な PR**(#1561): 同じ `--collect-diff` が、`prs.json` との差分(`PR #N` の増減と更新)も出す。さらに
@@ -252,7 +252,7 @@ plan mode でなければ `EnterPlanMode` を呼ぶ。Plan を書く直前に `g
   - Plan が根拠にした他リポジトリの Issue: `gh issue view <N> -R <OWNER/REPO> --json updatedAt`。
     根拠にした Issue の番号と `updatedAt` は、Plan を書くときに控えておく
 
-  差分があれば、Plan の要求インベントリに足すか、前提が変わっていないことを確かめてから
+  差分があれば、Plan の要求インベントリに追加するか、前提が変わっていないことを確かめてから
   `ExitPlanMode` を呼ぶ。機械化できる(保存と diff だけ)ので、同じ差し戻しが繰り返された
   ら script への昇格を検討する(ADR-543 の昇格型)。
 - 自己検査 2 本を走らせて指摘ゼロを確認してから `ExitPlanMode`:
@@ -281,11 +281,11 @@ ADR-0027 に従い単一チェーンに積む。手順・`Stack:` 行・段ご�
 - §2a の構造の操作(sub-issue の追加・親の本文の書き直し・親の close)は、PR の段とは別に、`tracking-issue`
   の §2・§4・§6・§7 の手順で、GO のあとに行う。親を閉じる前に根拠(全 sub-issue が closed であること、
   完了定義の充足)をコメントに書き、閉じたあと状態を読み戻してから報告する。
-- **段1 の最初の commit ができたら、すぐ push して PR を作り、以後はその PR に commit を足す。**
+- **段1 の最初の commit ができたら、すぐ push して PR を作り、以後はその PR に commit を追加する。**
   サブエージェントへの委譲の完了を待つ Stop のたびに、`pr-gate` が「未 push の commit があります。
   PR はまだありません」と block し、PR 作成を急かす(2026-10-27 に 6 回。#1093)。かつての
   `--chores-begin` の「実行中の印」は ADR-1136 で削除され(`session-wrapup --chores-begin` は
-  exit 1)、`pr-gate` を抑える手段は無い。PR が先にあれば `no_pr` の block は起きない。追加の push
+  exit 1)、`pr-gate` を抑える手段はない。PR が先にあれば `no_pr` の block は起きない。追加の push
   のたびに CI が回り直す費用は、この block の往復より小さい。
 - 他リポジトリで作業する段は、`github-audit-triage` §6 の手順 1・2 に従う。
   scratchpad の clone は読み取りだけに使い、`herdr worktree create --cwd
@@ -296,7 +296,7 @@ ADR-0027 に従い単一チェーンに積む。手順・`Stack:` 行・段ご�
   (`fetch` も `.git` が書き込み許可の外で `Read-only file system`。2026-10-28 に private wrapper の worktree で、
   段ごとに `dangerouslyDisableSandbox` を 3 回使った)。`config/claude/CLAUDE.md`「sandbox の外で動かす
   コマンドは、単体で呼ぶ」の `SANDBOX_COMPOUND_GUARD_ALLOW=1` + 承認つきの `dangerouslyDisableSandbox` の
-  手順に従い、段ごとにその承認が要ることを、最初に本人へ伝える。
+  手順に従い、段ごとにその承認が必要なことを、最初に本人へ伝える。
 - **Issue の置き場と対処先の可視性が違うとき**は、§3 の起草の時点で
   `gh repo view <OWNER/REPO> --json visibility` で両方を調べ、裁定の選択肢に
   載せる前に扱いを決める。Issue が private で、対処先が public のリポジトリなら:
@@ -311,16 +311,16 @@ ADR-0027 に従い単一チェーンに積む。手順・`Stack:` 行・段ご�
     `## 要確認` か本人への報告にポインタを置く(public 側の PR には書けない)。
 - **段の実装は、既定で本線が行う**(本人の指示 2026-11-08: 「サブエージェント払い出すと効率落ちるので
   メインエージェントで集約して作業してほしい」、#1394)。払い出すたびに文脈の受け渡し・待ち・途中の中断の
-  再開・結果の読み戻しが要り、全体では効率が落ちた(別の worktree に切り替わったまま `git add -A` や
+  再開・結果の読み戻しが必要になり、全体では効率が落ちた(別の worktree に切り替わったまま `git add -A` や
   `git push` を別のリポジトリで実行した誤りも出た)。サブエージェントに出してよいのは、本線を止めたく
   ない**読み取りだけの独立した調査**(§3 の起草など)と、利用上限(HTTP 429)に近く、本線で回し切れない
   ときの例外だけである。
-- 例外として段や repo をサブエージェントへ委譲するときは、`github-audit-triage` §6a の
+- 例外として段やリポジトリをサブエージェントへ委譲するときは、`github-audit-triage` §6a の
   委譲の運用(波・止まる前の commit/push・共通指示のファイル化、#735)に従う。
   あわせて、作業場所は次のとおり渡す(#1004):
   - **`Agent` の `isolation: worktree` を使わない。** 本物の checkout の `.claude/worktrees/` 配下に
     worktree が作られ、`cargo` が上位の `Cargo.toml` を workspace と誤検出して `cargo fmt --all` が
-    落ちる repo がある(commit hook が失敗し、サブエージェントが `--no-verify` で commit した実例)。
+    失敗するリポジトリがある(commit hook が失敗し、サブエージェントが `--no-verify` で commit した実例)。
     本線が先に `herdr worktree create --cwd <本物の checkout> --branch <名前>` で本物の checkout の
     外に worktree を作り、その絶対パスを指示に書いて渡す。
   - 癖: `git worktree add` の直接実行は PreToolUse の hook が拒否する。`herdr worktree create` は
@@ -328,18 +328,18 @@ ADR-0027 に従い単一チェーンに積む。手順・`Stack:` 行・段ご�
     拒否される。
   - 起点を動かす: 作った worktree の起点は default branch の HEAD である。チェーンの途中のブランチから
     始めるときは、worktree の中で `git reset --hard <ブランチ>` する(`herdr worktree create` の
-    `--base <REF>` が同じことをするかは未確認 — `--help` に説明が無い)。
-  - **`--no-verify` を使わせない。** 共通指示のファイルに「hook が落ちたら、原因を直して commit し
+    `--base <REF>` が同じことをするかは未確認 — `--help` に説明がない)。
+  - **`--no-verify` を使わせない。** 共通指示のファイルに「hook が失敗したら、原因を直して commit し
     直す。`--no-verify` で飛ばさない」を入れる。委譲した作業の commit が、リポジトリの検査(hook)を
     飛ばさずに積まれるようにするため。
 - 各段の PR 本文はリポジトリの `pr-description` スケルトンに従う:
   - その段で対処した Issue はすべて `Closes #N` として列挙する
-  - inbox 由来で対応する Issue が無い項目は、**新たに起票しない**(起票して
+  - inbox 由来で対応する Issue がない項目は、**新たに起票しない**(起票して
     即クローズする churn を避ける)。代わりに「課題」節に「inbox 直接消化分」
     として title / detail を列挙し、何を直したかを本文で監査できるようにする
-  - その段の対処項目が inbox 直接消化分のみ(Issue が 1 つも無い)の場合に限り、
+  - その段の対処項目が inbox 直接消化分のみ(Issue が 1 つもない)の場合に限り、
     `No-Issue:` で理由を明記する
-  - Before/After は視覚的な変更があれば証跡を、無ければそのリポジトリの規約に
+  - Before/After は視覚的な変更があれば証跡を、なければそのリポジトリの規約に
     沿って明示する
 
 実装中に §5 で想定していなかった分岐が判明した場合の規律:
@@ -361,10 +361,10 @@ ADR-0027 に従い単一チェーンに積む。手順・`Stack:` 行・段ご�
 - **書き込みは、本人が承認した範囲に限る。** 外部システムへの書き込みは、安全な対象(取り消せる・
   他者に通知が飛ばない・本人の記録を壊さない)に限り、事前に対象を示して承認を得る。
   **アカウント設定は触らない** — 画面の経路と現在の状態を読み取りで確かめ、手順に書く。
-  安全な対象が無い実験は、無理に作らず(本人のカレンダーに実験用の予定を足すなど)、条件が
+  安全な対象がない実験は、無理に作らず(本人のカレンダーに実験用の予定を追加するなど)、条件が
   揃うまで open にする。
-- **使った機構自体の不具合が見つかったら、その場で直す。** 実機で初めて動かして落ちたもの
-  (偽の画面を使う単体テストでは見えなかった不具合)は、回帰テストを足して該当の段に積み、
+- **使った機構自体の不具合が見つかったら、その場で直す。** 実機で初めて動かして失敗したもの
+  (偽の画面を使う単体テストでは見えなかった不具合)は、回帰テストを追加して該当の段に積み、
   上の段を rebase で追従させる。`gh stack link` は全段の内容が確定し CI が green になって
   から 1 回だけ行う。
 - **終わり方。** 完了条件を満たした Issue は、証跡(何を・どの手段で読み戻したか)をコメントして
@@ -396,7 +396,7 @@ ADR-0027 に従い単一チェーンに積む。手順・`Stack:` 行・段ご�
 
   | `--reason` | 選ぶとき |
   |---|---|
-  | `semantic-judgment` | 意味の判断が要り、機械では決められない |
+  | `semantic-judgment` | 意味の判断が必要で、機械では決められない |
   | `unobservable` | 機械から観測できない(チャットの報告、散在した書き込み経路など) |
   | `preference` | 好みの問題で、例外ゼロの規則ではない |
   | `one-off` | 一度きりの探索で、繰り返さない |
@@ -404,30 +404,30 @@ ADR-0027 に従い単一チェーンに積む。手順・`Stack:` 行・段ご�
   | `misread-signal` | 兆候の読み違い。この兆候の定義が当たっていない |
   | `moved` | 直す場所が別のリポジトリなので、そのリポジトリの inbox へ `--add` して移した(移管。この兆候の採用でも却下でもなく、日次の較正は数えない) |
 
-  `signal` を持たない旧い気づきは、理由なしで `dropped` にできる。
+  `signal` を持たない古い気づきは、理由なしで `dropped` にできる。
 
 - **別のリポジトリへ移す(`moved`)ときは、行き先の inbox へ `--add` する JSON に `"repo": "<owner/repo>"` を書く**
   (F34・F35)。`--add <inbox> <JSON>` は、行き先を第 1 引数の jsonl のパスでなく、JSON の `"repo"` で決める(書かないと cwd の
-  git のリポジトリになり、同じ題名のノートが元にあれば、新しいノートを作らず元のノートに行を足して、`dropped` のノートを
-  open に戻す)。`--repo owner/repo` を後ろに足すと、終了コード 64 で止まり、何も書かない(`docs/agents/wrapup-inbox.md` の `--add`)。
+  git のリポジトリになり、同じ題名のノートが元にあれば、新しいノートを作らず元のノートに行を追加して、`dropped` のノートを
+  open に戻す)。`--repo owner/repo` を後ろに追加すると、終了コード 64 で止まり、何も書かない(`docs/agents/wrapup-inbox.md` の `--add`)。
   行き先で書いたあと、こちらのノートを `--set-status <note> dropped --reason moved` で閉じる(`signal` を持たないノートは理由が不要)。
   行き先のリポジトリが非公開なら、その名前を公開側の文書・Issue・PR に書かない(ADR-0034)。
 
 - **Issue にするのは L3 と L5 だけ**: 本人が裁定で「Issue にする」と選んだものを `gh issue create` で
   起票し(本文の末尾に出自フッター「🤖 Filed from [Claude Code](https://claude.com/claude-code) wrap-up inbox」を
   付ける。`--check-dup "<title>"` で同名の open Issue を先に確かめ、あれば新しく作らず `gh issue comment`)、
-  その URL で `issued` にする。公開リポジトリの Issue には、再現に要る最小限の事実だけを書く
+  その URL で `issued` にする。公開リポジトリの Issue には、再現に必要な最小限の事実だけを書く
   (内部の名前は書かない。PreToolUse の denylist に弾かれると 1 往復を失う)。
-- vault の無い機体(`source: jsonl`)では、同じコマンドが jsonl のその行を取り除く
+- vault のない機体(`source: jsonl`)では、同じコマンドが jsonl のその行を取り除く
   (`<inbox>.filed.jsonl` に退避)。状態は残らないが、PR 本文と commit が記録になる。
 - **commit 直後ではなく PR 作成直後**にする理由: セッションが PR 作成前に終了しても気づきは
   open のまま残り、次の機会に拾い直せる。commit しかしていない段階で `fixed` にすると、push 前に
-  セッションが落ちた場合に、直っていないのに直った記録になる。
+  セッションが異常終了した場合に、直っていないのに直った記録になる。
 - **merge 後ではなく PR 作成直後**にする理由: PR 作成から merge までの間、対処済みの項目が
   open のままだと、その間に走る別の `/my-cleanup` が同じ項目を再び拾う。merge を待って
   変える主体はこの機構には存在しない。PR 作成直後に変えておけば、記録は PR 本文と commit に
   恒久的に残る。
-- 直したはずの気づきが再発したときは、`--add` がノートを自動で open に戻す(再発の行が足される)。
+- 直したはずの気づきが再発したときは、`--add` がノートを自動で open に戻す(再発の行が追加される)。
 - 裁定されないまま `open` で 14 日たった気づきは、日次の `promotion-detect` が `lapsed` にする(ADR-1381)。`lapsed` は
   `--list-open` に出ない(`--list-lapsed` で一覧できる)。再発すれば `--add` が open に戻し、`--set-status` で `fixed`・`dropped` にも進められる。
 

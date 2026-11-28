@@ -56,7 +56,7 @@ verify_drafts() {
   n=$(jq '(.drafts // []) | length' "$data")
   [ "$n" -gt 0 ] || return 0
   if ! command -v "$bin" >/dev/null 2>&1; then
-    echo "error: drafts[] があるのに $bin が見つかりません(返信の下書きは reply-coverage の検査が要ります)" >&2
+    echo "error: drafts[] があるのに $bin が見つかりません(返信の下書きは reply-coverage の検査が必要です)" >&2
     return 1
   fi
   for ((i = 0; i < n; i++)); do
@@ -102,7 +102,7 @@ build() {
   done
   # 版、選択肢、データの順に置き換える: データ側の文字列に差し込み点の語があっても、書き換わらない。
   jq -nj --rawfile tpl "$TEMPLATE" --slurpfile d "$data" --slurpfile o "$OPTIONS_FILE" '
-    # 原文の全文(items[].source.text)は、紙と機体ローカルの PDF だけに載せる。HTML の DATA を作る前に落とす(FORMAT.md)。
+    # 原文の全文(items[].source.text)は、紙と機体ローカルの PDF だけに載せる。HTML の DATA を作る前に除外する(FORMAT.md)。
     ($d[0] | (.items |= map(if has("source") then .source |= del(.text) else . end)) | tojson | gsub("<"; "\\u003c")) as $json
     | ($o[0] | del(.description) | tojson | gsub("<"; "\\u003c")) as $opts
     | $tpl
@@ -127,7 +127,7 @@ html_checks() {
   n=$(grep -oi '</script' "$html" | wc -l || true)
   if [ "$n" -eq 1 ]; then ok "$name: </script が 1 個だけ"; else ng "$name: </script が $n 個ある"; fi
   n=$(grep -o '<!--' "$html" | wc -l || true)
-  if [ "$n" -eq 0 ]; then ok "$name: <!-- が無い"; else ng "$name: <!-- が $n 個ある"; fi
+  if [ "$n" -eq 0 ]; then ok "$name: <!-- がない"; else ng "$name: <!-- が $n 個ある"; fi
   if [ "$name" = valid ] && grep -q '__DATA__\|__OPTIONS__\|__FORMAT_VERSION__' "$html"; then
     ng "$name: 差し込み点が残っている"
   else
@@ -137,7 +137,7 @@ html_checks() {
   if grep -qF "<meta name=\"verdict-page-format\" content=\"$ver\">" "$html"; then
     ok "$name: meta に版 $ver"
   else
-    ng "$name: meta に版 $ver が無い"
+    ng "$name: meta に版 $ver がない"
   fi
   # script の中身を取り出し、JavaScript として構文を通す。
   awk '/^<script>$/{on=1; next} /^<\/script>$/{on=0} on' "$html" > "$js"
@@ -168,7 +168,7 @@ selftest() {
   trap 'rm -rf "$tmp"' EXIT
   valid="$HERE/fixtures/valid.items.json"
   breaker="$HERE/fixtures/script-breaker.items.json"
-  # 偽の reply-coverage: 本文に NOT-CHECKED を含む下書きだけを、検査していないものとして落とす。
+  # 偽の reply-coverage: 本文に NOT-CHECKED を含む下書きだけを、検査していないものとして弾く。
   printf '#!/bin/sh\n[ "$1" = verify ] || exit 2\nwhile [ $# -gt 0 ]; do [ "$1" = --draft ] && f=$2; shift; done\n! grep -q NOT-CHECKED "$f"\n' > "$tmp/rc-stub"
   chmod +x "$tmp/rc-stub"
   export REPLY_COVERAGE_BIN="$tmp/rc-stub"
@@ -208,17 +208,17 @@ selftest() {
   mutate '.drafts[0].asks[0].status = "unanswered"' unanswered-ask-in-draft
   mutate '.drafts[0].asks[0].extra = 1' extra-ask-field
   for f in unchecked-draft draft-without-thread draft-without-asks bad-draft-thread unanswered-ask-in-draft extra-ask-field; do
-    expect_fail "入力: $f は落ちる" build "$tmp/$f.json"
+    expect_fail "入力: $f は失敗する" build "$tmp/$f.json"
   done
-  expect_fail "入力: reply-coverage が無いと、drafts[] のあるページは作らない" env REPLY_COVERAGE_BIN="$tmp/none" bash "$0" --data "$valid"
+  expect_fail "入力: reply-coverage がないと、drafts[] のあるページは作らない" env REPLY_COVERAGE_BIN="$tmp/none" bash "$0" --data "$valid"
   jq 'del(.drafts)' "$valid" > "$tmp/no-drafts.json"
-  expect_ok "入力: drafts[] が無ければ reply-coverage は要らない" env REPLY_COVERAGE_BIN="$tmp/none" bash "$0" --data "$tmp/no-drafts.json"
+  expect_ok "入力: drafts[] がなければ reply-coverage は不要" env REPLY_COVERAGE_BIN="$tmp/none" bash "$0" --data "$tmp/no-drafts.json"
   for f in bad-key bad-key-dot dup-id dup-key missing-required missing-run-label extra-top extra-item wrong-version bad-when-class bad-id bad-draft-key missing-kind bad-kind bad-rec-option rec-option-of-other-kind old-version fact-rec-option-of-other-kind report-rec-option-of-fact bad-gh-key-dot bad-run-no bad-rev source-without-sha pr-rec-option-of-other-kind; do
-    expect_fail "入力: $f は落ちる" build "$tmp/$f.json"
+    expect_fail "入力: $f は失敗する" build "$tmp/$f.json"
   done
   printf '{' > "$tmp/not-json.json"
-  expect_fail "入力: JSON でない入力は落ちる" build "$tmp/not-json.json"
-  expect_fail "入力: 無いファイルは落ちる" build "$tmp/none.json"
+  expect_fail "入力: JSON でない入力は失敗する" build "$tmp/not-json.json"
+  expect_fail "入力: ないファイルは失敗する" build "$tmp/none.json"
   # 検証器は、対応していないキーワードのスキーマを通さない。
   jq -n '{type: "object", uniqueItems: true}' > "$tmp/unsupported.schema.json"
   expect_fail "検証器: 対応外のキーワードは違反" validate "$tmp/unsupported.schema.json" "$valid"
@@ -234,15 +234,15 @@ selftest() {
   # 3. 保存先の形(verdicts.schema.json)
   verdict() { jq -n "$1" > "$tmp/doc.json"; validate "$VERDICTS_SCHEMA" "$tmp/doc.json"; }
   expect_ok "保存先: decide とメモの文書" verdict '{key:"gmail:t1/m1", verdict:"decide", note:"理由", at:"2026-01-02T03:04:05.678Z"}'
-  expect_ok "保存先: note の無い古い文書" verdict '{key:"lapras:c1/20260102T1000", verdict:"pass", at:"2026-01-02T03:04:05Z"}'
+  expect_ok "保存先: note のない古い文書" verdict '{key:"lapras:c1/20260102T1000", verdict:"pass", at:"2026-01-02T03:04:05Z"}'
   expect_ok "保存先: verdict が空文字の文書" verdict '{key:"none:t1/m1", verdict:"", note:"メモだけ", at:"2026-01-02T03:04:05.1+09:00"}'
   expect_ok "保存先: guidance/standing の文書" verdict '{text:"フィードバック", at:"2026-01-02T03:04:05.678Z"}'
   expect_ok "保存先: おまかせ(decide と owner と option)" verdict '{key:"gmail:t1/m1", verdict:"decide", owner:"agent", option:"send-agent", note:"", at:"2026-01-02T03:04:05.678Z"}'
   expect_ok "保存先: その他(note が指示)" verdict '{key:"gmail:t1/m1", verdict:"other", owner:"", option:"other", note:"先に条件だけ聞いてほしい", at:"2026-01-02T03:04:05.678Z"}'
-  expect_ok "保存先: option と owner の無い古い decide" verdict '{key:"gmail:t1/m1", verdict:"decide", note:"理由", at:"2026-01-02T03:04:05.678Z"}'
-  expect_fail "保存先: 知らない owner" verdict '{key:"gmail:t1/m1", verdict:"decide", owner:"robot", at:"2026-01-02T03:04:05Z"}'
+  expect_ok "保存先: option と owner のない古い decide" verdict '{key:"gmail:t1/m1", verdict:"decide", note:"理由", at:"2026-01-02T03:04:05.678Z"}'
+  expect_fail "保存先: 未知の owner" verdict '{key:"gmail:t1/m1", verdict:"decide", owner:"robot", at:"2026-01-02T03:04:05Z"}'
   expect_fail "保存先: option の文字種" verdict '{key:"gmail:t1/m1", verdict:"decide", option:"Send Me", at:"2026-01-02T03:04:05Z"}'
-  expect_fail "保存先: 知らない裁定の語" verdict '{key:"gmail:t1/m1", verdict:"maybe", at:"2026-01-02T03:04:05Z"}'
+  expect_fail "保存先: 未知の裁定の語" verdict '{key:"gmail:t1/m1", verdict:"maybe", at:"2026-01-02T03:04:05Z"}'
   expect_fail "保存先: 要旨のような余計な欄" verdict '{key:"gmail:t1/m1", verdict:"pass", summary:"x", at:"2026-01-02T03:04:05Z"}'
   expect_fail "保存先: at が ISO 8601 でない" verdict '{key:"gmail:t1/m1", verdict:"pass", at:"昨日"}'
   expect_fail "保存先: key が不正" verdict '{key:"t1", verdict:"pass", at:"2026-01-02T03:04:05Z"}'
@@ -256,7 +256,7 @@ selftest() {
   got=$(grep -oE 'gdoc\.set\(\{[^}]*\}\)' "$TEMPLATE" | grep -oE '[a-z]+' | grep -vE '^(gdoc|set)$' | sort | paste -sd, -)
   if [ "$want" = "$got" ]; then ok "テンプレート: guidance の文書の欄が Schema と一致 ($got)"; else ng "テンプレート: guidance の文書の欄 [$got] が Schema [$want] と違う"; fi
   if grep -qF 'db.collection("verdicts")' "$TEMPLATE"; then ok "テンプレート: コレクション名 verdicts"; else ng "テンプレート: コレクション名が verdicts でない"; fi
-  if grep -qF 'db.doc("guidance/standing")' "$TEMPLATE"; then ok "テンプレート: 文書 guidance/standing"; else ng "テンプレート: guidance/standing が無い"; fi
+  if grep -qF 'db.doc("guidance/standing")' "$TEMPLATE"; then ok "テンプレート: 文書 guidance/standing"; else ng "テンプレート: guidance/standing がない"; fi
   got=$(node -e "$(grep '^function docId' "$TEMPLATE"); console.log(docId('gmail:AbC_1/dEf-2'))")
   if [ "$got" = "gmail.AbC_1.dEf-2" ]; then ok "テンプレート: docId の換え方"; else ng "テンプレート: docId が $got"; fi
   # docId は、db の文書 id が許す文字(英数字と _ - . ~ : @ +)だけで書けて、1 対 1 であること。`=` を残すと、GitHub の鍵のカードの答えが
@@ -305,7 +305,7 @@ if (dk('step', E('ArrowRight')) !== 'next') bad.push('→ が次へでない');
 if (dk('step', E('a', { ctrl: true })) !== 'ignore') bad.push('Ctrl+a が効く');
 if (dk('step', E('Escape', { target: 'memo' })) !== 'esc-memo') bad.push('メモ欄の Esc が次へ進まない');
 if (dk('step', E('a', { target: 'memo' })) !== 'ignore') bad.push('メモ欄の中の a が選択になる');
-if (keyState({ focused: false, typing: null, view: 'step' }).on) bad.push('フォーカスが無いのに、キーが受付中と表示される');
+if (keyState({ focused: false, typing: null, view: 'step' }).on) bad.push('フォーカスがないのに、キーが受付中と表示される');
 if (keyState({ focused: true, typing: null, view: 'done' }).on) bad.push('完了画面で、キーが受付中と表示される');
 /* 選んだあとの行き先: 途中は次の件、最後の件と、確認画面から直しに来たあとは、確認画面。 */
 for (let c = 0; c < ORDER.length; c++) {
@@ -334,7 +334,7 @@ EOF
   # ショートカットのキーが、ボタン・要約などの標準のキー操作(Enter・Space)を奪わないのは、共有の keyguard の仕事(C12)。手書きの keydown を足さない。
   if grep -qF 'window.pageBehavior.keyguard(' "$TEMPLATE" && [ "$(grep -c "addEventListener(\"keydown\"" "$TEMPLATE")" -le 2 ]; then ok "テンプレート: ショートカットのキーは、共有の keyguard で受ける"; else ng "テンプレート: keyguard を使っていない、または手書きの keydown が増えている"; fi
   # 画面の構造の宣言(ステップ型)。語彙と軸の整合は repo-structure-check の web_structures が、描画との一致は visual_diff.py audit の F10 が見る(ここでは、宣言が在ることだけを見る)。
-  if grep -qF '<meta name="page-structure" content="step">' "$TEMPLATE" && grep -qF '<meta name="page-axes" content="' "$TEMPLATE"; then ok "テンプレート: 画面の構造(step)と、課題の性質の軸が宣言されている"; else ng "テンプレート: 画面の構造の宣言(page-structure・page-axes)が無い"; fi
+  if grep -qF '<meta name="page-structure" content="step">' "$TEMPLATE" && grep -qF '<meta name="page-axes" content="' "$TEMPLATE"; then ok "テンプレート: 画面の構造(step)と、課題の性質の軸が宣言されている"; else ng "テンプレート: 画面の構造の宣言(page-structure・page-axes)がない"; fi
   if grep -qF 'gEdited' "$TEMPLATE"; then ok "テンプレート: 古いフィードバックを回答に含めない"; else ng "テンプレート: 古いフィードバックを回答に含める"; fi
 
   # 5. 選択肢の正本(options.json)が、画面・保存先の形・項目の kind と食い違わないこと
@@ -399,7 +399,7 @@ EOF
     console.log(bad.join(','));"
   got=$(node -e "$js" "$OPTIONS_FILE")
   if [ -z "$got" ]; then ok "キー入力: options.json の並びから振った符号が、画面の入力と双方向に一致する"; else ng "キー入力: $got"; fi
-  if grep -q 'keydown' "$TEMPLATE"; then ok "テンプレート: keydown の入力処理がある"; else ng "テンプレート: keydown の入力処理が無い"; fi
+  if grep -q 'keydown' "$TEMPLATE"; then ok "テンプレート: keydown の入力処理がある"; else ng "テンプレート: keydown の入力処理がない"; fi
 
   # 8. GitHub の鍵(gh)の符号: owner/repo の可逆な符号で、往復し、文書 id が 1 対 1 になる(`a-b/c` と `a/b-c` が衝突しない)。
   got=$(jq -r -L "$HERE" 'include "gh-key";

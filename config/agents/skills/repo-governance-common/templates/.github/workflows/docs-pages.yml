@@ -5,7 +5,7 @@ name: Docs pages
 # ジトリだけ:
 #   - crates.io 公開済みの crate は docs.rs が自動でビルドするため、ここでは
 #     deploy しない(重複)。
-#   - PRIVATE リポジトリには置かない。個人アカウントでは private repo の
+#   - PRIVATE リポジトリには置かない。個人アカウントでは private リポジトリの
 #     Pages サイトも公開される(GitHub Docs, "Changing the visibility of your
 #     GitHub Pages site" — サイトの閲覧制限は GitHub Enterprise Cloud の組織
 #     所有リポジトリ限定)。github-audit の docs ドメインは PRIVATE で Pages

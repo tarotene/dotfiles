@@ -93,45 +93,45 @@ description・topics・settings フィールド・ファイルツリー・open I
   として表に書く。`auto-merge-disabled` / `dependabot-security-updates-
   enabled`(docs/adr/568-renovate-automerge-shared-preset.md D2/D5b)は
   `apply-repo-settings.sh --owner <owner> --repo <repo>` の再実行で両方
-  一度に直る。`renovate-policy-preset-missing`(同 ADR D4)は対象 repo の
+  一度に直る。`renovate-policy-preset-missing`(同 ADR D4)は対象リポジトリの
   `renovate.json` の `extends` に `github>tarotene/dotfiles//renovate/
-  policy` を追記する提案にする — テンプレート全体で上書きしない(repo
+  policy` を追記する提案にする — テンプレート全体で上書きしない(リポジトリ
   固有の `packageRules` を消さないため)。
 - titles ドメイン(ADR-0031、#337)は `missing` トークンごとに機械的に
   決まる:
   - `pr-title-workflow-missing` — `.github/workflows/pr-title.yml`
     (dotfiles の composite action を呼ぶ caller。reusable workflow を呼ぶ
     旧形は ADR-591 D3 で退役し、`legacy-reusable-pr-title-call` が検出する)
-    が無い。対象リポジトリの
+    がない。対象リポジトリの
     言語に対応する `repo-governance` の profile があれば、その
     `copy-files.sh` を(`--owner`/`--repo` のみ渡し、他フラグは
     テンプレート適用に必要な最小限)実行する提案を表に書く。対応する
-    profile が無いリポジトリ(`core` 型。`repo-governance` SKILL.md の
+    profile がないリポジトリ(`core` 型。`repo-governance` SKILL.md の
     「Without a language profile (`core`)」)は
     `repo-governance-common/templates/.github/workflows/pr-title.yml`
     (単一正本、rust/typst/astro-site の 3 profile はこのファイルへの symlink)
     をそのまま `.github/workflows/pr-title.yml` にコピーする提案にする。
   - `pr-title-check-not-required` — 対象リポジトリの ruleset に required
     check context の完全一致(`"PR title"` または `"PR Title / PR title"`
-    のいずれか)が無い(ADR-0031 2026-09-26 Amendment で完全一致化。旧・
-    接尾辞後方一致の判定は #337 の事故 — 呼び出し側 job に `name:` が無い
+    のいずれか)がない(ADR-0031 2026-09-26 Amendment で完全一致化。旧・
+    接尾辞後方一致の判定は #337 の事故 — 呼び出し側 job に `name:` がない
     テンプレートの実際の check 名 `"check / PR title"` を誤って ok と
     判定し続けていた — を受けて廃止した)。対象リポジトリに
-    `.github/rulesets/quality.json` 宣言が無ければ、対応する
+    `.github/rulesets/quality.json` 宣言がなければ、対応する
     `repo-governance` skill の言語 profile(rust/typst/astro-site)の `copy-files.sh` または
     `core` 型(`repo-governance` SKILL.md の「Without a language profile (`core`)」)の
     `copy-files.sh` で宣言を播く提案を先に書く
     (ADR-503、`rulesets-declaration-missing`
     が該当)。宣言は既にあり live だけが古い場合は、
     `apply-rulesets.sh <owner>/<repo> --reconcile` を適用する提案として
-    表に書く(`--reconcile` が無いと既存 ruleset は skip されて追加されない、
+    表に書く(`--reconcile` がないと既存 ruleset は skip されて追加されない、
     #337 で判明。型を問わず同じ汎用スクリプト 1 本)。**dotfiles 自身と
     同じ手動 `gh api PUT` は使わない** — `crates/rulesets-write-guard` が
     deny する。
   - `pr-title-context-mismatch` — ruleset の required context 文字列は
     正しいが、最新の `pr-title.yml` run が実際に報告した job 名と一致しない
     (ground-truth 突き合わせ、ADR-0031 2026-09-26 Amendment)。原因は
-    ほぼ必ず呼び出し側テンプレートの job に `name: PR Title` が無いこと
+    ほぼ必ず呼び出し側テンプレートの job に `name: PR Title` がないこと
     (現行テンプレートは固定済みなので、播き直し後の初回 run では発生
     しないはず)か、旧型の別 PR タイトル検査ワークフローが残っていること
     (下記)。提案は「呼び出し側 job の `name:` をテンプレートに合わせて
@@ -141,11 +141,11 @@ description・topics・settings フィールド・ファイルツリー・open I
     check だけ足りない、context だけ mismatch、等)は、該当する提案だけを
     表に書けばよい — 複数を揃えるための追加確認は不要(rulesets ドメインの
     `review_layer=partial-drift` と違い、これらのトークンに解釈の分岐は
-    無い)。
+    ない)。
   - 旧 `amannn/action-semantic-pull-request` 等、別の PR タイトル検査
     ワークフローが既に存在するリポジトリ(ADR-0031 D2 追補の訂正
     参照、2026-09-24)は、置き換え(旧 workflow ファイルの削除 + 旧
-    context 名を required check から外す)を提案に含める — 追加ではなく
+    context 名を required check から除外する)を提案に含める — 追加ではなく
     置換であることを起草の時点で明記する。
 - charters ドメインで `nav-doc-*` トークン(ADR-0033)が立った場合、当該
   ファイル(README.md / CONTRIBUTING.md / AGENTS.md / CLAUDE.md)を
@@ -156,20 +156,20 @@ description・topics・settings フィールド・ファイルツリー・open I
   「情報の寿命」で 1 箇所ずつ判定する):
   1. `nav-doc-tree-fence` / `nav-doc-path-inventory` が挙がった節 —
      ディレクトリ構成図・手書き一覧を削除し、運んでいた役割説明を
-     実体の隣(`<dir>/README.md` の冒頭 1 文、無ければ新設)へ移す。
+     実体の隣(`<dir>/README.md` の冒頭 1 文、なければ新設)へ移す。
      生成物・第三者素材の帰属注記(ADR-0028)など意図的に残す一覧は、
      削除ではなく直前に `<!-- nav-doc-exempt: <check> — <理由> -->`
-     を足す(理由は具体的に — 「必要だから」のような同語反復は書かない)。
+     を追加する(理由は具体的に — 「必要だから」のような同語反復は書かない)。
   2. `nav-doc-exempt-malformed` — マーカーの書式(`<check> — <理由>` の
-     両方が要る)を直す。何を exempt しているか不明な場合は、マーカー
+     両方が必要)を直す。何を exempt しているか不明な場合は、マーカー
      ごと削除して該当ブロックも上記 1 と同様に処理する。
   3. `nav-doc-exempt-unused` — マーカーを削除する(exempt しなくても
      drift しない箇所に残す理由がない)。
   4. 他ファイルの中身の転記(YAML/JSON スキーマ・設定値・CLI 使用法
      など、機械検査の対象外)— 転記元ファイルと突き合わせ、字面が
      一致しているか・古くなっているかに関わらず削除し、転記元への
-     1 行ポインタに置き換える。転記元ファイル自身に説明が無い場合は、
-     ポインタを書く前に転記元へ最小限の説明を足す(情報を消すだけで
+     1 行ポインタに置き換える。転記元ファイル自身に説明がない場合は、
+     ポインタを書く前に転記元へ最小限の説明を追加する(情報を消すだけで
      終わらせない)。
   charters の要約欄には「nav-doc: <削除した節数> 節削除、<新設した
   `<dir>/README.md` 数> 件新設」のように定量的に書く。
@@ -179,13 +179,13 @@ description・topics・settings フィールド・ファイルツリー・open I
   汎用スクリプト、宣言済みのコア 3 ファイルのみ)適用提案として表に書く。
   `review_layer=partial-drift`(`missing` に `review_layer.*` が立つ)は、
   対応する skill の `copy-files.sh --with-review` で `review.json` 宣言を
-  足してから apply するか、`apply-rulesets.sh <owner>/<repo>
+  追加してから apply するか、`apply-rulesets.sh <owner>/<repo>
   --delete-ruleset Review`(宣言から `review.json` を先に外しておく必要
   がある)で剥がすかの二択として表に書き、低確信フラグ相当として
   **起草せず人間裁定に回す**(片方だけ入った経緯が読み取れないため)。
   `review_layer=absent` は drift ではないので表に出さない — 既存の低速
   シグナル(`ungoverned`)と同様、レビュー層は opt-in であって欠落ではない。
-  `rulesets-declaration-missing`(宣言そのものが無い)・
+  `rulesets-declaration-missing`(宣言そのものがない)・
   `rulesets-declaration-drift:<name>`(宣言 ≠ live)・
   `required-context-unreportable:<context>`(live の context がこの
   リポジトリのどの job も報告しない)は
@@ -201,9 +201,9 @@ description・topics・settings フィールド・ファイルツリー・open I
   外科的に直す。
   - `ci-yml-missing` — 対象リポジトリの言語に対応する `repo-governance`
     の profile があれば、その `<profile>/templates/.github/workflows/ci.yml` を土台に
-    `# ADJUST:` 箇所を埋めて起草する。対応する profile が無い(`core` 型。
+    `# ADJUST:` 箇所を埋めて起草する。対応する profile がない(`core` 型。
     `repo-governance` SKILL.md の「Without a language profile (`core`)」)場合は
-    言語別のテンプレートが無いので低確信フラグに回す(§3)。分割された workflow(`fmt.yml`・`test.yml` など)が既にある
+    言語別のテンプレートがないので低確信フラグに回す(§3)。分割された workflow(`fmt.yml`・`test.yml` など)が既にある
     リポジトリは、それらを `ci.yml` に統合する。このとき既存 job の
     `name:` は変えない: live の ruleset の必須 check は旧 job 名のままで、
     名前を変えると reconcile の前に必須 check が「Expected」のまま PR を
@@ -226,23 +226,23 @@ description・topics・settings フィールド・ファイルツリー・open I
     追加する(他の job には触れない)。
   - `ci-passed-not-always` / `ci-passed-failure-step-missing` — `ci-passed`
     job の形が ADR-591 D1/D3 から外れている(ADR-1005 D6)。前者は job 直下に
-    `if: always()` を足し、後者は `steps:` に失敗判定 step
+    `if: always()` を追加し、後者は `steps:` に失敗判定 step
     (`if: contains(needs.*.result, 'failure') || contains(needs.*.result,
-    'cancelled')` / `run: exit 1`)を足す。形は
+    'cancelled')` / `run: exit 1`)を追加する。形は
     `repo-governance-common` 以外の `repo-governance` の言語テンプレートの `ci-passed`
     と同一で、他の job には触れない。
-  - `ci-gate-empty` — `ci.yml` に gate job(`ci-passed` 以外の job)が 1 つも無い
-    (監査だけの finding、ADR-1005 D7)。`ci-absent` と同じく、{gate job を足す
-    PR / 誘導 Issue の起票 / exempt} の三択を表に書く。足す job は ADR-1005 D1 の
-    基準で決める — ① 落ちたまま main に入ると main の不変条件(ビルド・テスト・
-    整形・秘密なし等)が壊れる job だけを足し、② flaky・外部依存(共有キュー・
-    外部 API・時刻)・p75 10 分超の job は足さない(`ci.yml` の外へ置く)。
+  - `ci-gate-empty` — `ci.yml` に gate job(`ci-passed` 以外の job)が 1 つもない
+    (監査だけの finding、ADR-1005 D7)。`ci-absent` と同じく、{gate job を追加する
+    PR / 誘導 Issue の起票 / exempt} の三択を表に書く。追加する job は ADR-1005 D1 の
+    基準で決める — ① 失敗したまま main に入ると main の不変条件(ビルド・テスト・
+    整形・秘密なし等)が壊れる job だけを追加し、② flaky・外部依存(共有キュー・
+    外部 API・時刻)・p75 10 分超の job は追加しない(`ci.yml` の外へ置く)。
     どの job が①に当たるかは、リポジトリの中身を読んで人が決める(低確信フラグ、§3)。
   - `advisory-workflow-no-push:<file>` — `ci.yml` の外の検査 workflow が PR では
     走るのに既定ブランチへの push で走らない(ADR-1005 D3)。処分は 2 つ。
-    ADR-1005 D1 ① を満たす(落ちたまま main に入ると main の不変条件が壊れる)なら
-    `ci.yml` に移し、`ci-passed.needs` に足す。そうでなければ `on:` に `push:`
-    (`branches: [<既定ブランチ>]`)を足して main でも走らせ、`default-branch-run-failed`
+    ADR-1005 D1 ① を満たす(失敗したまま main に入ると main の不変条件が壊れる)なら
+    `ci.yml` に移し、`ci-passed.needs` に追加する。そうでなければ `on:` に `push:`
+    (`branches: [<既定ブランチ>]`)を追加して main でも走らせ、`default-branch-run-failed`
     で拾えるようにする。PR の番号や本文を使う補助(プレビュー・コメント)は、検出の
     時点で除かれている。
   - `default-branch-run-failed:<file>` — その workflow の既定ブランチでの最新の完了 run
@@ -253,7 +253,7 @@ description・topics・settings フィールド・ファイルツリー・open I
     (明示指定でだけ走る opt-in、ADR-1005 D5)。`ci.yml` の job が、ADR-1005 D1 ②
     の除外条件に当たっている。`slow` は直近の成功 run の p75 が 10 分超、`flaky` は
     同じ head SHA で失敗と成功の両方を出した。処分は、{`ci.yml` の外へ出す(workflow を
-    分け、`ci-passed.needs` から外し、main への push でも走らせる)/ job を分割して
+    分け、`ci-passed.needs` から除外し、main への push でも走らせる)/ job を分割して
     p75 を縮める / flaky の原因を直す}。どれにするかは job の中身を読んで人が決める
     (低確信フラグ、§3)。job 名は matrix の展開後の名前なので、`ci.yml` の `name:` と
     一致しないことがある。
@@ -280,13 +280,13 @@ description・topics・settings フィールド・ファイルツリー・open I
     (単一正本)でまるごと置き換える(titles ドメインの
     `pr-title-workflow-missing` と同じ扱い — この 1 ファイルは元々
     リポジトリ固有の中身を持たない)。**同じ PR で、`.github/rulesets/
-    quality.json` の宣言が無いリポジトリには宣言を播く**(対応する
-    `repo-governance` の言語 profile の `copy-files.sh`、無ければ `core` 型として
+    quality.json` の宣言がないリポジトリには宣言を播く**(対応する
+    `repo-governance` の言語 profile の `copy-files.sh`、なければ `core` 型として
     `repo-governance` SKILL.md の「Without a language profile (`core`)」の `copy-files.sh`
     (`repo-governance-common/templates/.github/rulesets/` を播く))。live の ruleset
-    が旧 context `PR Title / PR title` を必須にしている repo では、置換した瞬間
-    head がその context を報告しなくなる。宣言が無いと `apply-rulesets --ref
-    <branch> --verify-sha <head> --reconcile` で live を直す正本が無く、PR が
+    が旧 context `PR Title / PR title` を必須にしているリポジトリでは、置換した瞬間
+    head がその context を報告しなくなる。宣言がないと `apply-rulesets --ref
+    <branch> --verify-sha <head> --reconcile` で live を直す正本がなく、PR が
     緑にならない(workflows ドメインは「宣言があれば比較」なので、宣言の欠落は
     ここでは検出されない)。順序は PR 作成 → head で新 context の報告を待つ →
     reconcile → `PR title` の再実行 → merge(ADR-591 D8)。
@@ -302,7 +302,7 @@ description・topics・settings フィールド・ファイルツリー・open I
     3. `apply-rulesets.sh <owner>/<repo> --ref <ブランチ> --verify-sha <head>
        --reconcile --dry-run` を実行し、**宣言と live の required context の差分**
        (`-` が live にだけある旧 context、`+` が宣言にだけある新 context)を
-       PR 本文に貼る。別の比較スクリプトは要らない。
+       PR 本文に貼る。別の比較スクリプトは不要。
     4. 本人の GO(reconcile は他の open PR にも影響する外向き操作)で
        `--dry-run` を外して reconcile し、`gh run rerun` で `PR title` を
        再実行して、緑になったことを読み戻してから報告する。
@@ -314,7 +314,7 @@ description・topics・settings フィールド・ファイルツリー・open I
   ドメインと同じく `ci.yml` は丸ごと上書きせず、job の追加と `needs:` の
   追記だけを外科的に行う。`missing` トークンごとに:
   - `docs-absent:<stack>` — `ci.yml` に次の job を追加し、`ci-passed.needs`
-    に job id を足す。`<stack>` は `rust` / `python` / `typescript` で、
+    に job id を追加する。`<stack>` は `rust` / `python` / `typescript` で、
     `uses:` の action 名は `docs-<stack>`:
     ```yaml
       docs:
@@ -334,17 +334,17 @@ description・topics・settings フィールド・ファイルツリー・open I
     あるので、変更理由が読み取れなければ低確信フラグに回す(§3)。
   - **既存の doc 警告の修正も同じ PR に含める。** strict ビルドは
     `-D warnings` / `sphinx-build -W -n` / `--treatWarningsAsErrors` なので、
-    これまで警告を抱えていたリポジトリは job を足すだけでは `CI passed` が
+    これまで警告を抱えていたリポジトリは job を追加するだけでは `CI passed` が
     赤くなる。起草の前に、対象リポジトリで同じコマンドを手元で実行して
     (`RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --workspace` など、
     `.github/actions/docs-<stack>/action.yml` のコマンド)警告の有無を確認し、
     見つかったものは doc コメントの修正として同じ PR に入れる。警告が
     多数(目安: 20 件超)で機械的に直せない場合は、起草せず低確信フラグに
     回す(§3)— 警告を `#[allow]` や lint 無効化で黙らせない。
-  - python では `docs/conf.py` が無くても job は動く(action が
+  - python では `docs/conf.py` がなくても job は動く(action が
     `sphinx-apidoc` で最小構成を生成する)ので、Sphinx の設定ファイルを
     新規に起草しない。docstring の相互参照が nitpicky(`-n`)で警告に
-    なる場合は、参照を直すか `docs/conf.py` に `nitpick_ignore` を足す。
+    なる場合は、参照を直すか `docs/conf.py` に `nitpick_ignore` を追加する。
   - 公開(Pages)は別の判断で、`missing` には出ない。**PUBLIC かつ
     docs.rs / pkg.go.dev の対象外**(crates.io 未公開の Rust、PyPI/npm 公開の
     有無は問わない)のリポジトリに限り、`repo-governance-common/templates/
@@ -355,9 +355,9 @@ description・topics・settings フィールド・ファイルツリー・open I
     ものだけ)。Settings → Pages の Source を「GitHub Actions」にする
     手順は人手の作業なので、後続 Issue に払い出す(PR 本文の `## 要確認`
     にはそのポインタだけを書く)。`docs-linkcheck.yml`(週次の外部リンク
-    検査)も同様に、docs job を足すリポジトリに任意で付ける提案にする。
+    検査)も同様に、docs job を追加するリポジトリに任意で付ける提案にする。
   - `private-pages-enabled` — PRIVATE リポジトリで Pages が有効。個人
-    アカウントでは private repo の Pages も公開されるので、**起草では
+    アカウントでは private リポジトリの Pages も公開されるので、**起草では
     直せない**(Settings → Pages の操作)。**推奨を決める前に、公開が意図的かを
     確かめる**: README の目的文と、Pages を配信するワークフロー(`build_type`、
     `docs-pages.yml` など)を読み、公開が成果物の目的(例: 本として配信)かを見る。
@@ -368,7 +368,7 @@ description・topics・settings フィールド・ファイルツリー・open I
   - `not-applicable` のスタック(Astro サイト・Nix・Go・Typst・GAS・設定のみ)
     には何も提案しない。`package.json` が `exports`/`main`/`types` を
     持つのに API doc が不要なライブラリ(内部ツールなど)は、`exempt`
-    (§7)で理由付きに外す。
+    (§7)で理由付きに除外する。
 
 ## 3. 低確信フラグ(起草しないレーン)
 
@@ -441,7 +441,7 @@ SKILL.md §9 と同じ作法)。
    のように review とは異なるファイル名 → 別 URL)で作業記録 artifact を
    新規 publish する。中身の骨子:
    - 先頭に「今すぐ確認してほしいこと」ブロック — まだ merge していない
-     PR 等、ユーザーの判断が要る項目へのリンクを最優先で置く
+     PR 等、ユーザーの判断が必要な項目へのリンクを最優先で置く
    - ドメイン別の適用サマリ(件数・self-verify 結果)
    - セッション中に見つかった問題とその対処(解決済み/持ち越しを明記)
    - 次回セッションへの持ち越し事項
@@ -453,14 +453,14 @@ SKILL.md §9 と同じ作法)。
    ドメインの `naming-*` topic 反映も、`repo-charter` SKILL.md §8 の
    「メタデータを反映する時機」の規定(正本)に従い、**該当 PR が merge された後**に
    人間が個別に行う(この段階では行わない)。naming ドメインで改名を伴わず、
-   対応する PR が無い場合(盲再導出の一致度が高く、宣言のみで済む場合)は、
+   対応する PR がない場合(盲再導出の一致度が高く、宣言のみで済む場合)は、
    同じ規定の例外のとおり GO 直後に `gh repo edit --add-topic naming-<class>` を
    直接実行してよい。
 
 ## 6a. サブエージェントへの委譲の運用(複数リポジトリを並列で回すとき)
 
 **書き込みの委譲は例外である。** 既定は本線が順に回す(本人の指示 2026-11-08、#1394。払い出すたびに文脈の
-受け渡し・中断の再開・結果の読み戻しが要り、全体では効率が落ちた)。この節は、利用上限(HTTP 429)に近く
+受け渡し・中断の再開・結果の読み戻しが必要になり、全体では効率が落ちた)。この節は、利用上限(HTTP 429)に近く
 本線で回し切れないときなど、例外として委譲するときの運用を定める。§2 の起草のような読み取りだけの調査は、
 本線を止めないために委譲してよい。
 
@@ -468,9 +468,9 @@ SKILL.md §9 と同じ作法)。
 必要な暗号文のパスと箇所を本線へ返す」と含める。本線が必要範囲だけを渡し、
 取得できなかった部分は未確認として扱う。委譲先へ復号の再試行を指示しない。
 
-`my-cleanup` §7 も同じ運用に従う(#735)。10 repo ぶんを 10 本のサブ
+`my-cleanup` §7 も同じ運用に従う(#735)。10 リポジトリぶんを 10 本のサブ
 エージェントに 1 度に渡したところ、セッション上限で 3 件が commit も push も
-無いまま止まり、作業が残らなかった実例がある。
+ないまま止まり、作業が残らなかった実例がある。
 
 - **波に分ける。** 1 度に起動する並列数は 4 件以内にし、波が終わってから
   次を起動する。
@@ -478,7 +478,7 @@ SKILL.md §9 と同じ作法)。
   「途中の状態(clone・worktree・ブランチ・PR)があれば作り直さず再利用する」
   を指示に含める。
 - **指示をファイルに置く。** 共通の指示は scratchpad のファイルに書き、
-  担当ごとの指示はそのファイルへのポインタ + 担当固有の値(repo・ブランチ名)
+  担当ごとの指示はそのファイルへのポインタ + 担当固有の値(リポジトリ・ブランチ名)
   だけにする。再起動のときも同じファイルを指せば足りる。
 
 ## 6b. rulesets ドメインの ci-absent 適用(GO 分のみ)

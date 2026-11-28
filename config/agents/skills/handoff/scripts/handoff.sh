@@ -32,7 +32,7 @@ self_path() {
 label_meta() { # label_meta <label名> ; 色と説明を1行ずつ出す(未知なら非0)
   case "$1" in
     handoff:human)
-      printf '%s\n%s\n' "C2E0C6" "中断ハンドオフ: 人手が要るタスク(GUI・認証・物理・判断・外部連絡)"
+      printf '%s\n%s\n' "C2E0C6" "中断ハンドオフ: 人手が必要なタスク(GUI・認証・物理・判断・外部連絡)"
       ;;
     handoff:ai)
       printf '%s\n%s\n' "BFD4F2" "中断ハンドオフ: 後続セッションの AI が着手できるタスク"

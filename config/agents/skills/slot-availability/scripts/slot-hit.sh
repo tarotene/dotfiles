@@ -19,7 +19,7 @@
 # 構造化 JSON: `[{"date": "2026-10-18", "time": "18:00"}, ...]`。
 #
 # 終日イベントのうち soft_day_prefixes に一致するものは、同じ日に時間指定
-# の確定予定が1件も無いとエラー終了する(judge.jq の validate_soft_days)。
+# の確定予定が1件もないとエラー終了する(judge.jq の validate_soft_days)。
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -216,7 +216,7 @@ cmd_infer_year() {
 }
 
 # 期間 × 設定の全コマを、judge の入力契約の候補 JSON として列挙する。
-# 候補一覧が無いとき(「いつ空いてる?」への応答)に、判定は既存の judge に
+# 候補一覧がないとき(「いつ空いてる?」への応答)に、判定は既存の judge に
 # 任せたまま候補集合だけを機械生成するための入口。判定は行わない。
 cmd_enumerate() {
   local config="" from="" to="" weekdays="" slots="" out=""

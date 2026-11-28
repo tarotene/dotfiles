@@ -7,7 +7,7 @@
 # .claude/hooks/bleep-hook)に、登録コマンド(agents.nix の bleepEnvPrefix)と同じ環境を
 # 与え、隔離した denylist と stub の gh(全リポジトリが private の cwd、pub/repo だけ
 # PUBLIC)で判定させる。bleep 側の破壊的変更に dotfiles の配線が追従していない版は、
-# ここで落ちて generation が build できない(hms が bleep main を適用前に確かめる
+# ここで失敗して generation が build できない(hms が bleep main を適用前に確かめる
 # 根拠、crates/hms)。`bleep doctor` は導入の健全性だけで、実コマンドに canary を
 # 通す検査は持たない(bleep の cmd_doctor のコメント)ので、これは置き換えられない。
 #

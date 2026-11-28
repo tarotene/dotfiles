@@ -94,10 +94,10 @@ clasp README は `--creds` 指定時に `.clasprc.json` をカレントディレ
 
 ### 認証ファイルが読めないとき
 
-`clasp push` や `clasp login` が `Unexpected end of JSON input` で落ちるのは、clasp が `~/.clasprc.json`
+`clasp push` や `clasp login` が `Unexpected end of JSON input` で失敗するのは、clasp が `~/.clasprc.json`
 を読むときに、ファイルがあれば JSON をそのまま解析するため、空(0 バイト)だと失敗するから
 (clasp 3.3.0 のソースの `auth/file_credential_store.js` を読んだ)。保存(`save()`)も最初に読むので、
-ログインし直しも同じエラーで落ちる。
+ログインし直しも同じエラーで失敗する。
 
 - Claude Code の sandbox の中では、`~/.clasprc.json` と `~/.config/clasp` は読み取り拒否の対象になっている
   (`home/modules/claude.nix` の `denyRead`)。拒否したファイルが空に見えて、上のエラーになる可能性がある
@@ -123,14 +123,14 @@ clasp tail-logs              # console.log の出力を追う(Cloud Logging 経�
 
 ### `clasp push` はリモートだけにあるファイルを消さないことがある
 
-変更が 0 件のとき、`clasp push` は `Script is already up to date.` で終わり、ローカルに無くてリモートにだけ
+変更が 0 件のとき、`clasp push` は `Script is already up to date.` で終わり、ローカルになくてリモートにだけ
 あるファイルを消さない(clasp 3.3.0 のソースを読んだ: `core/files.js` の `getChangedFiles` はローカルのファイル
 だけを見て、リモートだけにあるファイルを「変更」に数えない。`commands/push.js` は変更 0 件で終わる)。変更が
 1 件でもあれば、ローカルの全ファイルを送り、リモートだけにあるファイルは消える。
 
 一時的な関数のファイルをローカルで撤去したのにリモートに残るときは、ローカルのファイルに一時的な変更(コメント
 1 行など)を入れて `clasp push` で全体を送り、変更を戻してもう一度 `clasp push` する。送ったあとは、Apps Script
-の画面のファイル一覧で、撤去したファイルが無いことを読み戻す(`clasp push` の成功応答を、消えた証拠にしない)。
+の画面のファイル一覧で、撤去したファイルがないことを読み戻す(`clasp push` の成功応答を、消えた証拠にしない)。
 
 ## 5. スクリプト側の規約
 

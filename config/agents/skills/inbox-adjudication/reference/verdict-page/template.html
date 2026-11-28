@@ -792,7 +792,7 @@ const saveSeq = {};        // id -> 書き込みの連番。後の書き込み�
 
 /* 文書 id: 鍵の `:` と `/` を `.` に、`=`(GitHub の鍵の escape。gh-key.jq)を `+` に換える。db の文書 id が許す文字は
    英数字と _ - . ~ : @ + だけで、`=` を残すと GitHub の鍵のカードの答えが 1 件も保存されない(2026-11-18・19 に実測)。
-   `+` は鍵の文字種([A-Za-z0-9_=-] と `:` `/`)に無いので、換えは 1 対 1 で、衝突しない。読む側は data.key で引くので、id は位置にすぎない。 */
+   `+` は鍵の文字種([A-Za-z0-9_=-] と `:` `/`)にないので、換えは 1 対 1 で、衝突しない。読む側は data.key で引くので、id は位置にすぎない。 */
 function docId(key) { return key.replace(/[:\/]/g, ".").replace(/=/g, "+"); }
 function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
 function hhmm(iso) { try { const d = new Date(iso); return d.toLocaleString("ja-JP", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }); } catch (e) { return ""; } }
@@ -804,7 +804,7 @@ function optsOf(it) { return OPTIONS.kinds[it.kind].options; }
 function codesOf(opts) { const m = {}; let n = 0; for (const o of opts) { m[o.id] = o.verdict === "later" ? " " : String.fromCharCode(97 + n++); } return m; }
 function optionForKey(opts, k) { const m = codesOf(opts); const key = k === " " ? " " : String(k).toLowerCase(); return opts.find(o => m[o.id] === key) || null; }
 
-/* 保存された裁定から、押されたボタンを決める。option が無い古い文書は、verdict と owner から選ぶ。 */
+/* 保存された裁定から、押されたボタンを決める。option がない古い文書は、verdict と owner から選ぶ。 */
 function optionOf(it, s) {
   if (!s || !s.verdict) return null;
   const opts = optsOf(it);
@@ -1304,7 +1304,7 @@ function guidanceInput(text) {
 }
 let gdoc = null;
 /* 「推奨をすべて採用」: まだ選ばれていない項目のうち、推奨(rec_option)のある項目だけを、推奨の選択肢にする(進まない)。
-   すでに選んだ項目と、推奨の無い項目、推奨が「その他」の項目は、そのままにする。例外だけを、あとから個別に直せる。 */
+   すでに選んだ項目と、推奨のない項目、推奨が「その他」の項目は、そのままにする。例外だけを、あとから個別に直せる。 */
 function adoptAll() {
   for (const it of ITEMS) {
     if (!it.rec_option || settled(state[it.id])) continue;

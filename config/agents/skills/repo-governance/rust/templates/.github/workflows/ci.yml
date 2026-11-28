@@ -34,9 +34,9 @@ env:
 
 jobs:
   # 積み重ねた PR(stacked PR)の中間段かを判定する(ADR-1005 D8)。重い job(目安: 成功した
-  # run の p75 が 2 分超)は、これを `needs:` に取って `if:` で飛ばす。この job を足したら
-  # `ci-passed.needs` にも足す(このファイルの先頭の不変条件)。`ci:full` ラベルで強制するなら、
-  # `on.pull_request.types` に `labeled` を足す(既定だと、開いている PR にラベルを付けても
+  # run の p75 が 2 分超)は、これを `needs:` に取って `if:` で飛ばす。この job を追加したら
+  # `ci-passed.needs` にも追加する(このファイルの先頭の不変条件)。`ci:full` ラベルで強制するなら、
+  # `on.pull_request.types` に `labeled` を追加する(既定だと、開いている PR にラベルを付けても
   # 再実行されない)。API の失敗は fail-open(飛ばさない)。
   stack-stage:
     name: Stack stage
@@ -404,7 +404,7 @@ jobs:
   # tarotene/dotfiles の github-audit `docs` ドメインが、この呼び出しの
   # 有無(@main 参照)を横断で検査する。
   # ADJUST: workspace が libudev 等のシステムライブラリに依存するクレートを
-  # 含む場合は、この step の前に apt-get install を足す(host job と同じ)。
+  # 含む場合は、この step の前に apt-get install を追加する(host job と同じ)。
   docs:
     name: API docs
     runs-on: ubuntu-latest

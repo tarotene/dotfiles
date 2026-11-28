@@ -3,7 +3,7 @@
 # 出来事は from と to の要素ごとに (ev, from, to, by) の組へ展開する。to が ["same"] の出来事(remind)は、
 # 組の to を from と同じにする(状態は変わらない)。TRANSITIONS_LIST の添字が、仕様の被覆の検査
 # (cov<i>)の添字になる。OPENING は from が ["none"] だけの出来事(読む・下書き・質問)、
-# TERM_EVENTS は終端の状態へ入りうる出来事。AGENT_STATES は owner が agent の未了の状態(エージェントの番)。
+# TERM_EVENTS は終端の状態へ入る可能性がある出来事。AGENT_STATES は owner が agent の未了の状態(エージェントの番)。
 # 語彙の共通の形(config/agents/vocabulary/vocabulary.schema.json)では to は常に配列。
 def q: "\"" + . + "\"";
 def qs: [.[] | q] | join(", ");

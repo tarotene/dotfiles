@@ -16,7 +16,7 @@ rclone listremotes          # gdrive-agent: が出ること
 rclone lsd gdrive-agent:    # エラーなく終わること(空でもよい)
 ```
 
-- `gdrive-agent:` が無ければ、セットアップが済んでいない。`docs/gdrive-upload.md` の初回セットアップを、本人と 1 手順ずつ進める
+- `gdrive-agent:` がなければ、セットアップが済んでいない。`docs/gdrive-upload.md` の初回セットアップを、本人と 1 手順ずつ進める
   (GCP・同意画面・OAuth クライアント・ブラウザ認可は、本人にしかできない)。クライアントシークレットや token を、チャット・Issue・PR に貼らせない。
 - `rclone lsd` が認可のエラーを返すときは、refresh token が失効している(Testing のままだと 7 日)。`rclone config reconnect gdrive-agent:` を本人に
   依頼する(ブラウザの認可を伴う)。
@@ -27,11 +27,11 @@ rclone lsd gdrive-agent:    # エラーなく終わること(空でもよい)
 rclone copy <ローカルのファイル> gdrive-agent:<purpose>/
 ```
 
-- 書き込み先は、リモートの根(`root_folder_id` で固定した専用フォルダ `rclone/uploads`)の下の `<purpose>/`。`<purpose>` は小文字・ハイフン区切り
-  (`docs/cloud-artifacts-and-runbooks.md` §1.2)。フォルダは無ければ作られる。
+- 書き込み先は、リモートのルート(`root_folder_id` で固定した専用フォルダ `rclone/uploads`)の下の `<purpose>/`。`<purpose>` は小文字・ハイフン区切り
+  (`docs/cloud-artifacts-and-runbooks.md` §1.2)。フォルダはなければ作られる。
 - **scope は `drive.file` で、rclone が作ったものしか触れない**。Drive の画面で作った既存のフォルダへは直接書けない。「既存のフォルダへ」と
   頼まれたら、専用フォルダへ上げて、本人が Drive の画面で移す運用だと伝える(`drive` のフルスコープへ広げる案は採っていない)。
-- 同名のファイルは `copy` が上書きする(中身が同じなら何もしない)。消す操作(`delete`・`purge`・`sync`)は、本人の依頼が無い限り使わない。
+- 同名のファイルは `copy` が上書きする(中身が同じなら何もしない)。消す操作(`delete`・`purge`・`sync`)は、本人の依頼がない限り使わない。
 
 ## 3. 読み戻して報告する
 
@@ -59,7 +59,7 @@ rclone listremotes          # gdrive-read: が出ること
 rclone backend copyid gdrive-read: <ファイルの ID> <保存先のディレクトリ>/
 ```
 
-- `gdrive-read:` が無ければ、読み取り側のセットアップが済んでいない。`docs/gdrive-upload.md` の「読み取り側のセットアップ」を、本人と 1 手順ずつ進める
+- `gdrive-read:` がなければ、読み取り側のセットアップが済んでいない。`docs/gdrive-upload.md` の「読み取り側のセットアップ」を、本人と 1 手順ずつ進める
   (ブラウザの認可は本人にしかできない)。
 - ファイルの ID は、Drive の URL `https://drive.google.com/file/d/<ID>/view` の `<ID>` か、コネクタの `search_files` / `get_file_metadata` が返す ID。
 - 保存先のパスは `/` で終える(ファイル名はそのまま。`/` で終えないと、最後の要素がファイル名になる。`rclone backend help drive` の `copyid`)。

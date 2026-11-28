@@ -69,7 +69,7 @@ run_main() {
     else
       add "$(jq -n --arg id "$id" --arg service "$service" --arg branch "$branch" \
         '{id: (if $id == "" then null else $id end), service: $service, branch: $branch, url: null, login_required: null,
-          note: "この service 向けの既知 URL が無い。手動で確認する。"}')"
+          note: "この service 向けの既知 URL がない。手動で確認する。"}')"
     fi
   done
 
@@ -92,7 +92,7 @@ run_main() {
         add '{"service": "えどねっと", "url": "https://www.shisetsuyoyaku.city.edogawa.tokyo.jp/user/Home", "login_required": "予約には要利用者登録(登録済み)。空き照会がログイン不要かは未確認。", "note": "江戸川区の施設予約システム。ピアノの有無は施設ごとに確認する。"}'
         ;;
       *)
-        add "$(jq -n --arg system "$system" '{service: $system, url: null, login_required: null, note: "この system 向けの既知 URL が無い。手動で確認する。"}')"
+        add "$(jq -n --arg system "$system" '{service: $system, url: null, login_required: null, note: "この system 向けの既知 URL がない。手動で確認する。"}')"
         ;;
     esac
   done

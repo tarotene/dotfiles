@@ -27,7 +27,7 @@
 #      6. 追加された ADR の番号が n >= 0100 なら n == PR 番号
 #         (--pr 無指定なら skip)。n < 0100 なら緩衝帯として通過させる
 #      7. base との diff の追加行(追跡されていない新規ファイルを含む)に起草中の参照(ADR-0000 / adr/0000-)が
-#         無い(--fix は ADR のファイル名しか直さないため、他ファイルからの
+#         ない(--fix は ADR のファイル名しか直さないため、他ファイルからの
 #         参照は改番されずに main へ残っていた、#644)。採番の仕組みを説明する
 #         ファイルは ADR_REF_ALLOW(下記)で除外する
 #
@@ -122,7 +122,7 @@ check_readme_index() {
     base="$(basename "$file")"
     num="$(adr_number_of "$base")"
     [[ -n $num ]] || continue
-    # 索引ファイル自体が無いとき、ADR ごとの「未リンク」を並べず 1 行だけ示す
+    # 索引ファイル自体がないとき、ADR ごとの「未リンク」を並べず 1 行だけ示す
     # (全 ADR 分の行に、本物の失敗が埋もれた)。終了コードは変えない。
     if [[ ! -f $readme ]]; then
       echo "adr-number-check: ADR の索引 $label がありません。索引を持たないリポジトリは ADR_INDEX= を空にして呼ぶ" >&2
@@ -195,7 +195,7 @@ added_draft_refs() {
         '
     # 追跡されていない新規ファイルは `git diff <base>` に出ない。全行が追加行なので、中身を読む
     # (.gitignore されたファイルと、バイナリは除く)。PR 1496 は、新しい crate のファイルがこの穴に
-    # 落ちて、手元で通ったのに CI で落ちた(2026-11-09)。
+    # 失敗して、手元で通ったのに CI で失敗した(2026-11-09)。
     git -C "$repo_root" ls-files --others --exclude-standard -z 2> /dev/null \
       | while IFS= read -r -d '' untracked; do
         [[ -f $repo_root/$untracked ]] || continue
@@ -213,7 +213,7 @@ added_draft_refs() {
 
 # --base 省略時の既定: origin/HEAD との merge-base からの差分で項目 7(起草中の
 # 参照の追加)だけを判定する。CI の --base 付き実行と手元の無引数実行の検出力を
-# そろえる(#762。無引数が項目 7 を見ないために、PR 作成後の CI で初めて落ちた)。
+# そろえる(#762。無引数が項目 7 を見ないために、PR 作成後の CI で初めて失敗した)。
 # - origin/HEAD が解決できない(remote なし・未取得)なら、従来どおり skip する。
 # - 起草中の ADR(docs/adr/0000-*.md)が作業ツリーにあるあいだは、起草中の参照が
 #   正当に存在するので skip する(--fix で改番した後に判定される)。
@@ -367,7 +367,7 @@ selftest() {
   check "8 README 未リンクを検出" 1 check_readme_index "$tmp/docs/adr" "$tmp/docs/README.md"
   rm "$tmp/docs/adr/0200-orphan.md"
 
-  # --- Category B のフィクスチャ(実 git 履歴が要る) ---
+  # --- Category B のフィクスチャ(実 git 履歴が必要) ---
   local repo="$tmp/repo"
   mkdir -p "$repo/docs/adr"
   git -C "$repo" init -q -b main
@@ -422,8 +422,8 @@ selftest() {
   local self
   self="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
   idx_run() { (cd "$idxrepo" && env "$@" bash "$self"); }
-  check "17 索引が無く ADR_INDEX 未設定なら検出" 1 idx_run
-  # 索引ファイル自体が無いとき、ADR ごとの「未リンク」を並べず 1 行で示す。
+  check "17 索引がなく ADR_INDEX 未設定なら検出" 1 idx_run
+  # 索引ファイル自体がないとき、ADR ごとの「未リンク」を並べず 1 行で示す。
   idx_missing_one_line() {
     local out
     out="$(idx_run "$@" 2>&1 > /dev/null || true)"
@@ -431,7 +431,7 @@ selftest() {
       && grep -qF 'ADR の索引 docs/README.md がありません' <<< "$out" \
       && grep -qF 'ADR_INDEX= を空にして' <<< "$out"
   }
-  check "17b 索引が無いときは 1 行だけ示す" 0 idx_missing_one_line
+  check "17b 索引がないときは 1 行だけ示す" 0 idx_missing_one_line
   check "18 ADR_INDEX を空にすると索引検査を無効化" 0 idx_run ADR_INDEX=
   printf -- '- [ADR-0001](adr/0001-a.md)\n' > "$idxrepo/docs/adr/README.md"
   check "19 ADR_INDEX で索引パスを変更できる" 0 idx_run ADR_INDEX=docs/adr/README.md
@@ -521,7 +521,7 @@ selftest() {
   printf '# ADR-0001 — a\n' > "$defrepo/docs/adr/0001-a.md"
   git -C "$defrepo" add -A
   git -C "$defrepo" commit -qm base
-  check "25 origin/HEAD が無ければ skip して通過" 0 check_default_base_draft_refs "$defrepo"
+  check "25 origin/HEAD がなければ skip して通過" 0 check_default_base_draft_refs "$defrepo"
   git -C "$defrepo" update-ref refs/remotes/origin/main HEAD
   git -C "$defrepo" symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/main
   git -C "$defrepo" switch -q -c topic
@@ -535,7 +535,7 @@ selftest() {
   git -C "$defrepo" switch -q main
   check "28 main 上(差分なし)は通過" 0 check_default_base_draft_refs "$defrepo"
   # 追跡されていない新規ファイルの参照も検出する(`git diff <base>` には出ない。2026-11-09 に PR 1496 で
-  # 手元の無引数実行が通り、CI だけが落ちた)。.gitignore されたファイルは見ない。
+  # 手元の無引数実行が通り、CI だけが失敗した)。.gitignore されたファイルは見ない。
   printf 'see ADR-0000 here\n' > "$defrepo/docs/new-untracked.md"
   check "29 追跡されていない新規ファイルの起草中の参照を検出" 1 check_default_base_draft_refs "$defrepo"
   rm "$defrepo/docs/new-untracked.md"

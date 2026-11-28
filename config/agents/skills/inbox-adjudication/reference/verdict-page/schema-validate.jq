@@ -40,7 +40,7 @@ def check($root; $s; $p):
         (if any($s.enum[]; . == $x) then [] else ["\($p): \($s.enum | tojson) のどれでもない(\($x | tojson))"] end)
       else [] end )
   + ( if ($s | has("required")) and $jt == "object" then
-        [ $s.required[] | select(. as $k | $x | has($k) | not) | "\($p): 必須の \(.) が無い" ]
+        [ $s.required[] | select(. as $k | $x | has($k) | not) | "\($p): 必須の \(.) がない" ]
       else [] end )
   + ( if ($s | has("properties")) and $jt == "object" then
         [ $s.properties | to_entries[] | select(. as $e | $x | has($e.key)) | . as $e
@@ -52,7 +52,7 @@ def check($root; $s; $p):
             [ $x | keys_unsorted[] | select(. as $k | ($s.properties // {}) | has($k) | not) | "\($p): 未定義の \(.) がある" ]
           elif $ap == true then []
           elif ($ap | type) == "object" then
-            # properties に無いキーの値は、このスキーマに従う(語彙 JSON の timers が使う)
+            # properties にないキーの値は、このスキーマに従う(語彙 JSON の timers が使う)
             [ $x | to_entries[] | select(. as $e | ($s.properties // {}) | has($e.key) | not) | . as $e
               | ($e.value | check($root; $ap; "\($p).\($e.key)"))[] ]
           else ["\($p): additionalProperties は true・false・スキーマだけに対応"] end

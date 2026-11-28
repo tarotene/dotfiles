@@ -62,10 +62,10 @@ description: セッション内で複数の PR を作るとき、依存関係を
 
 計画の前に、`gh pr list --author @me -R OWNER/REPO` で同じリポジトリの
 **ユーザー本人の open なスタック**(セッションの外にあるもの)を確かめる。
-対象がそのスタックの上にしか無いとき、または触るファイルが重なるときは、
+対象がそのスタックの上にしかないとき、または触るファイルが重なるときは、
 その最上段のブランチを起点にして積む案を推奨として計画で出す。main から
-切ると、スタックが main に入ったときに rebase が要り、スタックの上にしか
-無い対象には手が届かない(#703)。
+切ると、スタックが main に入ったときに rebase が必要になり、スタックの上にしか
+ない対象には手が届かない(#703)。
 
 
 1. 分割案(何段に分け、各段が何を含むか)を計画段階で先に提示する。承認後は
@@ -82,7 +82,7 @@ description: セッション内で複数の PR を作るとき、依存関係を
    (`git switch -c <branch>`。`git worktree add` ではない — 同一 worktree
    内でブランチを切り替えるだけ)。
    **push の前に、その段が触ったパッケージの lint と整形を手元で回す。**
-   多段の PR を作ると、1 つの整形漏れが全段の CI を落とし、全段を整形して
+   多段の PR を作ると、1 つの整形漏れが全段の CI を失敗させ、全段を整形して
    rebase し直す往復になる(15 段で実際に起きた)。Python のパッケージなら
    `uv run ruff check . && uv run ruff format --check .`、Rust なら
    `cargo fmt --all --check && cargo clippy --all-targets -- -D warnings`
@@ -92,10 +92,10 @@ description: セッション内で複数の PR を作るとき、依存関係を
    **編集したファイルを入力にする CI の検査も、push 前に引く。**
    `ci-consumers <編集したパス>...` が、そのパスを読む workflow の step・
    composite action・scripts・crates の tests を、`file:line` と step 名つきで出す
-   (消費者が無ければ終了コード 1。PATH に無いときの代替は `pr-description` スキル §6a)。ファイルを一括編集する前に引かないと、配布元
+   (消費者がなければ終了コード 1。PATH にないときの代替は `pr-description` スキル §6a)。ファイルを一括編集する前に引かないと、配布元
    テンプレートとのバイト一致を要求する検査のような「そのファイルを入力にする CI」が、
-   CI で初めて落ちて、全段の rebase と force-push のやり直しになる(PR #872 で
-   `close-linked-issues.yml` に 1 行足して起きた)。出た step は手元で走らせ、
+   CI で初めて失敗して、全段の rebase と force-push のやり直しになる(PR #872 で
+   `close-linked-issues.yml` に 1 行追加して起きた)。出た step は手元で走らせ、
    結果を PR 本文の「検証」に書く。設計は `docs/agents/ci-consumers.md`。
 4. 各段ごとに `git push -u origin <branch>` →
    `gh pr create -R OWNER/REPO --base <直前の段のブランチ> --body-file <絶対パス>`
@@ -117,13 +117,13 @@ description: セッション内で複数の PR を作るとき、依存関係を
    <stack-id>` で解除 → push → CI 確認 → 再度 `gh stack link` の順を
    繰り返す(unstack すると即座に CI が復帰することを実測済み)。
    `gh stack link` の引数は**必ず PR 番号**で渡す。ブランチ名で渡すと、PR の
-   無いブランチには PR が自動で作られ(`gh stack link --help`、2026-10-21)、
+   ないブランチには PR が自動で作られ(`gh stack link --help`、2026-10-21)、
    本文を `pr-description` スキルに沿って書く前の PR ができてしまう。
    最下段から順に、作成済みの全段を漏れなく並べる(`pr-gate` の `G_stack` が
    未リンクを検出するが、検出は一次の手段ではない。#836)。
    **`gh stack link` は、PR のあるリポジトリの worktree を cwd にして実行する。** 別のリポジトリ(セッションの
    プロジェクトの外)の stack をまとめるときは、cwd のリポジトリで PR を探して `failed to look up PR #N: Could not
-   resolve to a PullRequest` で落ちる。`-R` も PR の URL も効かない(2026-11-12、2 回失敗。そのリポジトリの worktree を
+   resolve to a PullRequest` で失敗する。`-R` も PR の URL も効かない(2026-11-12、2 回失敗。そのリポジトリの worktree を
    cwd にして、`SANDBOX_COMPOUND_GUARD_ALLOW=1` 付き・承認つきの `dangerouslyDisableSandbox` で実行して通った)。`gh stack`
    拡張の仕様で、こちらから直せない。
 
@@ -143,7 +143,7 @@ git push --force-with-lease origin <段のブランチ>   # 影響を受けた�
 ```
 
 `rebase.updateRefs` は machine-wide に有効化済み(`home/modules/git.nix`、
-`docs/git-sync.md` 参照)。これが無いと最上位段だけ rebase され、中間段の
+`docs/git-sync.md` 参照)。これがないと最上位段だけ rebase され、中間段の
 ブランチ ref が古いコミットを指したまま置いていかれる。
 
 **下段を push すると、上段の PR にも `pull_request` の CI が 2 本できる(先の 1 本は
@@ -153,7 +153,7 @@ the stack targets the base of the stack."、GitHub Docs "Stacked pull requests"�
 `ci.yml` と `darwin-build.yml` の concurrency の鍵は `head.sha` なので、同じ head への 2 本目が
 1 本目を cancel する(2026-10-27 に #1157 の head で 4 回観測。二重起動の内部動作そのものは
 未確認)。待つ側(`pr-gate`・`pr-checks-wait`)は、`split_runs`(`crates/pr-gate/src/gates/ci.rs`)で古い run を除いて判定するので、cancelled の
-run が待ちを赤にすることは無い。強制 push の直後で、新しい run のチェックがまだ現れず、古い run の取消だけが見えるあいだは、
+run が待ちを赤にすることはない。強制 push の直後で、新しい run のチェックがまだ現れず、古い run の取消だけが見えるあいだは、
 その run が取り消されたものであること(run の conclusion が `cancelled`)を確かめて、新しい run を最大 120 秒
 (`PR_GATE_CANCEL_GRACE`)待つ。2 本目は下段が変わった後の合成木を検査する。直さずに受け入れる。
 
@@ -261,17 +261,17 @@ git push --force-with-lease origin <その段のブランチ>
 |---|---|---|
 | `conflict` | base と衝突(CI も回らない) | 「最下段の base(main)自体が進んで衝突したとき」。`git fetch origin` のあと `git rebase origin/<base>`、衝突を解いて `--force-with-lease` |
 | `merged-ancestor` | 下の段が squash でマージされ、上の段にその段のコミットが残っている(出力の `mergedAncestors` がその PR) | 上の段を `git rebase --onto origin/main <マージ済み PR の headRefOid> <ブランチ>`(`gh pr view <N> --json headRefOid`)。base が `main` に付け替わったことを読み戻す |
-| `base-gone` | base のブランチが無い | `gh pr edit <N> --base main`(`stack-base-guard` が検査する)のあと、`merged-ancestor` と同じ `--onto` |
-| `merge-commit` | 親が 2 つのコミットがある | `git rebase origin/<base>`(`--rebase-merges` を付けない。merge commit が落ちて一直線になる。共有 AGENTS.md「トピックブランチを最新化するときは merge ではなく rebase を使う」) |
+| `base-gone` | base のブランチがない | `gh pr edit <N> --base main`(`stack-base-guard` が検査する)のあと、`merged-ancestor` と同じ `--onto` |
+| `merge-commit` | 親が 2 つのコミットがある | `git rebase origin/<base>`(`--rebase-merges` を付けない。merge commit が解消されて一直線になる。共有 AGENTS.md「トピックブランチを最新化するときは merge ではなく rebase を使う」) |
 | `behind` | base に遅れている | `git rebase origin/<base>` |
 | `unknown` | 判定できなかった | `gh pr view <N> --json mergeable,mergeStateStatus` を読み直す。まだ `UNKNOWN` なら、少し待ってから `pr-hygiene-check` をやり直す |
 | `below:#N` | 積み上げで、下の段(#N)が汚れている | 先に #N を直す。上の段は、最上段を 1 回だけ `--onto` で積み直す(上の「最下段の base(main)自体が進んで衝突したとき」) |
 
-- 衝突の解き方に中身の選択が要るとき(両側が同じ行を変えている)は、両側の差分を本人に見せて聞く。衝突の無い rebase・
+- 衝突の解き方に中身の選択が必要なとき(両側が同じ行を変えている)は、両側の差分を本人に見せて聞く。衝突のない rebase・
   `--onto` の積み直し・`gh pr edit --base` は、自分の PR のブランチに `--force-with-lease --force-if-includes` で書くだけで、
   出力の `headOid` を旧 SHA として報告に残せば戻せるので、聞かずに行ってよい。
 - 別のリポジトリの PR は、そのリポジトリの worktree で直す(CLAUDE.md「別のリポジトリの worktree で作業する手順」。
-  ブランチがローカルに無ければ `git fetch origin <head>` のあと `git switch -c <head> origin/<head>`)。
+  ブランチがローカルになければ `git fetch origin <head>` のあと `git switch -c <head> origin/<head>`)。
 - マージと close はしない。`draft` の PR・題名に `DO-NOT-MERGE` や `WIP` を持つ PR は、直すかどうかを本人に聞く。
 
 ## 5. GitHub ネイティブの stack 機能
@@ -305,7 +305,7 @@ GitHub の公式文書は、非同期マージ API が stacked PR のマージ�
 したがって、**GitHub の stack にリンクされたスタックでは、最上段の PR を 1 回マージすれば、その下の open な全段が同時に入る**。下の段から 1 本ずつ入れる必要はない。手順は次のとおり。
 
 **この前提は、`gh stack link` でリンクした stack に限る。** base をブランチの連鎖にしただけの PR(リンクしていない)では成り立たない(2026-10-30 の実測: base が別 PR のブランチの PR に `merge-async` を呼ぶと、その PR は base のブランチに入っただけで、下の PR は OPEN のまま残り、head が進んで CI が再実行された。約 8 分の待ち。この連鎖が stack の機能を使っていたかは、そのときは未確認)。
-ある private リポジトリで、2026-11-05、GitHub の stacks 一覧に無い連鎖(base を前の段のブランチにしただけ)の
+ある private リポジトリで、2026-11-05、GitHub の stacks 一覧にない連鎖(base を前の段のブランチにしただけ)の
 最上段に `merge-async` を呼ぶと、その PR は base のブランチにしか入らず、下の段は OPEN のまま残った
 (GitHub の stacks API とタイムラインで読んだ)。先の実測で未確認だった点、つまり stacks の一覧に
 入っていない連鎖で起きることを、これで確かめた。マージの前に、`gh stack` の状態(`gh api` の stacks の一覧、`pr-gate` の G_stack と同じ読み方)で、最上段と下の段が 1 つの stack にリンクされていることを確かめる。リンクされていなければ、下の段から順に 1 本ずつ入れる(各段で base が `main` に付け替わるのを読み戻す)か、先に `gh stack link` する。
@@ -317,7 +317,7 @@ GitHub の公式文書は、非同期マージ API が stacked PR のマージ�
    マージ可否を決めないので待たない。#1001。赤が 1 件でも出れば即 NG で終わる。stacked PR で base が
    ruleset の対象外でも、既定ブランチの required で判定する)。
 3. **マージする PR が最上段か確かめる。** マージしたい PR の head ブランチを base にしている open な
-   PR が無いことを、`gh api "repos/OWNER/REPO/pulls?state=open&base=<head ブランチ>" --jq length` が
+   PR がないことを、`gh api "repos/OWNER/REPO/pulls?state=open&base=<head ブランチ>" --jq length` が
    `0` であることで読む。0 でなければ、その PR は最上段ではない — 上の段を探して、そちらを
    マージする。下の段から 1 本ずつ入れると、下の段が `main` に入るたびに上の段が載せ直されて
    (head の SHA が変わる)、CI が段の数だけやり直しになる(#1002)。単発の PR 用に手元に残した
@@ -329,18 +329,18 @@ gh api -X PUT repos/OWNER/REPO/pulls/<最上段の番号>/merge-async \
   -f merge_method=squash -f sha=<head SHA> -f merge_action=default
 ```
 
-`<head SHA>` は `gh pr view <N> --json headRefOid --jq .headRefOid` で取る(`sha` を渡すと、要求から実行までの間に push されたときはマージが取り消される)。`merge_action=default` は、対象ブランチにマージキューがあればキューに入り、無ければ直接マージする(`direct_merge` は常に直接。GitHub Docs の同じ節、取得 2026-10-27)。202 が返り、数秒後に `gh pr view <N> --json state` が `MERGED` になる。積みでない PR は、従来どおり `gh pr merge` で通る(#941、2026-10-22 に実測)。
+`<head SHA>` は `gh pr view <N> --json headRefOid --jq .headRefOid` で取る(`sha` を渡すと、要求から実行までの間に push されたときはマージが取り消される)。`merge_action=default` は、対象ブランチにマージキューがあればキューに入り、なければ直接マージする(`direct_merge` は常に直接。GitHub Docs の同じ節、取得 2026-10-27)。202 が返り、数秒後に `gh pr view <N> --json state` が `MERGED` になる。積みでない PR は、従来どおり `gh pr merge` で通る(#941、2026-10-22 に実測)。
 
 マージは取り消せず、全段が一度に入る。段ごとに別のレビューを終えてから入れたいときは、レビューが済んだ段を確かめてから呼ぶ。
 中間段を指定したときの挙動は未確認(文書の記述は「下位の open な PR を含む」までで、実測は最上段の例だけ)。エージェントはマージしない(完了定義は PR 作成まで)ので、この手順は本人がマージするときのためにある。
 
-本人が「マージも任せる」と明示したときだけ、エージェントも上の手順 1〜4 をそのまま行う(最上段の判定を省かない。#1002)。マージしてよい範囲は、本人が名指しした PR と、その下の open な段までで、名指しが無い段を、スタックの外から足さない。マージ後は `gh pr view <N> --json state` が `MERGED` になることと、下の各段の PR の `state` を読み戻してから報告する。
+本人が「マージも任せる」と明示したときだけ、エージェントも上の手順 1〜4 をそのまま行う(最上段の判定を省かない。#1002)。マージしてよい範囲は、本人が名指しした PR と、その下の open な段までで、名指しがない段を、スタックの外から追加しない。マージ後は `gh pr view <N> --json state` が `MERGED` になることと、下の各段の PR の `state` を読み戻してから報告する。
 
 **自動モードの分類器は、`gh pr merge` や `merge-async` を、本人が「全部代行してほしい」と述べた直後でも
 拒否することがある**(2026-10-30 に実測: 同じ種類の操作が通る場合と拒否される場合があり、理由の説明は出ない。
-分類器が止める範囲は、公開された一覧が無く、見えない)。止められたら、迂回せず、本人に実行する 1 行
+分類器が止める範囲は、公開された一覧がなく、見えない)。止められたら、迂回せず、本人に実行する 1 行
 (`!` つきのコマンド)を渡す。繰り返し使うなら、本人が `autoMode.allow`(自然言語の例外。
-`docs/agents/agent-permissions.md` の分類器の行)に足す。
+`docs/agents/agent-permissions.md` の分類器の行)に追加する。
 
 **計画にマージを含めるとき**(計画の時点で「マージは私が実行する」と書く前に)、この拒否を前提にする。
 分類器の既定の規則「Merge Without Review」は、本人が「レビューなしのマージ」を名指しした依頼でないと
@@ -362,7 +362,7 @@ stack 全体が 1 つの Issue に対応する場合も、複数の独立 Issue 
 stack に積まれる場合も、この書き分けは変わらない — PR の依存関係と
 Issue の依存関係は別問題である。
 
-段ごとに Issue を立てない(ADR-1529)。対応する Issue が無い段は `No-Issue:` で出し、
+段ごとに Issue を立てない(ADR-1529)。対応する Issue がない段は `No-Issue:` で出し、
 `Closes` を書くためだけに段の Issue を起票しない。段は stack の PR と計画が持つ。
 セッションの後に残る段だけを、1 件の Issue にまとめる(`tracking-issue` §1)。
 
@@ -404,7 +404,7 @@ Stack: base #<親PR番号>
   コミットを祖先として含むのに base が違えば deny する(`Independent-PR:`
   タグでも抜けられない — 物理的必然のため)。セッション内 2 本目以降で
   チェーン外のブランチから PR を作ろうとした場合は、`Independent-PR:
-  <理由>` が無ければ deny する。
+  <理由>` がなければ deny する。
 - **完了時**: `pr-gate` の `G_stack`(Stop)が、chain size 2 以上の
   stacked PR が GitHub 上の stack(`gh stack link`)にリンクされていなけ
   れば block する。`gh-stack` 拡張不在・API 取得不能は advisory に降格

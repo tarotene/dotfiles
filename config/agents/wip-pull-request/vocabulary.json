@@ -10,7 +10,7 @@
   ],
   "events": [
     { "id": "handoff", "from": ["none"], "to": ["handed_off"], "by": "agent", "by_detail": "差分があれば commit して push し、Draft PR にする(既存 PR は gh pr ready --undo)。積みの途中なら最上段だけを対象にする。本文は pr-description の骨格で、Closes #P は書かず、1 行目に Handoff: #P を書く。ラベルの確認・作成は scripts/handoff.sh", "carriers": ["skill:handoff", "skill:pr-description"], "gates": ["node:pr-title-guard", "node:pr-followup-guard"] },
-    { "id": "relax", "from": ["handed_off"], "to": ["same"], "by": "machine", "by_detail": "Draft かつ Handoff: #N で N が OPEN のときだけ、G_link を LINKED 相当にし、G_CI の block を advisory に落とす。判定の材料が取れないときは緩めない", "carriers": ["node:pr-gate-stop"] },
+    { "id": "relax", "from": ["handed_off"], "to": ["same"], "by": "machine", "by_detail": "Draft かつ Handoff: #N で N が OPEN のときだけ、G_link を LINKED 相当にし、G_CI の block を advisory に下げる。判定の材料が取れないときは緩めない", "carriers": ["node:pr-gate-stop"] },
     { "id": "resume", "from": ["handed_off"], "to": ["resumed"], "by": "agent", "by_detail": "handoff:ai の子 Issue の着手可能な一覧(SessionStart の注入)か、指示から再開する。gh pr checkout で Draft PR のブランチに乗り、Handoff の行を、この PR で完了する子 Issue だけの Closes に置き換える。作業を続け、CI を通す", "carriers": ["skill:handoff"] },
     { "id": "ready", "from": ["resumed"], "to": ["ready"], "by": "agent", "by_detail": "gh pr ready で Draft を解除する", "carriers": ["skill:handoff"], "gates": ["node:pr-gate-stop"] }
   ]
