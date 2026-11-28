@@ -9,7 +9,7 @@
 #
 # 同じ規則は systemd の upstream にある(rules.d/70-uaccess.rules.in、
 # `# libcamera software ISP used with some cams requires udmabuf access` の次の行、
-# 取得 2026-11-05)。この機体の systemd 255 にはまだ入っていないので、同じ 1 行を足す。
+# 取得 2026-11-05)。この機体の systemd 255 にはまだ入っていないので、同じ 1 行を追加する。
 # systemd がこの規則を取り込んだら、このファイルは同じ内容の重複になるので消す。
 #
 # /dev/dma_heap/* は開けない。検索結果の要約では、dma_heap で確保したメモリは cgroup の

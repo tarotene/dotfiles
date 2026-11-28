@@ -70,7 +70,7 @@ let
     "Bash(npm test *)"
   ];
 
-  # #461: 上の `hasMidWildcard` で中間ワイルドカードを含むルールが無いことを
+  # #461: 上の `hasMidWildcard` で中間ワイルドカードを含むルールがないことを
   # nix eval 時(`nix flake check`/`nix build`)に確認してから実際に使う値を返す。
   # `permissionRules_`(素の配列)という別バインディングを経由するのは、
   # `permissionRules = assert (中略 permissionRules …); …` のように自分自身を
@@ -89,8 +89,8 @@ let
   # 揃える(裸の `pkexec` はこのルールに一致せず、guard が deny する)。
   #
   # `google-chrome --headless=new *`(#1334)も同じ型の ask。headless Chrome は sandbox の中では
-  # Unix ソケットを作れず落ちるので excludedCommands で外に出すが、外では全権限で動く。歯止めは
-  # この ask だけなので、除外と必ず対にする(ask の画面が出ないと分かったら、除外を外す)。
+  # Unix ソケットを作れず失敗するので excludedCommands で外に出すが、外では全権限で動く。歯止めは
+  # この ask だけなので、除外と必ず対にする(ask の画面が出ないと分かったら、除外を解除する)。
   # 照合は先頭の語列 + 末尾 `*` だけが効く(excludedCommands のコメント参照)。
   #
   # `hms`(引数なしの正準の適用)と `hms *`(`hms .` など)も同じ型の ask。hms は home-manager の適用で、
@@ -100,7 +100,7 @@ let
   # 両方を書く。
   #
   # `lp *` も同じ型の ask。lp は紙に刷る(家のプリンタへ送る)ので、送るたびに確認を出す。CUPS には Unix ソケットで
-  # 届くので、sandbox の中では落ちると推定して excludedCommands で外に出す(未測定: この機体は CUPS が動いておらず、
+  # 届くので、sandbox の中では失敗すると推定して excludedCommands で外に出す(未測定: この機体は CUPS が動いておらず、
   # `lpstat` が「Scheduler is not running」を返した 2026-11-17)。外では全権限で動くので、歯止めはこの ask だけで、除外と必ず対にする。
   askRules = [
     "Bash(/usr/bin/pkexec *)"
@@ -113,7 +113,7 @@ let
 
   # かつて配ったが撤回したルール。activation が全ホストの settings.json から削除する。
   # `Bash(git -C * add *)` 等の中間ワイルドカードを含む撤回は、もう個別に
-  # ここへ列挙する必要が無い(#461) — agent-settings-reconcile claude-permissions が
+  # ここへ列挙する必要がない(#461) — agent-settings-reconcile claude-permissions が
   # settings.json 上の中間ワイルドカードルールを出自(宣言/promote/実行時
   # プロンプトのどれか)を問わず一律 strip するようになった。このリストに
   # 残す/追加するのは、中間ワイルドカード**以外**の理由で退役したルールだけ。
@@ -156,7 +156,7 @@ let
   # Codex の `dotfiles` 権限 profile(home/modules/codex.nix)と同じ層構造:
   # sandbox は常時有効、sandbox 内のコマンドは確認なし、全シェルは分類器が見る
   # (`classifyAllShell`。Codex の auto_review に当たる)、秘密パスは読ませない。
-  # 宣言したキーだけを合わせる。本人が足した `allowWrite` などには触れない。
+  # 宣言したキーだけを合わせる。本人が追加した `allowWrite` などには触れない。
   # 層別の対応表: docs/agents/agent-permissions.md。
   permissionsSpec = {
     retire_allow = retiredPermissionRules;
@@ -167,10 +167,10 @@ let
     auto_mode_classify_all_shell = true;
     # Claude Code の `env`(宣言したキーだけを合わせる)。option の `env` を参照。
     inherit (cfg) env;
-    # 分類器への例外（`autoMode.allow`、自然言語）。`Bash(git switch *)` などの allow ルールは、
+    # 分類器への例外(`autoMode.allow`、自然言語)。`Bash(git switch *)` などの allow ルールは、
     # `classifyAllShell` が有効なあいだ停止されるので効かない。自分の worktree でのブランチ作成が
-    # 「共有資源の変更」(`[Modify Shared Resources]`)として拒否された（#939、2026-10-22 に 1 回）。
-    # main の checkout・ブランチの削除・push は含めない。`"$defaults"` は照合側が先頭に足す。
+    # 「共有資源の変更」(`[Modify Shared Resources]`)として拒否された(#939、2026-10-22 に 1 回)。
+    # main の checkout・ブランチの削除・push は含めない。`"$defaults"` は照合側が先頭に追加する。
     auto_mode_allow = [
       "Creating or switching to a branch inside the agent's own linked git worktree (git switch -c, git switch, git checkout -b) is routine local work and not a change to shared resources. This does not cover creating branches in the main checkout of a repository, deleting branches, or pushing."
     ];
@@ -182,8 +182,8 @@ let
       deny_read = cfg.secretPaths;
       allow_write = cfg.allowWrite;
       excluded_commands = cfg.excludedCommands;
-      # #1169 が足したが、途中に `*` を持つパターンは効かないと分かった(#1164、#1173)。
-      # 配列は「宣言との和」なので、宣言から外しただけでは settings.json に残る。
+      # #1169 が追加したが、途中に `*` を持つパターンは効かないと分かった(#1164、#1173)。
+      # 配列は「宣言との和」なので、宣言から除外しただけでは settings.json に残る。
       retire_excluded_commands = [
         "git -C * commit *"
         "git -C * push *"
@@ -191,14 +191,14 @@ let
       ];
     };
   };
-  # 適用のときだけ所有の記録（state）を足す。宣言から外した allow（`mcp_allow` から外した
-  # 許可を含む）を、前回の記録をもとに settings.json から消すため（#1161）。
-  # `agent-native/claude-permissions.json` には足さない（そちらは `PermissionsSpec` の
-  # 他の読み手に渡る宣言そのもの）。
-  # Claude Code の sandbox が起動に要るコマンド（socat、Linux は bubblewrap）。対話の Claude は
+  # 適用のときだけ所有の記録(state)を追加する。宣言から除外した allow(`mcp_allow` から除外した
+  # 許可を含む)を、前回の記録をもとに settings.json から消すため(#1161)。
+  # `agent-native/claude-permissions.json` には追加しない(そちらは `PermissionsSpec` の
+  # 他の読み手に渡る宣言そのもの)。
+  # Claude Code の sandbox が起動に必要なコマンド(socat、Linux は bubblewrap)。対話の Claude は
   # home.packages 経由で PATH に載るが、systemd の user unit のような headless の起動の PATH には
-  # `~/.nix-profile/bin` が無く、`sandbox.failIfUnavailable` が効いて `socat not installed` で起動を
-  # 拒否する（2026-10-28、mailctl-triage.service が 10 分ごとに失敗した）。
+  # `~/.nix-profile/bin` がなく、`sandbox.failIfUnavailable` が効いて `socat not installed` で起動を
+  # 拒否する(2026-10-28、mailctl-triage.service が 10 分ごとに失敗した)。
   sandboxDeps = [ pkgs.socat ] ++ lib.optionals pkgs.stdenv.isLinux [ pkgs.bubblewrap ];
 
   claudePermissionsApplySpec = permissionsSpec // {

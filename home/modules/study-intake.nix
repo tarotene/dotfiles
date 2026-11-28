@@ -26,7 +26,7 @@ let
   # Claude Code は native installer が正本(packages.nix のコメント、ADR-457)。
   claudeBin = "${home}/.local/bin/claude";
 
-  # 無人の実行で許す道具。ここに無いものは、権限の確認で止まり、実行が失敗する(許可を広げない)。
+  # 無人の実行で許す道具。ここにないものは、権限の確認で止まり、実行が失敗する(許可を広げない)。
   allowedTools = [
     "Skill"
     "Read"
@@ -106,7 +106,7 @@ in
       default = null;
       description = ''
         スキル `study-intake` を持つリポジトリの作業ツリーの絶対パス。`claude -p` はここを cwd にして起動する。
-        非公開リポジトリの場所なので、private wrapper から渡す。enable のとき null は評価で落ちる。
+        非公開リポジトリの場所なので、private wrapper から渡す。enable のとき null は評価で失敗する。
       '';
     };
 
@@ -114,7 +114,7 @@ in
       type = lib.types.str;
       default = "*-*-* 07..23:0/15:00";
       description = ''
-        systemd の OnCalendar。1 回の起動は、新しい PDF が無くても `claude -p` を 1 回呼ぶ
+        systemd の OnCalendar。1 回の起動は、新しい PDF がなくても `claude -p` を 1 回呼ぶ
         (Drive の一覧を取るため)ので、間隔は使用量とのかね合いで決める。
       '';
     };
@@ -130,7 +130,7 @@ in
     assertions = [
       {
         assertion = cfg.workdir != null;
-        message = "dotfiles.studyIntake.workdir: enable のとき、スキルを持つリポジトリの作業ツリーの絶対パスが要る(private wrapper から渡す)";
+        message = "dotfiles.studyIntake.workdir: enable のとき、スキルを持つリポジトリの作業ツリーの絶対パスが必要になる(private wrapper から渡す)";
       }
     ];
 

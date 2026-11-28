@@ -61,10 +61,10 @@ let
   # サイドバーに見えるのは約 36 桁(`Context 0% used | medium | 5h ...` で切れた
   # 実機の表示からの推定、2026-10-20。幅そのものは herdr の API から取れていない)。
   # Codex が組む文字列は、context と 5h だけなら `Context 0% used | 5h 100% left`
-  # (31 文字)で収まり、reasoning と weekly-limit を足すと 58 文字で 5h・週の値が
+  # (31 文字)で収まり、reasoning と weekly-limit を追加すると 58 文字で 5h・週の値が
   # 切れる。上流の言い回し
   # (`Context … used` / `… left`)は短くできないので、項目の数で収める。
-  # project-name は workspace 列と重なるので外している。
+  # project-name は workspace 列と重なるので除外している。
   codexConfigSpec = builtins.toJSON {
     # Native feature notices only; runtime protection failures remain visible.
     # OpenAI rust-v0.164.0 core/src/config/mod.rs:1162 (retrieved 2026-10-27).
@@ -181,7 +181,7 @@ in
               builtins.toJSON {
                 settings = permissionSpec;
                 mcp_allow = cfg.mcpAllow;
-                # 前回書いた MCP 許可の記録。宣言から外した許可を config.toml から消す（#1161）。
+                # 前回書いた MCP 許可の記録。宣言から除外した許可を config.toml から消す(#1161)。
                 state = "${config.home.homeDirectory}/.local/state/dotfiles/managed-mcp-allow-codex.json";
               }
             )}

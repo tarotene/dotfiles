@@ -16,7 +16,7 @@ Plan mode で非自明な設計判断を書くときは、Plan に `## 先行例
 揃っているかだけを確認する。設計判断を含まない Plan は代わりに
 1 行の免除(`先行例: 該当なし — <理由>`)でよい。**ExitPlanMode を呼ぶ前に
 `~/.claude/hooks/plan-precedent-gate --check <プランファイル>` で
-自己検査し、指摘がゼロであることを確認する**(gate との deny 往復を待たない)。画面の面
+自己検査し、指摘がゼロであることを確認する**(gate との deny 往復を待たない)。画面
 (`.html`・`.css`・`config/web/` など)に触れる Plan は、`構造:` の行も書く
 (構文は precedent-grounding スキル §3。画面を変えないなら
 `構造: 該当なし — <理由>` の 1 行)。
@@ -43,7 +43,7 @@ memory/*.md`、`metadata.type: feedback`)にこの種のフィードバックを
 その Issue 番号(`#N`)を書く(Issue へのポインタで足り、内容を重複させない)。
 形式検査は `wrapup-stop-gate`(Stop hook、wrap-up inbox と同じ経路)が
 担う — 今セッション中に更新された `type: feedback` メモリで `#N` 参照が
-無いものを検出して促す。gate に当たる前に自発的に Issue 化すること。
+ないものを検出して促す。gate に当たる前に自発的に Issue 化すること。
 
 ## セッション内 PR チェーンの形式検査(ADR-0027)
 
@@ -104,21 +104,21 @@ Claude Code 本体が、前景の `sleep N` のあとにコマンドを続ける
   AGENTS.md「長い処理では…」の形)で待つ。
 - 前景の `sleep` で待たない。
 - 背景タスクを `(cmd; echo exit=$?)` の形で束ねない。完了通知の終了コードが `echo` のもの(常に 0)になり、
-  `cmd` が失敗しても成功に見える(2026-10-31、`npm ci` が `EROFS` で落ちたのに完了通知は成功だった)。
-  終了コードが要るときは、`cmd` を単体で背景に出し、通知の終了コードを読む。
+  `cmd` が失敗しても成功に見える(2026-10-31、`npm ci` が `EROFS` で失敗したのに完了通知は成功だった)。
+  終了コードが必要なときは、`cmd` を単体で背景に出し、通知の終了コードを読む。
 
 形式検査は `ci-wait-guard`(PreToolUse deny、`hook-router` の規則)が担う。Bash と
 `Monitor` で、`gh pr checks --watch`・`gh run watch`・`until`/`while`/`sleep` で
 `gh pr checks` などを引き直す形を実行前に拒否し、`pr-checks-wait` を案内する。gate に
 当たる前に最初から `pr-checks-wait` で待つこと — gate は漏れを拾うためのもので、一次的な
 手段ではない。PR に紐づかない workflow run を待つときだけ、コマンドに
-`CI_WAIT_GUARD_ALLOW=1` を足す(`docs/agents/ci-wait-guard.md`)。
+`CI_WAIT_GUARD_ALLOW=1` を追加する(`docs/agents/ci-wait-guard.md`)。
 
 ## sandbox の外で動かすコマンドは、単体で呼ぶ(#1164)
 
 `gh`・`git commit`・`git push`・`git add`・`git rebase`・`git merge`・`git cherry-pick`・`git revert`・`git tag`・
 `git switch`・`git branch`・`nix build` などは sandbox の外で動く(`sandbox.excludedCommands`、
-`home/modules/claude.nix`)。鍵束・gpg-agent・nix daemon が要るためである。`git switch`・`git branch` は、
+`home/modules/claude.nix`)。鍵束・gpg-agent・nix daemon が必要なためである。`git switch`・`git branch` は、
 上流の設定を `.git/config` に書く(`git switch -c <branch> origin/<ref>`、`git branch -D`)が、sandbox の中では
 `.git/config.lock` の代役が見えて `could not lock config file … File exists` で途中で止まる(ブランチと作業ツリーは
 更新されるが、HEAD は元のブランチのまま。2026-11-11 に実測。並行セッションとの取り合いではなかった)ので外に出した。
@@ -134,13 +134,13 @@ Claude Code 本体が、前景の `sleep N` のあとにコマンドを続ける
   cwd は元に戻る(結果に `Shell cwd was reset to <dir>` が付く。Anthropic, "Tools reference"、
   <https://code.claude.com/docs/en/tools-reference>、取得 2026-11-05)。セッションのプロジェクトの外にある worktree
   (別のリポジトリの worktree など)で git を呼ぶときは、`cd <dir> && git …` と並べるしかなく、連結すると
-  除外パターンに合わず sandbox に残る。このときは、`SANDBOX_COMPOUND_GUARD_ALLOW=1` を足し、承認を得て
+  除外パターンに合わず sandbox に残る。このときは、`SANDBOX_COMPOUND_GUARD_ALLOW=1` を追加し、承認を得て
   `dangerouslyDisableSandbox` で呼ぶ(2026-10-29 にこの形で運用した)。除外は末尾だけに
   `*` を持つパターン(`git commit *` など)だけが効き、`git -C <dir> commit` は sandbox に残って署名が
   `No secret key` で失敗する(2026-10-28 に vega で実測、#1164)。`git -C` は読み取りだけに使う。
-- 出力の加工が要るときは、`gh … --jq` のように道具の側の機能を使う。
-- **別のリポジトリの worktree で作業する手順**(`herdr worktree create` は sandbox の中では
-  `Operation not permitted` で落ちた。2026-10-29・10-31・11-01 に実測):
+- 出力の加工が必要なときは、`gh … --jq` のように道具の側の機能を使う。
+  コマンドの置換(`$(...)` やバッククォート。sandbox 内では構わないが、外の認証コマンドでは
+  `Operation not permitted` で失敗した。2026-10-29・10-31・11-01 に実測):
   1. `herdr worktree create --cwd <repo> --branch <name>` を単体で呼ぶ(`sandbox.excludedCommands` に入れてある)。
   2. 作った worktree で、最初に `git fetch origin` を呼び、`origin/main` との差を `git log` で見る。worktree は
      古いローカルの `main` から切られることがある(2026-10-29 に、マージ済みの PR を含まない `main` から
@@ -158,15 +158,15 @@ sandbox の中と外の線引き(#1103。2026-10-28 に vega で実測した範�
 
 - **sandbox の中でよい**: `cargo test`・`cargo check`・`cargo metadata`・`cargo fmt`(`target/` は cwd 配下で書ける)、
   `issue-inbox --add`・`--set-status`(書き込み先 `~/.local/state/claude` と vault は書き込み許可にある)、
-  scratchpad・`$TMPDIR` への書き込み。cargo を sandbox の外で回す必要は無い。
-- **sandbox の外が要る**: 上の除外コマンド(`gh`・署名つきの `git`・`nix build`)。`new-tool-guard register` は
+  scratchpad・`$TMPDIR` への書き込み。cargo を sandbox の外で回す必要はない。
+- **sandbox の外が必要**: 上の除外コマンド(`gh`・署名つきの `git`・`nix build`)。`new-tool-guard register` は
   `~/.local/state/claude/new-tool-guard/state` に書くので、sandbox の中でよい。
-- **`nix develop` は除外一覧に無い**ので、sandbox の中では nix の fetcher の置き場(`fetcher-locks`)が
-  `Read-only file system` で落ちる(2026-10-30 に `nix develop --command cargo run -p pipeline-map -- render` で発生)。
+- **`nix develop` は除外一覧にない**ので、sandbox の中では nix の fetcher の置き場(`fetcher-locks`)が
+  `Read-only file system` で失敗する(2026-10-30 に `nix develop --command cargo run -p pipeline-map -- render` で発生)。
   図の再生成は `nix develop` を介さず `cargo run -p pipeline-map -- render` を直接呼ぶ(`d2` は PATH にある。
   `home/modules/packages.nix`)。CI と同じ clippy の再現は、次の項目の `nix build` を使う。
 - **CI の clippy は手元の `cargo clippy` と toolchain の版が違う**(CI は flake の nixpkgs の rustc、手元は rustup。
-  `--deny warnings` で `unnecessary_sort_by` が CI だけで落ち、上の段 4 本の積み直しになった。2026-10-30)。
+  `--deny warnings` で `unnecessary_sort_by` が CI だけで失敗し、上の段 4 本の積み直しになった。2026-10-30)。
   push の前に、CI と同じ derivation を `nix build .#checks.x86_64-linux.dotfiles-tools-clippy --no-link`
   (`flake.nix` の `checks`。単体で呼ぶ。2026-11-08 に vega で exit 0 で通ることを確かめた)で回す。
 - **sandbox の中と外で `TMPDIR` が違う。** 中は `/tmp/claude-1000`(ハーネスが決める)、外(除外コマンドと
@@ -179,11 +179,11 @@ sandbox の中と外の線引き(#1103。2026-10-28 に vega で実測した範�
   中の `python` で書こうとして `Read-only file system` になり、`Edit` に替えた)。
 - **プロセスの存在確認(`ps`・`pgrep`)は sandbox の外で行う。** sandbox の中は PID namespace が隔離されていて、
   ホストのプロセス(Obsidian など)が見えず、自分のシェルの行にだけ当たって「動いていない」と誤判定する
-  (2026-10-28 に `pgrep -f obsidian` で発生)。一覧が本物かは、ホスト側にしか無いプロセス(`cosmic-comp` など)の
+  (2026-10-28 に `pgrep -f obsidian` で発生)。一覧が本物かは、ホスト側にしかないプロセス(`cosmic-comp` など)の
   有無で確かめる。
 - **新しく作った `.nix`・`.rs`・skill のファイルは、`nix build`・`nix flake check` の前に `git add -N <path>` する。**
-  flake は git が追跡するファイルだけを見るので、未追跡のままだと `is not tracked by Git` で落ちる。もっと悪いのは
-  落ちずに通る場合で、未追跡のスキルを数えない評価が通り、コミット後にスキル数の assert が落ちる状態で push した
+  flake は git が追跡するファイルだけを見るので、未追跡のままだと `is not tracked by Git` で失敗する。もっと悪いのは
+  失敗せずに通る場合で、未追跡のスキルを数えない評価が通り、コミット後にスキル数の assert が失敗する状態で push した
   (2026-11-08)。`Git tree has uncommitted changes` の警告は、未追跡かどうかを区別しない。
 - **cwd はリポジトリのルートに保つ。** sandbox は、cwd と `cd` で入ったディレクトリごとに、書き込み禁止の代役
   (`.claude`・`.mcp.json`・`.gitmodules`・`.bashrc` など)を置く。`crates/` に入ると `crates/.claude` ができる
@@ -196,28 +196,28 @@ sandbox の中と外の線引き(#1103。2026-10-28 に vega で実測した範�
     になる(`claude-statusline` の integration、`herdr-agent-metadata` の claude・codex・copilot、`herdr-client`、
     `codex-plan` の `runtime`・`experiment`・`lifecycle`)。fixture では直せない。`herdr-agent-metadata` と
     `codex-plan` は一時ディレクトリを `/tmp` に決め打ちにしていて(`tempdir_in("/tmp")`)、sandbox の中では
-    `/tmp` が読み取り専用で、そこで先に落ちる。決め打ちの理由はコードに書かれておらず、ソケットのパスの
+    `/tmp` が読み取り専用で、そこで先に失敗する。決め打ちの理由はコードに書かれておらず、ソケットのパスの
     長さの上限(`sun_path`)に収めるためかもしれないが、推測で、未確認。`TMPDIR` に向けても、その先の
-    `UnixListener::bind` が落ちる見込みで、直す意味が無い(`herdr-client` の `bind` が `Operation not
-    permitted` で落ちるのは実測した。この 2 crate の `bind` までは未実測)。
-  - **gpg**: `gpg-subkey` の selftest は、fixture の鍵の生成が gpg-agent のソケットに届かず落ちる(同上)。
-  - **git の commit の署名**(直した型): ホストの `~/.gitconfig` が `commit.gpgsign=true` だと、一時 repo の
-    `git commit` が `No secret key` で落ちる。テストの git 補助関数に `-c commit.gpgsign=false` を足した
-    (`git-repository`・`cmd-hash-log`・`update-own-tools`。`core.hooksPath=` を足した #428 と同じ型)。
+    `UnixListener::bind` が失敗する見込みで、直す意味がない(`herdr-client` の `bind` が `Operation not
+    permitted` で失敗するのは実測した。この 2 crate の `bind` までは未実測)。
+  - **gpg**: `gpg-subkey` の selftest は、fixture の鍵の生成が gpg-agent のソケットに届かず失敗する(同上)。
+  - **git の commit の署名**(直した型): ホストの `~/.gitconfig` が `commit.gpgsign=true` だと、一時リポジトリの
+    `git commit` が `No secret key` で失敗する。テストの git 補助関数に `-c commit.gpgsign=false` を追加した
+    (`git-repository`・`cmd-hash-log`・`update-own-tools`。`core.hooksPath=` を追加した #428 と同じ型)。
   - **`env_clear` で `TMPDIR` も消える**(直した型): 一時ディレクトリが `/tmp`(読み取り専用)になる。fixture の
     下に向けた(`codex-launcher`)。
   - **`agent-settings-reconcile` の 13 件**(2026-11-15 に報告、F29。`cannot determine whether local settings are tracked`): **2026-11-20 に
-    再現しなかった**。sandbox の中で `cargo test -p agent-settings-reconcile` が全件通り(各試験バイナリで 0 失敗)、`cargo test --workspace
-    --no-fail-fast --offline` でも、この crate は 1 件も落ちなかった(落ちたのは、codex-plan と、ソケット・`/tmp` の型の
-    `integration`・`experiment`・`lifecycle` の試験だけ)。この crate は 11-14 以降、変更されていない。原因は未特定で、報告の時点の
-    環境(一時ディレクトリ・git の設定・cwd)の違いと推測する(未確認)。再発したら、落ちた試験名と `TMPDIR`・`git config --list --show-origin` を取る。
+    再現しなかった**。sandbox の中で `cargo test -p agent-settings-reconcile` が全件通り(各テストバイナリで 0 失敗)、`cargo test --workspace
+    --no-fail-fast --offline` でも、この crate は 1 件も失敗しなかった(失敗したのは、codex-plan と、ソケット・`/tmp` の型の
+    `integration`・`experiment`・`lifecycle` のテストだけ)。この crate は 11-14 以降、変更されていない。原因は未特定で、報告の時点の
+    環境(一時ディレクトリ・git の設定・cwd)の違いと推測する(未確認)。再発したら、失敗したテスト名と `TMPDIR`・`git config --list --show-origin` を取る。
   上の 2 つの型(ソケット・gpg)は直らないので、この 5 crate 以外の赤は、変更の不具合を先に疑う。ソケットの
   型は、CI の結果で確かめる。
 
 ## テストの出力を `head` / `tail` で切らない
 
 `cargo test … | head -10` は、失敗の行(`FAILED`・`panicked`)が切れた範囲の外に出ると見えず、終了コードも
-`head` のものになる(2026-10-28、落ちるテストを PR #1199 に載せた)。絞るなら
+`head` のものになる(2026-10-28、失敗するテストを PR #1199 に載せた)。絞るなら
 `2>&1 | grep -E 'FAILED|panicked|test result'`、またはファイルに書いて終了コードを別に確かめる。
 
 形式検査は `test-output-guard`(PreToolUse deny、`hook-router` の規則)が担う。`cargo test`・`cargo nextest` の出力を
@@ -227,7 +227,7 @@ sandbox の中と外の線引き(#1103。2026-10-28 に vega で実測した範�
 ## `pkill -f` / `pgrep -f` の検索語は、自分のコマンド行に当たらない形で書く
 
 `pkill -f 'パターン'` は、プロセスのコマンド行全体から探す。自分が打った Bash のコマンド文字列は、実行するシェル
-自身のコマンド行に入るので、`pkill -f trial.sh` は**自分のシェルを止め**、呼び出しが終了コード 143・144 で落ちる
+自身のコマンド行に入るので、`pkill -f trial.sh` は**自分のシェルを止め**、呼び出しが終了コード 143・144 で終了する
 (2026-10-31 に同じセッションで 2 回)。`pgrep -f obsidian` は自分のシェルの行にだけ当たって「動いている」と
 誤判定する(2026-10-28)。検索語の 1 文字を `[]` で囲むと、同じ語に当たり、検索語の文字列そのものには当たらない。
 
@@ -236,7 +236,7 @@ sandbox の中と外の線引き(#1103。2026-10-28 に vega で実測した範�
 形式検査は `pkill-guard`(PreToolUse deny、`hook-router` の規則)が担う。検索語(正規表現)が検索語そのものの
 文字列に当たる `pkill -f` / `pgrep -f` を実行前に拒否し、括弧で囲んだ形を案内する(`docs/agents/pkill-guard.md`)。
 gate に当たる前に最初から括弧の技で書くこと — gate は漏れを拾うためのもので、一次的な手段ではない。
-正当な理由があるときだけ、コマンドに `PKILL_GUARD_ALLOW=1` を足す。
+正当な理由があるときだけ、コマンドに `PKILL_GUARD_ALLOW=1` を追加する。
 
 ## 既存手段の前倒し接地と決定論への昇格(ADR-543)
 

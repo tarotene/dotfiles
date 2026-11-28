@@ -163,7 +163,7 @@
    *  - Ctrl・Meta・Alt つきのキーと、変換中(IME)のキーは、ハンドラを呼ばない(`options.modifiers` が真なら、修飾キーつきも呼ぶ)。
    *  - ハンドラが `false` を返さなければ、`preventDefault()` する(Space のスクロールなど)。
    * options: scope(既定は document)、modifiers。
-   * 戻り値: { off() }(登録を外す)
+   * 戻り値: { off() }(登録を解除する)
    */
   function keyguard(map, options) {
     var o = options || {};
@@ -193,7 +193,7 @@
 
   /**
    * `root` の中に、読み込み中・失敗・空・中身の 4 つの出し分けを作る。失敗の出し先(`role="alert"`)は、最初から DOM にある
-   * (初回の読み込みの失敗で、出し先が無く、「読み込み中…」のまま止まる型を作らない)。
+   * (初回の読み込みの失敗で、出し先がなく、「読み込み中…」のまま止まる型を作らない)。
    * options: labels({loading, failed, empty, retry})、isEmpty(data → boolean)
    * 戻り値: { loading(), ready(render), empty(text), failed(err, onRetry), run(fetcher, render), content, error }
    *   run(fetcher, render): `fetcher()` の結果を、空なら空の表示、そうでなければ `render(data, content)` で中身に描く。

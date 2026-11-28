@@ -14,7 +14,7 @@ let
   entryPrefix = "my-";
   entryNames = builtins.filter (name: lib.hasPrefix entryPrefix name) names;
   # 第三者のスキル(docs/agents/impeccable.md)。`config/agents/skills` の外から flake の入力で配るので、
-  # `names` に含めない。配布先の集合には、名指しで足す(足し忘れ・紛れ込みの両方をここで落とす)。
+  # `names` に含めない。配布先の集合には、名指しで追加する(追加忘れ・紛れ込みの両方をここで失敗させる)。
   thirdParty = [ "impeccable" ];
   entries = lib.filterAttrs (
     path: _: lib.hasPrefix ".claude/skills/" path || lib.hasPrefix ".agents/skills/" path
@@ -24,7 +24,7 @@ let
     ++ map (name: ".agents/skills/${name}") (shared ++ [ "repo-governance-common" ] ++ thirdParty);
 in
 # スキルの本数は、source の readDir から導いた集合(`names`)の長さで、固定値を持たない
-# (足すたびに手で更新する値は、同じ集合を数えるだけの循環した検査だった)。ここで見るのは
+# (追加するたびに手で更新する値は、同じ集合を数えるだけの循環した検査だった)。ここで見るのは
 # 意図の側: Codex・Copilot へ配らないスキルは `browser-login-handoff` の 1 本だけ。
 assert builtins.length shared == builtins.length names - 1;
 assert builtins.length names > 0;
@@ -67,7 +67,7 @@ pkgs.runCommand "agent-skills" { } (
             continue
             ;;
         esac
-        # 入口でないスキルは、Claude の `/` の一覧から隠す。Codex 用の配布には足さない。
+        # 入口でないスキルは、Claude の `/` の一覧から隠す。Codex 用の配布には追加しない。
         hide=0
         if [ "$claude" = 1 ] && [[ $name != ${entryPrefix}* ]] && [ "$name" != repo-governance-common ]; then hide=1; fi
         if [ "$name" != repo-governance-common ]; then

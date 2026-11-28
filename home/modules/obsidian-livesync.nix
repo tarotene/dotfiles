@@ -30,7 +30,7 @@ let
 
   stateDir = "${home}/.local/state/dotfiles/obsidian-livesync";
   # CLI の DB 側ディレクトリ(`.livesync/` に DB と、中断された fetch の記録を持つ。
-  # 記録は認証情報を含みうるので、設定ファイルと同じ扱いにする)。vault とは別に置く。
+  # 記録は認証情報を含む可能性があるため、設定ファイルと同じ扱いにする)。vault とは別に置く。
   dbDir = "${stateDir}/db";
   # 「初期化済み」の印。`init` が成功したときだけ書く。中身は DB の接尾辞(秘密ではない)。
   mark = "${stateDir}/initialized.json";
@@ -74,7 +74,7 @@ let
         [ -n "$token" ] || die "Bitwarden machine token is empty"
         BWS_ACCESS_TOKEN=$token bws run --no-inherit-env -- ${pkgs.coreutils}/bin/printenv "$secret_key" >"$dest" \
           || die "could not read the secret from Secrets Manager (key: $secret_key)"
-        # jq の失敗は、入力の断片を出しうるので、標準エラーを捨てる。
+        # jq の失敗は、入力の断片を出力する可能性があるため、標準エラーを捨てる。
         jq -e 'type == "object"' "$dest" >/dev/null 2>&1 \
           || die "the secret is not a JSON object (expected the LiveSync settings JSON)"
       }
@@ -90,7 +90,7 @@ let
         [ -n "''${XDG_RUNTIME_DIR:-}" ] || die "XDG_RUNTIME_DIR is not set (the settings must live on tmpfs)"
         work=$(mktemp -d "$XDG_RUNTIME_DIR/obsidian-livesync-init.XXXXXX")
         # 秘密を書いた設定の置き場を、終了時に必ず消す。パスは trap を置く時点で埋め込む: EXIT の trap は
-        # init を抜けたあとに走り、local の work はもう無い(set -u で `work: unbound variable` になり、
+        # init を抜けたあとに走り、local の work はもうない(set -u で `work: unbound variable` になり、
         # 消えずに残った。2026-11-11 の初回の init で実測)。
         # shellcheck disable=SC2064
         trap "rm -rf -- $(printf '%q' "$work")" EXIT
@@ -118,11 +118,11 @@ let
         suffix=$(suffix_of "$mark") || die "the initialised mark has no database suffix: $mark"
         fetch_settings "$work/settings.json"
         # 設定は毎回作り直すので、DB の接尾辞は印のもので上書きする。上書きしないと、
-        # 接尾辞の無い設定が空の別 DB を開き、全ファイルの版を作り直す(#1327)。
+        # 接尾辞のない設定が空の別 DB を開き、全ファイルの版を作り直す(#1327)。
         jq --arg s "$suffix" '.additionalSuffixOfDatabaseName = $s' "$work/settings.json" >"$work/settings.next.json"
         mv "$work/settings.next.json" "$work/settings.json"
 
-        # 同期先が S3 互換(オブジェクトストレージ)だと、常時接続の liveSync は使えず、`--interval` が無いと
+        # 同期先が S3 互換(オブジェクトストレージ)だと、常時接続の liveSync は使えず、`--interval` がないと
         # daemon は何も同期しない(1.0.44 の dist/index.cjs、`[Daemon] Warning: liveSync and syncOnStart are both
         # disabled`。2026-11-11 に実測)。プラグインの定期同期と同じく、一定の間隔でポーリングする。
         exec "$cli" "$db" --vault "$vault" --settings "$work/settings.json" daemon --interval ${toString cfg.interval}
@@ -188,7 +188,7 @@ in
       };
       Service = {
         # 上流の `deploy/livesync-cli.service`(1.0.44-cli)の値。user の unit には
-        # `network-online.target` が無いので After・Wants は置かず、Restart で待つ。
+        # `network-online.target` がないので After・Wants は置かず、Restart で待つ。
         Type = "exec";
         ExecStart = "${wrapper}/bin/obsidian-livesync daemon";
         Restart = "on-failure";

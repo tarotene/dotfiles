@@ -1,6 +1,6 @@
 # ページの構造を選ぶ規則(ADR-1711)。課題の性質の軸(`[[axis]]`)の値から、構造パターン(`[[pattern]]`)の候補を出す。
 #
-# 各ページ(リポジトリ内のすべての HTML)は、自分の構造と、課題の性質を、`<head>` に宣言する(`web_structures` が落とす)。
+# 各ページ(リポジトリ内のすべての HTML)は、自分の構造と、課題の性質を、`<head>` に宣言する(`web_structures` が失敗させる)。
 #   <meta name="page-structure" content="step">
 #   <meta name="page-axes" content="independence=independent;comparison=none;order=fixed;...">     ← 宣言する軸だけでよい
 #   <meta name="page-structure-deviation" content="<理由>">                                         ← 軸の値から外れるときだけ
@@ -13,7 +13,7 @@
 # `measure` は、描画したページで測れる、その構造の約束(`visual_diff.py audit` の F10)。`viewport-fit` = ページ全体が縦にスクロールしない。
 #
 # 構造に効く原則(`principles.toml` の `scope = "structure"`)は、ここのパターンか、要件が指す。
-# list-detail・task-list・dashboard などのパターンは、原則の出典を原文で再読したときに足す(未実装、意図あり)。
+# list-detail・task-list・dashboard などのパターンは、原則の出典を原文で再読したときに追加する(未実装、意図あり)。
 
 [[axis]]
 id = "independence"
@@ -57,7 +57,7 @@ default = true
 measure = "viewport-fit"
 fits = { independence = ["independent"], comparison = ["none"], order = ["fixed"] }
 principles = ["gov-one", "gov-merge", "nn-progressive", "nn-wizards-novice", "nn-wizards-overused", "gov-check", "wcag-3-3-4"]
-note = "順次の裁定・質問に答える面の既定。項目が互いに独立で、比較が要らず、順序が決まっているとき。反復頻度が daily の面は、全件の概観の常時表示・選ぶと自動で次へ・キーだけで完結・確認画面から任意の件へ戻れること、の手当てを入れて、利用者を閉じ込めない。"
+note = "順次の裁定・質問に答える画面の既定。項目が互いに独立で、比較が不要で、順序が決まっているとき。反復頻度が daily の画面は、全件の概観の常時表示・選ぶと自動で次へ・キーだけで完結・確認画面から任意の件へ戻れること、の手当てを入れて、利用者を閉じ込めない。"
 
 [[pattern]]
 id = "single-column"
@@ -71,4 +71,4 @@ id = "document"
 title = "読み物・見本(入力も手順も持たない)"
 measure = "none"
 fits = {}
-note = "入力も手順も持たないページ。構造を選ぶ課題ではないので、軸の宣言は要らない。"
+note = "入力も手順も持たないページ。構造を選ぶ課題ではないので、軸の宣言は不要。"

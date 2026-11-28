@@ -3,26 +3,26 @@
  * 設計と根拠: docs/agents/plan-view.md
  *
  * ============================================================================
- * 順序依存（壊すと配色が全部無効になる）
+ * 順序依存(壊すと配色が全部無効になる)
  * ============================================================================
  *
  * このファイルは pandoc の `--include-in-header` に style 要素で包んで渡される。
  * pandoc の default.html5 テンプレートは
  *
- *     1. style 要素（組み込み CSS + skylighting のハイライト色）
+ *     1. style 要素(組み込み CSS + skylighting のハイライト色)
  *     2. $for(header-includes)$ … $endfor$      ← このファイルはここ
  *
  * の順に出すので、このファイルは常に最後に来て両方を上書きできる。pandoc 3.1.3 で
- * 実測（組み込み style がドキュメント 8 行目、こちらが 233 行目）。`--css=` で
+ * 実測(組み込み style がドキュメント 8 行目、こちらが 233 行目)。`--css=` で
  * link 要素として渡しても同じ位置に入るが、それだと単一ファイルにならないので
  * --include-in-header を使っている。
  *
  * **このファイルに HTML の終了タグ `</` + `style>` を書いてはいけない。** ブラウザは
  * style 要素の中では CSS のコメント構文を解釈せず、その並びを見た時点で要素を閉じる。
- * コメント内に書いただけでも、そこから下の CSS 全部が本文に漏れて表示される（実際に
- * 一度やった）。selftest がこの並びの不在を検査している。
+ * コメント内に書いただけでも、そこから下の CSS 全部が本文に漏れて表示される(実際に
+ * 一度やった)。selftest がこの並びの不在を検査している。
  *
- * 上書きが必要な pandoc 組み込みの指定（3.x で実測）:
+ * 上書きが必要な pandoc 組み込みの指定(3.x で実測):
  *   html { color: #1a1a1a; background-color: #fdfdfd; }
  *   body { max-width: 36em; padding: 50px; }
  *   a, a:visited { color: #1a1a1a; }
@@ -31,10 +31,10 @@
  * ダークが基底、ライトが上書き
  * ============================================================================
  *
- * skylighting のハイライト色は pandoc が固定で吐く（`--highlight-style` は 1 つしか
- * 選べず、メディアクエリでは切り替わらない）。そこで
+ * skylighting のハイライト色は pandoc が固定で吐く(`--highlight-style` は 1 つしか
+ * 選べず、メディアクエリでは切り替わらない)。そこで
  *
- *   - 基底 = breezeDark を前提にしたダーク配色（フックは breezeDark で呼ぶ）
+ *   - 基底 = breezeDark を前提にしたダーク配色(フックは breezeDark で呼ぶ)
  *   - @media (prefers-color-scheme: light) で背景・本文と **ハイライト色の両方** を上書き
  *
  * とする。ライト側でハイライト色を上書きしないと、breezeDark の keyword/operator
@@ -138,7 +138,7 @@ h6 {
   color: var(--fg);
 }
 
-/* h1 直下に差し込まれるメタ行（リポジトリ名 · 時刻）。 */
+/* h1 直下に差し込まれるメタ行(リポジトリ名 · 時刻)。 */
 .plan-view-meta {
   margin: -0.4em 0 2.4em;
   color: var(--fg-muted);
@@ -320,15 +320,15 @@ caption {
   }
 
   /* breezeDark の色をライト背景で読める値に差し替える。役割ごとにまとめて指定し、
-   * skylighting の全クラスを漏らさず覆う（al an at bn bu cf ch cn co cv do dt dv
-   * er ex fl fu im in kw op ot pp re sc ss st va vs wa）。
-   * 特に kw / op は breezeDark で #cfcfc2 なので、ここが無いと白背景で消える。 */
+   * skylighting の全クラスを漏らさず覆う(al an at bn bu cf ch cn co cv do dt dv
+   * er ex fl fu im in kw op ot pp re sc ss st va vs wa)。
+   * 特に kw / op は breezeDark で #cfcfc2 なので、ここがないと白背景で消える。 */
 
   /* まず基底色。skylighting は個別クラスのほかに
    *   code span { color: #cfcfc2; }            (Normal — クラスの付かない span)
    *   div.sourceCode { color: #cfcfc2; }       (span の付かない素のテキスト)
-   * の 2 つを出す。どちらもほぼ白なので、ここを外すと `--arg c` の `c` や nix の
-   * `pkgs` のような素のトークンが白背景で消える（実測した欠陥）。
+   * の 2 つを出す。どちらもほぼ白なので、ここを削除すると `--arg c` の `c` や nix の
+   * `pkgs` のような素のトークンが白背景で消える(実測した欠陥)。
    * 下の個別クラスはクラスセレクタの分だけ詳細度が高いので、この規則に潰されない。 */
   div.sourceCode,
   code span {

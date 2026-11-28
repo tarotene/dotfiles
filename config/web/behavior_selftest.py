@@ -10,12 +10,12 @@
 
   saver      保存中 → 書き込みの成功を確かめてから「保存済み」。失敗は、再保存の操作つきで出し、再保存で成功に戻れる。
              続けて呼んだとき、古い結果が表示を書き換えない。`false` を返す・同期に throw する書き込みも失敗として扱う。
-  keyguard   ボタンにフォーカスして Enter・Space を押すと、ショートカットでなくボタンが押される。フォーカスが無ければ
+  keyguard   ボタンにフォーカスして Enter・Space を押すと、ショートカットでなくボタンが押される。フォーカスがなければ
              ショートカットが呼ばれる。修飾キーつき・文字入力欄の中のキーは、ショートカットが奪わない。
   viewstate  失敗の出し先が最初から DOM にある。読み込み中・中身・空・失敗が、同時には出ない。失敗に再読み込みの操作を出す。
   CSP        上の操作のあいだ、CSP 違反とページのエラーが 0 件。
 
-実行: `uv run --script config/web/behavior_selftest.py`(Chromium が要る。CI では走らない。`visual_diff.py --selftest --browser` と同じ扱い)
+実行: `uv run --script config/web/behavior_selftest.py`(Chromium が必要。CI では走らない。`visual_diff.py --selftest --browser` と同じ扱い)
 """
 from __future__ import annotations
 
@@ -139,9 +139,9 @@ def main() -> int:
         check(txt("#demo-key-out") == idle, "そのあいだ、ショートカットは呼ばれない(標準のキー操作を奪わない)")
         page.evaluate("document.activeElement.blur()")
         page.keyboard.press("1")
-        check(txt("#demo-key-out") == "1 のショートカットが呼ばれた", "フォーカスが無ければ、1 はショートカットとして呼ばれる")
+        check(txt("#demo-key-out") == "1 のショートカットが呼ばれた", "フォーカスがなければ、1 はショートカットとして呼ばれる")
         page.keyboard.press("Space")
-        check(txt("#demo-key-out") == "Space のショートカットが呼ばれた", "フォーカスが無ければ、Space もショートカットとして呼ばれる")
+        check(txt("#demo-key-out") == "Space のショートカットが呼ばれた", "フォーカスがなければ、Space もショートカットとして呼ばれる")
         page.evaluate("document.getElementById('demo-key-out').textContent = 'x'")
         page.keyboard.press("Control+1")
         check(txt("#demo-key-out") == "x", "Ctrl つきのキーは、ショートカットが奪わない")

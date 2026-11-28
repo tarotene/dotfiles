@@ -86,10 +86,10 @@ in
 
   # exit code は「配信の成否」だけを表す(crates/herdr-issue-counts の
   # exit_code、detect-drift と同じ考え方、#442): herdr 未起動・gh 未認証・
-  # GitHub リポの workspace 無しは恒久状態になり得るので 0(stderr に 1 行)、
+  # GitHub リポジトリの workspace なしは恒久状態になり得るので 0(stderr に 1 行)、
   # GraphQL・報告の失敗は 1。後者は一過性で、次の成功で failed が消える。
   #
-  # Persistent= は書けない — OnCalendar= にしか効かない死んだ宣言になる(drift.nix の #442 の教訓、
+  # Persistent= は書けない — OnCalendar= にしか効かない無効な宣言になる(drift.nix の #442 の教訓、
   # systemd.timer(5)。timerPair の schedule の形が拒む)。launchd の RunAtLoad が systemd の
   # OnBootSec に相当する。
   dotfiles.pipeline.timerNodes.herdr-issue-counts = "herdr-issue-counts";
@@ -103,7 +103,7 @@ in
   # 自前インストールの ~/.local/bin/herdr は PATH で ~/.nix-profile/bin に先行する
   # ので、残っていると旧版が nix の herdr を shadow し続ける。desktop.nix の
   # quarantineStrayFcitx5Autostart と同型に、消さずに改名して退避する
-  # (「手で消すこと」という手順書は、ゼロ手作業を憲章にした repo には置けない)。
+  # (「手で消すこと」という手順書は、ゼロ手作業を憲章にしたリポジトリには置けない)。
   # symlink(store 由来のもの)は対象外 — 二重管理を避けるため、real file だけを
   # 見る。この経路は herdr 固有(quarantine.nix の対象は xdg.configFile /
   # home.file の管理下ファイルのみ)なのでここに残す。
@@ -129,10 +129,10 @@ in
   # ゲートはファイル存在(`herdr integration status` のテキスト出力を
   # パースしない)。導入済みなら no-op なので冪等。`|| true` は herdr サーバ
   # 未起動・オフライン等での install 失敗が switch 自体を止めないための保険
-  # (herdr 未インストール環境や headless CI でも无害)。
+  # (herdr 未インストール環境や headless CI でも無害)。
   #
   # settings.json への書き込みは registerClaudeHooks(agents.nix)と同じ
-  # ファイルを対象にするため、jq merge の lost-update 窓(#61 と同種)を
+  # ファイルを対象にするため、jq merge の lost-update 時間窓(#61 と同種)を
   # 避けて entryAfter で明示的にその後ろに置く。
   #
   # herdr バイナリの解決は `${pkgs.herdr}/bin/herdr` を直書きする — `command -v
@@ -141,7 +141,7 @@ in
   # パッケージをリンクする場所)を含まないため、`command -v herdr` は対話シェル
   # では成功しても activation 内では常に失敗する。このモジュール自身が
   # `home.packages` に `pkgs.herdr` を入れているのでバイナリの存在は自明であり、
-  # ゲートとして `command -v` を挟む意味がそもそも無い(#94 で入れたこのゲートが
+  # ゲートとして `command -v` を挟む意味がそもそもない(#94 で入れたこのゲートが
   # 原因で、当該 activation はどのマシンでも一度も発火していなかった)。
   home.activation.installHerdrClaudeIntegration =
     lib.hm.dag.entryAfter [ "writeBoundary" "registerClaudeHooks" ]
@@ -173,7 +173,7 @@ in
       '';
 
   # Antigravity CLI(agy)版。herdr 本体の integration(`antigravity-cli`)が、agy のペインの状態を
-  # サイドバーへ報告する hook(~/.gemini/config/hooks/herdr-agent-state.sh)を、agy の hooks.json に足す。
+  # サイドバーへ報告する hook(~/.gemini/config/hooks/herdr-agent-state.sh)を、agy の hooks.json に追加する。
   # このリポジトリの `herdr-agent-metadata`(Claude・Codex の permission mode などを送る hook)は、agy には
   # 登録しない: agy の状態は herdr 本体が持つ。hooks.json は自分の名前のキー(`dotfiles`)だけを
   # `registerAntigravityHooks`(agents.nix)が所有し、herdr の連携のキーとは共存する。lost-update を避けるため、

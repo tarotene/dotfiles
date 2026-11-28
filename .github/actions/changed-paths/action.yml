@@ -32,7 +32,7 @@ runs:
           exit 0
         fi
         # 変更の一覧を変数に取ってから grep に渡す。`git diff | grep -q` だと、grep -q の早期終了で
-        # git diff が SIGPIPE になり、pipefail で偽(誤って skip)になりうる。
+        # git diff が SIGPIPE になり、pipefail で偽(誤って skip)になる可能性がある。
         if ! files="$(git diff --name-only "origin/${DEFAULT_BRANCH}...HEAD")"; then
           echo "::warning::changed-paths: git diff failed (fail-open: run)"
           echo "run=true" >> "$GITHUB_OUTPUT"

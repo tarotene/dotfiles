@@ -13,11 +13,11 @@
 #   `Install` を持たないので、timer の側の 1 行で足りる)。
 # - XDG autostart の `xdg.configFile."autostart/<X>.desktop"` は、`autostart-<X>`。`Hidden=true` の
 #   エントリ(システムの autostart を無効にするもの)は、何も起動しないので対象外。
-# ここは最終の config(全モジュールの合成後)のこれらの名前を列挙して、対応付けの無いものと、manifest に無い id を
-# `assertions` で落とす。生の `systemd.user.timers.*` や `systemd.user.services.*` を書いても、最終の config に
+# ここは最終の config(全モジュールの合成後)のこれらの名前を列挙して、対応付けのないものと、manifest にない id を
+# `assertions` で失敗させる。生の `systemd.user.timers.*` や `systemd.user.services.*` を書いても、最終の config に
 # 現れるので、迂回できない。
 #
-# 逆向き(auto = true のノードに登録が 1 つも無い)は、ここでは確かめない。`lib.mkIf (isLinux && …)` の
+# 逆向き(auto = true のノードに登録が 1 つもない)は、ここでは確かめない。`lib.mkIf (isLinux && …)` の
 # 条件付きの登録があり、1 ホストの評価では、ほかのホストの登録を見られないため。`cargo test`
 # (crates/pipeline-map)が、対応付けの行を静的に走査して確かめる。
 #
@@ -102,7 +102,7 @@ in
       default = map (n: n.id) pipelineMap.node;
       description = ''
         pipeline-map.toml に定義されたノードの id。Claude hook の宣言の `node`
-        (agents.nix)と、`timerNodes` の値が、ここに無いと評価が落ちる。
+        (agents.nix)と、`timerNodes` の値が、ここにないと評価が失敗する。
       '';
     };
 
@@ -118,7 +118,7 @@ in
       );
       description = ''
         pipeline-map.toml のノード id から label への対応。Codex の hook 登録の表示名
-        (`statusMessage`)に使う。Codex の `/hooks` は表示名の無い hook をすべて
+        (`statusMessage`)に使う。Codex の `/hooks` は表示名のない hook をすべて
         `Unnamed hook` と表示するため(#1122)。
       '';
     };
@@ -132,8 +132,8 @@ in
       description = ''
         `systemd.user.timers.<名前>` / `launchd.agents.<名前>` の名前(常駐の
         `systemd.user.services.<名前>` と XDG autostart の `autostart-<X>` を含む)から、
-        pipeline-map のノード id への対応。足したのに対応付けが無い、または id が
-        pipeline-map.toml に無いと、評価が落ちる。
+        pipeline-map のノード id への対応。追加したのに対応付けがない、または id が
+        pipeline-map.toml にないと、評価が失敗する。
       '';
     };
   };
@@ -142,14 +142,14 @@ in
     {
       assertion = unmapped == [ ];
       message = ''
-        dotfiles.pipeline.timerNodes: 次の systemd timer / launchd agent / 常駐の user service / XDG autostart に、pipeline-map のノードの対応付けが無い: ${lib.concatStringsSep ", " unmapped}
-        その定義のそばに `dotfiles.pipeline.timerNodes.<名前> = "<ノード id>";` を足す(ノードは pipeline-map.toml、ADR-872)。
+        dotfiles.pipeline.timerNodes: 次の systemd timer / launchd agent / 常駐の user service / XDG autostart に、pipeline-map のノードの対応付けがない: ${lib.concatStringsSep ", " unmapped}
+        その定義のそばに `dotfiles.pipeline.timerNodes.<名前> = "<ノード id>";` を追加する(ノードは pipeline-map.toml、ADR-872)。
         <名前> は、timer / agent / service はその名前、XDG autostart は `autostart-<X>`(`autostart/<X>.desktop`)。
         このリポジトリの外(上流のモジュール・別の flake)が作るものは、検査の対象外。'';
     }
     {
       assertion = undefinedIds == { };
-      message = "dotfiles.pipeline.timerNodes: pipeline-map.toml に定義の無いノード id: ${
+      message = "dotfiles.pipeline.timerNodes: pipeline-map.toml に定義のないノード id: ${
         lib.concatStringsSep ", " (lib.mapAttrsToList (n: id: "${n} = ${id}") undefinedIds)
       }";
     }

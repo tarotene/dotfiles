@@ -1,6 +1,6 @@
 # Self-hosted LiveSync の公式 CLI(上流 `src/apps/cli`)を、タグ 1.0.44-cli のソースから
-# ビルドする(#1328)。nixpkgs に該当するパッケージは無く、release asset にも CLI の
-# bundle が無い(plugin の 3 点だけ)ので、`buildNpmPackage` で build する。
+# ビルドする(#1328)。nixpkgs に該当するパッケージはなく、release asset にも CLI の
+# bundle がない(plugin の 3 点だけ)ので、`buildNpmPackage` で build する。
 #
 # 上流の vite 設定は pouchdb-*・leveldown・chokidar・werift を `dist/index.cjs` に
 # 同梱せず外に出す。そのため出力には `dist/` と、実行時の依存だけの `node_modules` の
@@ -39,8 +39,8 @@ buildNpmPackage {
   ];
 
   # 既定の install(`npm pack` した 1 つの workspace)は、`dist/` と実行時の依存を
-  # 別々に置けない。root の `node_modules` から開発用の依存を落とし、workspace 自身への
-  # symlink(`self-hosted-livesync-cli` など。出力の外を指して noBrokenSymlinks で落ちる)を
+  # 別々に置けない。root の `node_modules` から開発用の依存を除外し、workspace 自身への
+  # symlink(`self-hosted-livesync-cli` など。出力の外を指して noBrokenSymlinks で失敗する)を
   # 取り除いて、`libexec` に置く。
   dontNpmInstall = true;
   installPhase = ''

@@ -11,7 +11,7 @@
 #
 # com.bambulab.BambuStudio: 3D プリンタ(施設の Bambu Lab P1S/X1)向けスライサー。
 # GL アプリで、zoom と同じく Flatpak が GL ランタイムを自前で持つので nixGL の
-# ラップが要らない。nixpkgs の bambu-studio は 02.05.00.67 で、Flathub の
+# ラップが不要になる。nixpkgs の bambu-studio は 02.05.00.67 で、Flathub の
 # 2.8.2.61(2026-08-21、`flatpak remote-info --user flathub com.bambulab.BambuStudio`、
 # 取得 2026-10-16)より大きく遅れており、工房 PC の版に合わせにくい。
 #

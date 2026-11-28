@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # ci-consumers — 編集するパスを入力にしている CI の検査(消費者)を列挙する(#wrap-up inbox)。
 #
-# 起きたこと: `close-linked-issues.yml` に 1 行(pipeline-node のコメント)を足したら、
+# 起きたこと: `close-linked-issues.yml` に 1 行(pipeline-node のコメント)を追加したら、
 # その配布元テンプレートとのバイト一致を要求する CI の step(`ci.yml` の
-# `close-linked-issues template is in sync`)が落ちた。ファイルを一括編集する前に、
+# `close-linked-issues template is in sync`)が失敗した。ファイルを一括編集する前に、
 # そのファイルを入力にする CI 検査を探していなかった。この script は、その探し方を
 # 決定論に固める: 編集するパスを引数に渡すと、そのパスを読む箇所を、CI に効く場所だけから
 # `file:line` と直近の step 名つきで出す。
@@ -12,19 +12,19 @@
 #   scripts/ci-consumers <path>...     # 編集する(した)パスごとに、消費者を列挙
 #   scripts/ci-consumers --selftest    # ネットワーク不使用の自己検査
 #
-# 探す場所(CI に効くものだけ。リポジトリの根から):
+# 探す場所(CI に効くものだけ。リポジトリのルートから):
 #   .github/workflows/*.yml|yaml           workflow の step(`run:` の中のパスも拾う)
 #   .github/actions/*/action.yml|yaml      composite action(`BUILD_INPUTS` などの宣言も拾う)
 #   scripts/*                              workflow が呼ぶスクリプトと、その selftest
 #   crates/*/tests/**/*.rs|sh|toml         cargo test が読むファイル(fixture の JSON は除く)
-# 一致は、パスの文字列そのもの(先頭の `./` は落とす)の固定文字列検索。ディレクトリは
+# 一致は、パスの文字列そのもの(先頭の `./` は除去する)の固定文字列検索。ディレクトリは
 # 末尾の `/` を補って、配下を指す参照も拾う。引数のパス自身のファイルは、自己参照なので
 # 除く。
 #
 # 終了コード: 0 = 消費者が見つかった、1 = 見つからなかった(`if ci-consumers X` で使える)、
 #             2 = 使い方の誤り。
 #
-# 既存手段の検討(ADR-543): このリポジトリには、パスの消費者を引く道具が無い。類例は
+# 既存手段の検討(ADR-543): このリポジトリには、パスの消費者を引く道具がない。類例は
 # `ci.yml` の「生成物の同期」の検査(render して git status の差分を見る)と、
 # stack-position の `BUILD_INPUTS` の宣言で、どちらも消費者を事前に引くものではない。
 # bash を採るのは、ADR-0024 の対象が hook と `~/.local/bin` の CLI で、リポジトリ内の
@@ -38,11 +38,11 @@ usage: ci-consumers <path>...
 
 編集するパスを入力にしている CI の検査(workflow・composite action・scripts・
 crates の tests)を、file:line と直近の step 名つきで列挙する。
-消費者が 1 つも無ければ終了コード 1。
+消費者が 1 つもなければ終了コード 1。
 EOF
 }
 
-# リポジトリの根(テストでは CI_CONSUMERS_ROOT で差し替える)。
+# リポジトリのルート(テストでは CI_CONSUMERS_ROOT で差し替える)。
 root_dir() {
   if [[ -n ${CI_CONSUMERS_ROOT:-} ]]; then
     printf '%s' "$CI_CONSUMERS_ROOT"
@@ -51,7 +51,7 @@ root_dir() {
   fi
 }
 
-# CI に効くファイルの一覧(根からの相対パス、重複なし)。
+# CI に効くファイルの一覧(ルートからの相対パス、重複なし)。
 consumer_files() {
   (
     cd "$1"
@@ -68,7 +68,7 @@ consumer_files() {
   )
 }
 
-# $1=file $2=line -> その行より前で最も近い YAML の step 名(`- name: X` / `name: X`)。無ければ空。
+# $1=file $2=line -> その行より前で最も近い YAML の step 名(`- name: X` / `name: X`)。なければ空。
 step_name() {
   awk -v n="$2" '
     NR > n { exit }
@@ -84,7 +84,7 @@ step_name() {
   ' "$1"
 }
 
-# $1=root $2=path -> 消費者を `file:line  [step: name]  text` で出す。見つかれば 0、無ければ 1。
+# $1=root $2=path -> 消費者を `file:line  [step: name]  text` で出す。見つかれば 0、なければ 1。
 consumers_of() {
   local root="$1" path="$2" needle self found=1 f hit line text step
   path="${path#./}"
@@ -171,16 +171,16 @@ EOF
   expect "3b crates の tests の .rs を拾う" "$(has "$out" 'crates/foo/tests/t.rs:1')"
   expect "3c fixture の JSON は拾わない" "$([[ $(has "$out" 'fixture.json') == false ]] && echo true || echo false)"
 
-  # 4. 消費者が無ければ終了コード 1(負例: 無関係なパス)。
+  # 4. 消費者がなければ終了コード 1(負例: 無関係なパス)。
   rc=0
   out="$(consumers_of "$tmp" "no/such/path.txt")" || rc=$?
-  expect "4 消費者が無ければ終了コード 1 で、何も出さない" "$([[ $rc == 1 && -z $out ]] && echo true || echo false)"
+  expect "4 消費者がなければ終了コード 1 で、何も出さない" "$([[ $rc == 1 && -z $out ]] && echo true || echo false)"
 
-  # 5. 先頭の ./ は落とす。引数のパス自身のファイルは自己参照なので除く。
+  # 5. 先頭の ./ は除去する。引数のパス自身のファイルは自己参照なので除く。
   out="$(consumers_of "$tmp" "./.github/workflows/ci.yml" || true)"
   expect "5 引数のパス自身は除く" "$([[ -z $out ]] && echo true || echo false)"
   out="$(consumers_of "$tmp" "./templates/.github/workflows/close-linked-issues.yml")"
-  expect "5b 先頭の ./ を落として照合する" "$(has "$out" '.github/workflows/ci.yml:7')"
+  expect "5b 先頭の ./ を除去して照合する" "$(has "$out" '.github/workflows/ci.yml:7')"
 
   # 6. ディレクトリは、配下を指す参照も拾う(末尾の / を補う)。
   out="$(consumers_of "$tmp" "templates/.github")"

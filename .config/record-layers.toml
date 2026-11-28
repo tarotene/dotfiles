@@ -5,7 +5,7 @@
 # - glob はリポジトリのルートからの相対パス。`*` は `/` を越えず、ディレクトリの下は `dir/**` と書く。
 # - 1 パス 1 層: `git ls-files` の各ファイルに当たる glob がちょうど 1 つであること(漏れも重なりも不可)。
 #   `cargo test -p record-layer` が検査する。
-# - 宣言に無いパスと、L3・L4 のパスへの Write は、PreToolUse の `record-layer-guard`(hook-router)が拒否する。
+# - 宣言にないパスと、L3・L4 のパスへの Write は、PreToolUse の `record-layer-guard`(hook-router)が拒否する。
 #   宣言と実測の変化の速さのずれは、promotion-detect の日次 timer が wrap-up inbox に流す。
 # - 運用: docs/agents/record-layers.md
 
@@ -33,7 +33,7 @@ layer = "L1"
 glob = "crates/**"
 layer = "L1"
 
-# ADR は追記のみ(Amendment を足す形)。
+# ADR は追記のみ(Amendment を追加する形)。
 [[path]]
 glob = "docs/adr/**"
 layer = "L0"

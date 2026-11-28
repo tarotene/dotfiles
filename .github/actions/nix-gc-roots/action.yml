@@ -63,10 +63,10 @@ runs:
     # 配布元から取ってきた fixed-output の path(tarball など)も root する(#1395)。上の規則は
     # 「activationPackage の closure に残る path」だけを見るので、build の時だけの入力である取得物は
     # 対象にならない。取得物を使う package の側(obsidian は electron ごと約 1.4 GB)は集約出力として
-    # 外されるので、取得物は毎回、配布元から取り直されていた。配布元が不調のとき(2026-11-08、
-    # github.com のリリース配布物が HTTP 504)、`Build vega` だけが特に落ちた。
+    # 除外されるので、取得物は毎回、配布元から取り直されていた。配布元が不調のとき(2026-11-08、
+    # github.com のリリース配布物が HTTP 504)、`Build vega` だけが特に失敗した。
     # 対象は、この runner が自分で取得した(`ultimate: true`)fixed-output(`ca` が `fixed:`)の path のうち、
-    # activationPackage の build に要るもの(derivation の closure と、その出力)。cache.nixos.org から
+    # activationPackage の build に必要なもの(derivation の closure と、その出力)。cache.nixos.org から
     # 置き換えた path は `ultimate: false` なので入らない。大きさの閾値は上の手順と同じ。
     - name: Root fixed-output fetches the build needed (upstream tarballs)
       shell: bash

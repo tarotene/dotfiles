@@ -5,7 +5,7 @@ name: Kiriban
 # 受付 Issue も開く。規則と文面の正本は tarotene/dotfiles の crates/kiriban で、
 # この workflow は composite action を呼ぶだけ(docs/kiriban.md)。
 #
-# required check ではない。落ちても PR や Issue を止めない遊びの機構なので、
+# required check ではない。失敗しても PR や Issue を止めない遊びの機構なので、
 # CI passed の集約にも入れない。
 #
 # 制約: fork からの PR と Dependabot の PR は GITHUB_TOKEN が読み取り専用になり

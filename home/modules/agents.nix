@@ -22,16 +22,16 @@
 #    スコープ外の気づきの「収集」と「裁定」を分離する。SessionStart hook
 #    (`session-wrapup start`)が additionalContext で「気づきは `issue-inbox --add` で
 #    追記せよ。Issue にはしない」と注入し、未裁定の件数を掲示する。気づきは Obsidian vault の
-#    `inbox/` に 1 件 1 ノートで溜まる(vault の無い機体では機体の jsonl)。Stop hook
+#    `inbox/` に 1 件 1 ノートで溜まる(vault のない機体では機体の jsonl)。Stop hook
 #    (`session-wrapup stop`)は気づきの起票を求めない。jsonl に残った行を vault へ移し、
-#    更新した feedback memory に `#N` が無いときと、振り返り・期限付き試行の未完了のときだけ
+#    更新した feedback memory に `#N` がないときと、振り返り・期限付き試行の未完了のときだけ
 #    exit 2 + stderr で指示する。それ以外は黙って exit 0(ADR-0005 の binary-existence
 #    gating に倣う)。裁定は本人が `/my-cleanup` で行い、Issue にするのは裁定で選んだものだけ。
 #    旧 `wrapup-stop-gate` / `wrapup-session-start` は互換入口として配備だけ残している
 #    (削除条件は docs/agents/tooling-migration.md)。詳細は docs/agents/wrapup-inbox.md。
 #
 # 3) plan-view(PreToolUse / ExitPlanMode + CLI):
-#    プランを pandoc で HTML にして Chrome の専用窓(--app)に飛ばす。LLM は呼ばず、
+#    プランを pandoc で HTML にして Chrome の専用ウィンドウ(--app)に飛ばす。LLM は呼ばず、
 #    Markdown を 1:1 で写すだけの表示専用の道具である。plan-review gate と同じ
 #    matcher に別エントリとして並び、並列に走る(= review の結果を待たない)。承認
 #    フローに干渉しないため、成否に関わらず stdout に何も出さず exit 0 する。
@@ -40,7 +40,7 @@
 # 4) gpg-prewarm(SessionStart, matcher: startup|resume):
 #    git commit の署名パスフレーズ入力を、ログイン後最初に Claude を開いた安全な
 #    瞬間に前倒しする。home/modules/gpg.nix が gpg-agent の cache TTL を実質無限に
-#    したことで再入力は「ログインに 1 回」まで落ちるが、その 1 回を放置すると
+#    したことで再入力は「ログインに 1 回」まで減るが、その 1 回を放置すると
 #    Claude の Bash 呼び出し中に GUI pinentry が grab 付きで出現し、キー入力を
 #    奪ったままコミットが固まる。判定は SessionStart 時の cwd に依存せず、常に
 #    グローバルな git 設定だけを見る。additionalContext は出さない(副作用だけの
@@ -48,7 +48,7 @@
 #
 # 5) pr-gate(SessionStart + Stop):
 #    「CI 待ちのまま完了を宣言する」「push し忘れたまま完了する」「PR を Issue に
-#    繋がないまま終わる」「見た目の変更なのに視覚証跡が無いまま終わる」の 4 事故を、
+#    繋がないまま終わる」「見た目の変更なのに視覚証跡がないまま終わる」の 4 事故を、
 #    Stop の 1 点だけで hard gate する(base 鮮度・未コミット変更は advisory)。
 #    判定対象は ~/.claude/pr-gate-repos に列挙した nwo だけ(既定は本リポジトリの
 #    み)で、それ以外では完全沈黙する。中心不変条件は「揃っていない集合を緑と読ま
@@ -63,7 +63,7 @@
 #    additionalContext で注入する。本文は渡さない — 深掘りは Claude 自身に
 #    `gh issue view` を叩かせる。データ源は `gh issue list` ではなく GitHub
 #    Search API(`gh api search/issues`): --limit は取得上限であり総数ではない
-#    ので、それで総数を数えると嘘になる。assignee:@me が 0 件なら repo 全体の
+#    ので、それで総数を数えると嘘になる。assignee:@me が 0 件ならリポジトリ全体の
 #    open にフォールバックし、他人起票の行にだけ起票者を明記する(タイトルは
 #    untrusted なので制御文字除去 + 120 文字切り詰めもするが、これは防御ではなく
 #    payload 制御に過ぎない)。詳細は docs/agents/issue-index.md。
@@ -128,7 +128,7 @@
 #     issue-ref-freshness, pr-description,
 #     my-cleanup(旧 backlog-cleanup・issue-hygiene を含む), model-pin-update, tracking-issue, stacked-pr):
 #    hook ではなく ~/.claude/skills/ 配下に置く判断知識。diagramming は作図時に
-#    「内容の型に合うジャンル・技術を選ぶ」処方と、手書き SVG に落ちた場合の
+#    「内容の型に合うジャンル・技術を選ぶ」処方と、手書き SVG にフォールバックした場合の
 #    技術非依存の不変条件(矢印端点をボックス定義から導出する・完成の定義に視認を
 #    含める等)を持つ。agent-tooling-authoring はこの知見をどう dotfiles(公開)に固定化
 #    するかのメタスキルで、サニタイズ規則の正本(公開リポジトリに書く知見と、
@@ -150,7 +150,7 @@
 #    は open Issue が出自(同一 ADR / PR / 構想)ごとに束ねられずに積み上がったとき、
 #    GitHub ネイティブ sub-issues 機能で親子構造を明示し、子が全決着済みなのに本文が
 #    未更新のまま open で残る「腐った tracking Issue」を清算する定期衛生管理の手順
-#    (旧来のチェックボックス方式は手動更新が要り腐敗するため使わない)。tracking-issue
+#    (旧来のチェックボックス方式は手動更新が必要になり腐敗するため使わない)。tracking-issue
 #    は旧 issue-hygiene から「書く/更新する」側を分離したスキルで、親 Issue を起票・
 #    更新するときの本文スケルトン(目的/スコープ・完了定義・傘の外への依存・
 #    スコープ外 + 維持義務の一文)・禁止事項(子 Issue へのチェックボックス参照・
@@ -184,7 +184,7 @@
 # 13) claude-usage(herdr の tab_bar_right command、hook ではない):
 #    `/usage` を打たずに Rate Limit(5h セッション窓)と Fable の週間上限を Herdr
 #    のタブバー右端に常時表示する。データ源は statusline / hooks の入力 JSON には
-#    無い唯一の経路(`/usage` が内部で使う非公開 API)であり、settings.json への
+#    ない唯一の経路(`/usage` が内部で使う非公開 API)であり、settings.json への
 #    hook 登録はしない — herdr が interval 実行して標準出力の最終行を描画する。
 #    壊れたときの症状は「タブバーからこのセグメントが消えるだけ」に収束させる。
 #    詳細は docs/claude/claude-usage.md。
@@ -202,8 +202,8 @@
 #    ~/.codex/AGENTS.md は同一ソースの単純マウントではなく、共有 AGENTS.md +
 #    config/codex/AGENTS.codex.md(Codex 固有配線)を nix 評価時に結合した
 #    派生物(ADR-0032 Amendment #531、Codex が `@import` 構文を持たないため)。
-#    hook 注入(issue-index 方式)は動的生成が要らない静的方針には過剰、スキルは
-#    呼び出し起点が要るため常時適用の方針には不向きなので、いずれも home.file で
+#    hook 注入(issue-index 方式)は動的生成が不要な静的方針には過剰、スキルは
+#    呼び出し起点が必要になるため常時適用の方針には不向きなので、いずれも home.file で
 #    配備する。store symlink による read-only 配布なので、セッション中の `#`
 #    メモ追記ショートカットは書き込み失敗する — 知見の永続化は agent-tooling-authoring
 #    の PR フローに乗せる想定であり、意図的な設計。詳細は
@@ -245,8 +245,8 @@
 #    Claude が GitHub に書く外向きテキスト(PR/Issue の create・edit、Issue/PR
 #    コメント、gh pr review のレビュー本体)に attribution フッターが載って
 #    いることを保証する。PR 本文のフッターは harness 側の attribution 指示
-#    由来なので、(a) コメント投稿には一切付かず、(b) 本文側も repo に強制が
-#    無い(pr-gate は G_link / G_visual しか見ない)という 2 つの穴があった。
+#    由来なので、(a) コメント投稿には一切付かず、(b) 本文側もリポジトリに強制が
+#    ない(pr-gate は G_link / G_visual しか見ない)という 2 つの穴があった。
 #    投稿は通知が飛ぶ不可逆操作なので Stop hook では取り返せず、PreToolUse で
 #    deny する。抜け道は本文マーカー No-Attribution: <理由>(pr-gate の
 #    No-Issue: と同型、理由必須で grep 可能)。
@@ -340,7 +340,7 @@
 #    スクリプトを文書化して渡すだけで終わらせない。相手の営業時間・定休日と
 #    ユーザーの予定表上の空き時間を突き合わせ、衝突しない枠にリマインダー
 #    予定を作成するところまでを手順化する。Claude が提案する予定専用の
-#    カレンダーが既にあればそれを使い、無ければ書き込み先をユーザーに確認
+#    カレンダーが既にあればそれを使い、なければ書き込み先をユーザーに確認
 #    する。カレンダー・メール等の外部サービスに送る文章は agent-tooling-authoring の
 #    サニタイズ規則 §3.2(禁止項目の正本)を適用する対象だと参照している —
 #    リポジトリ内の成果物とは別の基準がかかる。詳細は
@@ -369,7 +369,7 @@
 #    D13 により旧 slot-hit.py〔Python〕から移植)に委譲する。終日イベント
 #    (試験本番等)を見落として
 #    実際は拘束される日を ○ と誤判定しないよう、`soft_day_prefixes` に一致
-#    する終日イベントの日に時間指定の確定予定が無ければ実行を止める。調べて
+#    する終日イベントの日に時間指定の確定予定がなければ実行を止める。調べて
 #    判明した拘束時間は設定ファイルではなく Google Calendar 側に時間指定の
 #    予定として書き戻す(判定ルールと個々の予定の事実を二重管理しない)。
 #    human-task-scheduling とは発火条件が異なる(こちらは Claude 自身が
@@ -459,7 +459,7 @@
 #    `## 先行例との対比` にある `既存手段:` 行(書式が正しいものだけ)を、現在の
 #    worktree の台帳へ転記する。承認時に plan-precedent-gate が読む行と同じ行を、
 #    手で `register` し直す二重入力をなくす(台帳は計画の派生、正本は計画)。
-#    手書きの `register` は、計画の無い作業の経路として残る。
+#    手書きの `register` は、計画のない作業の経路として残る。
 #
 # 31) feedback-target-guard(PreToolUse, matcher: Bash(gh *)、ADR-543、
 #    2026-09-28、段3/4):
@@ -467,7 +467,7 @@
 #    feedback Issue の再発」を機械的に集計できるようにする。`gh issue
 #    create --label feedback`(カンマ区切りの複数ラベルも可)を検出し、
 #    本文に `Target: skill/<name>` / `Target: agents-md/<節見出し>` /
-#    `Target: hook/<name>` のいずれかが無い、またはその実体が存在しない
+#    `Target: hook/<name>` のいずれかがない、またはその実体が存在しない
 #    場合に deny する。判定は Rust(crates/feedback-target-guard、ADR-0024
 #    Stage 4a #415)で、コマンド解析(heredoc 分離・トークナイザ・本文抽出)
 #    は crates/github-command を共有する。
@@ -490,7 +490,7 @@
 #    docs/agents/pr-followup-guard.md、2026-09-30 改定):
 #    PR 本文に (i) 未チェックの task list(`- [ ]`)、または (ii) `## 要確認`
 #    に Issue 参照(`#N` または issues URL)を持たない項目があれば
-#    `gh pr create/edit` の呼び出し時に deny する。人の確認が要る残作業は
+#    `gh pr create/edit` の呼び出し時に deny する。人の確認が必要な残作業は
 #    後続 Issue へ払い出し、「要確認」はその Issue へのポインタだけを書く
 #    節に転換した(社内の別リポジトリで観測された、未チェック task list を
 #    残したままマージされた実例が動機)。全リポジトリで発火する(owner スコープ
@@ -521,7 +521,7 @@
 #
 # 36) inbox-adjudication(個人スキル、docs/agents/inbox-adjudication.md):
 #    溜まった受信箱の処理を、既読化からでなく返信と判断の裁定から始める判断知識。
-#    未読を全件読み、返信が要るものは下書きを非公開ページにまとめて本人が裁定し、
+#    未読を全件読み、返信が必要なものは下書きを非公開ページにまとめて本人が裁定し、
 #    確定事項を予定と記録に反映し、フィルタにできる差出人を標準ルールに積み、
 #    受信箱の整理は最後にする。送信・削除・退会は本人の操作。事例は cases.md。
 #
@@ -529,16 +529,16 @@
 #    docs/agents/gate-failopen-advisory.md、#822):
 #    fail-open で設計した hook(copilot-plan-review)は、依存先が壊れても止まらない
 #    代わりに、「壊れたまま素通りし続けている」ことに気づく手段が毎回の警告を人が
-#    読むことしか無かった(固定したモデルが catalog から消えて約 2 週間半、気づかれ
+#    読むことしかなかった(固定したモデルが catalog から消えて約 2 週間半、気づかれ
 #    なかった)。gate が gate-events.jsonl に残す fail-open / pass を末尾から数え、
 #    同じ gate の最後の pass より後の fail-open が閾値(既定 3)以上なら、セッション
 #    開始時に additionalContext で伝える。何も実行しない。fail-open。
 #
 # 38) my-desk(個人スキル)+ daily-desk-reminder(SessionStart, matcher: startup、
 #    docs/agents/my-desk.md):
-#    その日にさばく作業(返信が要るメール、日程回答、人手タスク、未消費 PR の裁定、
+#    その日にさばく作業(返信が必要なメール、日程回答、人手タスク、未消費 PR の裁定、
 #    受信箱)の起点が、発火装置の違うものに散っていた問題への対処。手順の正本は
-#    private なハブ側の desk.md で、スキルはハブ(`desk-hub`。無ければ従来の
+#    private なハブ側の desk.md で、スキルはハブ(`desk-hub`。なければ従来の
 #    performance-hub)を解決して従うだけの薄いポインタ。hook は「今日の机は未実施」を
 #    注入し、実施済みの印(~/.local/state/claude/desk/<JST の日付>)があれば無音。
 #    ハブ未設定の機体でも無音。
@@ -547,16 +547,16 @@
 #    Git で管理するには重すぎる粒度の作業ログを、Obsidian vault の当日ノートへ 1 行ずつ
 #    書かせる。hook は書く時点と kind の規範と、同じリポジトリの直近 7 日の stuck / found を
 #    注入する。vault は ~/.config/dotfiles/obsidian-vault(home/hosts/vega/obsidian.nix が置く)で
-#    宣言され、無い機体では黙って no-op するため、hook は全ホストへ無条件配備する。
+#    宣言され、ない機体では黙って no-op するため、hook は全ホストへ無条件配備する。
 #
 # Hybrid translation (ADR-0002): hook スクリプト・スキーマ・スラッシュコマンド・
 # スキルは config/claude/ 配下に literal で置き、home.file で配備する。どの hook も
-# 必要なバイナリが無いホストでは黙って no-op するため全ホストへ無条件配備でよい。
+# 必要なバイナリがないホストでは黙って no-op するため全ホストへ無条件配備でよい。
 #
 # ~/.claude/settings.json は Claude-Code-owned(CLI が実行時に書き換える)なので、
 # hook の登録だけは store symlink にできない — desktop.nix の fcitx5 プロファイルと
 # 同じ制約。代わりに activation 時に冪等マージする: 同一 command を持つエントリが
-# 該当イベント配下に無いときだけ注入し、それ以外は一切触らない。
+# 該当イベント配下にないときだけ注入し、それ以外は一切触らない。
 {
   config,
   lib,
@@ -662,7 +662,7 @@ let
   bleepClaudeCmd = "${bleepEnvPrefix} bash '${hooksDir}/bleep/hooks/bleep.sh' --host=claude";
   bleepCodexCmd = "${bleepEnvPrefix} bash '${hooksDir}/bleep/hooks/bleep.sh' --host=codex";
   bleepCopilotCmd = "${bleepEnvPrefix} bash '${hooksDir}/bleep/hooks/bleep.sh' --host=copilot";
-  # #561 で env prefix を足す前の command 文字列。退役は command の完全一致で削除する
+  # #561 で env prefix を追加する前の command 文字列。退役は command の完全一致で削除する
   # (agent-settings-reconcile、docs/agents/agent-settings-reconcile.md。bash 版の register() も
   # 同じ規則だった)ので、これを退役の一覧に残さないと、新旧 2本が settings.json に同時に残ってしまう。
   legacyBleepClaudeCmdUnprefixed = "bash '${hooksDir}/bleep/hooks/bleep.sh' --host=claude";
@@ -752,7 +752,7 @@ let
   # Codex 展開も同じバイナリを `--agent codex` で直接呼ぶ(bash 時代の
   # ~/.codex/hooks/pr-confirm-guard.sh adapter は廃止、attribution-guard の
   # codexAttributionGuardCmd と同じ型)。旧 command は register-codex-hooks の
-  # --retire で完全一致削除する。Copilot adapter は元から無い(依頼は Codex のみ)。
+  # --retire で完全一致削除する。Copilot adapter は元からない(依頼は Codex のみ)。
   codexPrConfirmGuardCmd = "'${hooksDir}/pr-confirm-guard' --agent codex";
   legacyCodexPrConfirmGuardCmd = "bash '${config.home.homeDirectory}/.codex/hooks/pr-confirm-guard.sh'";
   # git-stash-guard/stack-base-guard/adr-number の Codex adapter(ADR-0032
@@ -809,7 +809,7 @@ let
   # rulesets-write-guard(ADR-503 D7):
   # `gh api` による ruleset(required_status_checks 等)の直接書換を deny
   # する。gh-edit-allow と同じ理由(判定に既存の巨大 bash 資産を source
-  # する必要が無い)で ADR-0024 の既定どおり Rust。
+  # する必要がない)で ADR-0024 の既定どおり Rust。
   rulesetsWriteGuardCmd = "'${hooksDir}/rulesets-write-guard'";
   # routines-write-guard(28番、ADR-519 D7):
   # 宣言外の cron routine create/update(RemoteTrigger)を deny する。
@@ -819,9 +819,9 @@ let
   routinesWriteGuardCmd = "'${hooksDir}/routines-write-guard'";
   # pkexec-guard(29番、docs/agents/pkexec-guard.md、PR #326 のグリルセッション
   # で SUDO_ASKPASS 方式を不採用に裁定し直した結果の設計): rulesets-write-guard
-  # と同じ理由(判定に既存の bash 資産を source する必要が無い)で ADR-0024
+  # と同じ理由(判定に既存の bash 資産を source する必要がない)で ADR-0024
   # の既定どおり Rust。3 エージェントから同じ 1 バイナリを呼ぶ(bash の
-  # `source` に相当する仕組みが Rust に無いため、attribution-guard のような
+  # `source` に相当する仕組みが Rust にないため、attribution-guard のような
   # per-agent adapter ファイルは作らず、`--agent` フラグで出力形式を切り替える
   # — crates/pkexec-guard/src/main.rs)。
   pkexecGuardCmd = "'${hooksDir}/pkexec-guard'";
@@ -832,7 +832,7 @@ let
   # bin/scripts/hooks/cmd 配下の新規ファイル、パッケージマニフェストの
   # 新設)を Write する前に、`既存手段:` の session ledger 登録を要求する。
   # pkexec-guard と同じ理由(判定に既存の bash 資産を source する必要が
-  # 無い)で ADR-0024 の既定どおり Rust。Claude Code 専用(#531、Codex/
+  # ない)で ADR-0024 の既定どおり Rust。Claude Code 専用(#531、Codex/
   # Copilot への展開は別 Issue の主題)。
   newToolGuardCmd = "'${hooksDir}/new-tool-guard'";
   # feedback-target-guard(ADR-543 段3): `gh issue create --label feedback` に
@@ -881,7 +881,7 @@ let
   # atuin hook claude-code(docs/adr/0011): atuin 自身が提供するエージェント
   # フック — Bash tool 呼び出しの command/cwd/duration/exit code を atuin の
   # history.db に記録する。`atuin hook install claude-code` は settings.json
-  # を直接書き換えて宣言的管理の外に出るため使わず、この repo の
+  # を直接書き換えて宣言的管理の外に出るため使わず、このリポジトリの
   # hook 宣言(agent-settings-reconcile)経由で配線する。コマンド文字列は atuin, "Agent Hooks",
   # <https://docs.atuin.sh/latest/guide/agent-hooks/>(2026-09-14 取得)が
   # 文書化する契約のとおり(引数なし)。
@@ -891,19 +891,19 @@ let
   # から完全一致で削除してから新 command を登録する(下の retiredHookEntries)。
   legacyCodexPlanReviewCmd = "bash '${hooksDir}/codex-plan-review.sh'";
 
-  # **この一覧に足すのは、記録が入る前の世代が書いた登録を外すときだけ**(2026-10-24)。
-  # 宣言から外した hook は、agent-settings-reconcile が所有の記録(下の claudeHooksSpec の
-  # `state`)で「前回書いたが今回の宣言に無いもの」として消す。ただし記録は、記録を入れた
-  # 時点の宣言しか知らない: 記録の無いホストの最初の switch は、その前の世代が書いた登録を
-  # 知らないので、そのとき宣言から外す登録(ルータに載せた 19 件、下)は、ここに挙げる。
-  # 記録ができたあとに外す登録は、ここに足さない(記録が消す)。vega・arcturus・altair の
+  # **この一覧に追加するのは、記録が入る前の世代が書いた登録を解除するときだけ**(2026-10-24)。
+  # 宣言から除外した hook は、agent-settings-reconcile が所有の記録(下の claudeHooksSpec の
+  # `state`)で「前回書いたが今回の宣言にないもの」として消す。ただし記録は、記録を入れた
+  # 時点の宣言しか知らない: 記録のないホストの最初の switch は、その前の世代が書いた登録を
+  # 知らないので、そのとき宣言から除外する登録(ルータに載せた 19 件、下)は、ここに挙げる。
+  # 記録ができたあとに除外する登録は、ここに追加しない(記録が消す)。vega・arcturus・altair の
   # すべてに記録ができたら、この一覧と legacy*Cmd は消せる(確認は後続の Issue、#979)。なお `herdr-agent-state.sh`(herdr 自身が .hooks.SessionStart に
   # 書く統合 hook)は dotfiles の所有ではなく、ここにも記録にも載せない — 載せると
   # herdr の統合を壊す。
   #
   # かつて登録したが撤回した hook。activation が全ホストの settings.json から
   # (event, command) の組で完全一致削除する。撤回が宣言的にできる前は、hook
-  # スクリプトを home.file から外すと settings.json のエントリだけが残り、消えた
+  # スクリプトを home.file から削除すると settings.json のエントリだけが残り、消えた
   # パスを指したまま毎イベントで ENOENT を吐き続けた(#44 の実体 — herdr のリネーム
   # ではなく自リポジトリ由来。herdr が settings.json に書くのは
   # integration::claude_settings::rewrite による .hooks.SessionStart の
@@ -917,10 +917,10 @@ let
       event = "SessionEnd";
       command = retiredAgentPermissionsEndCmd;
     }
-    # ルータ(hook-router)に載せた 19 件の旧登録(2026-10-24)。所有の記録が無いホスト(記録を
+    # ルータ(hook-router)に載せた 19 件の旧登録(2026-10-24)。所有の記録がないホスト(記録を
     # 入れた直後の最初の switch)は、前の世代が書いたこの 19 件を知らないので、ここに挙げて
-    # 初回だけ消す。記録のあるホストは、記録(宣言から外れたもの)で消えるので、この項目は
-    # 要らない。全ホストに記録ができたら、一覧ごと消せる(#979)。
+    # 初回だけ消す。記録のあるホストは、記録(宣言から除外されたもの)で消えるので、この項目は
+    # 不要になる。全ホストに記録ができたら、一覧ごと消せる(#979)。
     {
       event = "PreToolUse";
       command = gitStashGuardCmd;
@@ -998,7 +998,7 @@ let
       command = cmdHashLogCmd;
     }
     # 上の 19 件に続いて表に載せた、ExitPlanMode の拒否 2 件の旧登録(#991、2026-10-27)。
-    # 同じ理由で、記録の無いホストの最初の switch のためにここへ挙げる。
+    # 同じ理由で、記録のないホストの最初の switch のためにここへ挙げる。
     {
       event = "PreToolUse";
       command = planScopeGateCmd;
@@ -1008,7 +1008,7 @@ let
       command = planPrecedentGateCmd;
     }
     # 旧イテレーションは PostToolUse に herdr-claude-metadata.sh を登録していた。
-    # 現行は PreToolUse で同じ情報を取る(遅延が小さい)ので、こちらは外す。
+    # 現行は PreToolUse で同じ情報を取る(遅延が小さい)ので、こちらは除外する。
     {
       event = "PostToolUse";
       command = legacyHerdrMetadataCmd;
@@ -1236,7 +1236,7 @@ let
     }
     # plan-view は plan-review gate と同じ matcher に、別エントリとして並ぶ。
     # Claude Code は同一 matcher の hook を並列に走らせるので、review の結果を
-    # 待たずに窓が開く（= 表示は gate から独立している）。timeout は短く: この
+    # 待たずにウィンドウが開く(= 表示は gate から独立している)。timeout は短く: この
     # hook は pandoc とプロセス fork しかせず、ブラウザの終了は待たない。
     {
       event = "PreToolUse";
@@ -1258,8 +1258,8 @@ let
       timeout = 30;
     }
     # issue-index は startup/resume/compact でだけ発火する。clear は「文脈を捨てたい」
-    # という利用者の意思表示なので外す。compact は逆に文脈を続けたい表示であり、
-    # 要約で索引が落ちている可能性が高く再注入の価値が最も高い(autoCompactEnabled
+    # という利用者の意思表示なので除外する。compact は逆に文脈を続けたい表示であり、
+    # 要約で索引が欠落している可能性が高く再注入の価値が最も高い(autoCompactEnabled
     # は off なので発火は手動 /compact 時のみ)。fork は元セッションの文脈を
     # 引き継ぐので不要。
     {
@@ -1269,7 +1269,7 @@ let
       command = issueIndexCmd;
       timeout = 10;
     }
-    # esa-mirror-context も同じ matcher: compact では要約で所在の注入が落ちている可能性が
+    # esa-mirror-context も同じ matcher: compact では要約で所在の注入が欠落している可能性が
     # 高く、再注入の価値が最も高い(根拠は上の issue-index と同じ)。
     {
       event = "SessionStart";
@@ -1279,7 +1279,7 @@ let
       timeout = 10;
     }
     # daily-desk-reminder は startup だけで発火する: 机の未実施は新しいセッションの入口で一度伝えれば
-    # 足り、resume・compact で繰り返すと同じ日に何度も出る(印が無い限り startup ごとに出る)。
+    # 足り、resume・compact で繰り返すと同じ日に何度も出る(印がない限り startup ごとに出る)。
     {
       event = "SessionStart";
       node = "daily-desk-reminder";
@@ -1288,7 +1288,7 @@ let
       timeout = 10;
     }
     # worklog も startup だけ: 規範の再掲は新しいセッションの入口で足りる。resume・compact では
-    # 文脈に既にあるか、要約で落ちても書く場面(試した結果・詰まり)は次に来る。
+    # 文脈に既にあるか、要約で欠落しても書く場面(試した結果・詰まり)は次に来る。
     {
       event = "SessionStart";
       node = "worklog";
@@ -1358,7 +1358,7 @@ let
     }
     # ja-polish の文書ファイルの関所: 触れた日本語の文書に、書き直しを通していない段落が残っていないかを
     # 記録だけで見る(LLM は呼ばない)。dotfiles.jaPolish.enable の機体にだけ登録する
-    # (下の enabledClaudeHookDeclarations が option で外す)。docs/agents/ja-polish.md。
+    # (下の enabledClaudeHookDeclarations が option で除外する)。docs/agents/ja-polish.md。
     {
       event = "Stop";
       node = "ja-polish-stop-gate";
@@ -1383,7 +1383,7 @@ let
     # どの検査を当てるかは表(`Tools` という閉じた型)が持つ。matcher の文字列の書き間違いで検査が
     # 黙って素通りになる事故(旧登録の注意書きに、複合 matcher `Bash|mcp__.*` の実例があった)を、
     # 表に載せた検査については起こりえなくする。timeout は、表の規則ごとの許容(最大 20 秒)に、
-    # プロセスの起動と出力の余裕を足した値。許可(allow)を出す検査(git-worktree-allow・
+    # プロセスの起動と出力の余裕を追加した値。許可(allow)を出す検査(git-worktree-allow・
     # gh-edit-allow の判定役)は、`if` の評価を Claude Code に任せるので、載せていない。
     {
       event = "PreToolUse";
@@ -1432,7 +1432,7 @@ let
     # (スクリプト側の前回値キャッシュで、モードが同じなら jq 1 回で即抜ける)/
     # Stop=ttl リフレッシュ / SessionEnd=トークン全クリア。PostToolUse は
     # PreToolUse と同情報で遅延だけ悪いので登録しない(旧イテレーションは
-    # PostToolUse に登録していたので retiredHookEntries で外す)。Herdr 外では
+    # PostToolUse に登録していたので retiredHookEntries で除外する)。Herdr 外では
     # 即 no-op。
     {
       event = "SessionStart";
@@ -1525,7 +1525,7 @@ let
     }
     # calendar-handshake-reminder は startup だけ: 下書き待ちの確認は新しいセッションの入口で
     # 一度伝えれば足りる(daily-desk-reminder と同じ)。勤務先の機体でだけ登録する
-    # (下の enabledClaudeHookDeclarations が option で外す)。
+    # (下の enabledClaudeHookDeclarations が option で除外する)。
     {
       event = "SessionStart";
       node = "calendar-handshake-reminder";
@@ -1535,7 +1535,7 @@ let
     }
   ];
 
-  # option で出し入れする宣言だけを、実際に登録する集合から外す。他機体では登録されず、無音になる。
+  # option で出し入れする宣言だけを、実際に登録する集合から除外する。他機体では登録されず、無音になる。
   # 宣言の表(上)は pipeline-map の走査の対象なので、条件分岐を持たせず、ここで絞る。
   enabledClaudeHookDeclarations = lib.filter (
     d:
@@ -1545,19 +1545,19 @@ let
 
   # 各宣言の `node` は pipeline-map.toml(自動発火する機構の地図、docs/pipeline-map.md)
   # のノード id を指すポインタ。nix の評価時に「node がある」「manifest に定義済み」を
-  # 保証するので、ポインタの無い hook 宣言は適用(hms)に至らない。agent-settings-reconcile の
+  # 保証するので、ポインタのない hook 宣言は適用(hms)に至らない。agent-settings-reconcile の
   # 宣言(Register)は未知のキーを拒否するため、`node` は渡す前に取り除く。逆向き(auto な
-  # ノードに登録が 1 つも無い)は crates/pipeline-map の cargo test が見る。
+  # ノードに登録が 1 つもない)は crates/pipeline-map の cargo test が見る。
   pipelineNodeIds = config.dotfiles.pipeline.nodeIds;
   declareHook =
     d:
     assert lib.assertMsg (d ? node)
-      "hook の宣言(claude/copilotHookDeclarations): node が無い宣言がある (event = ${d.event}, command = ${d.command})";
+      "hook の宣言(claude/copilotHookDeclarations): node がない宣言がある (event = ${d.event}, command = ${d.command})";
     assert lib.assertMsg (builtins.elem d.node pipelineNodeIds)
       "hook の宣言(claude/copilotHookDeclarations): node `${d.node}` が pipeline-map.toml に定義されていない";
     builtins.removeAttrs d [ "node" ];
 
-  # Codex の `/hooks` は、statusMessage の無い hook をすべて `Unnamed hook` と表示する(#1122)。
+  # Codex の `/hooks` は、statusMessage のない hook をすべて `Unnamed hook` と表示する(#1122)。
   # 表示名は pipeline-map.toml のノードの label(ASCII)を使う。Claude の宣言には付けない
   # (Claude は statusMessage をフック実行中の表示にも使う)。
   #
@@ -1577,7 +1577,7 @@ let
 
   # Codex derives its registrations from the same declarations. Only protocol
   # differences are mapped here; a newly added shared hook cannot be forgotten.
-  # (plan-scope-gate・plan-precedent-gate はルータの表にあり、Codex には ExitPlanMode が無いので
+  # (plan-scope-gate・plan-precedent-gate はルータの表にあり、Codex には ExitPlanMode がないので
   # `pre --agent codex` では当たらない。Codex の計画の検査は codex-plan-gate の Stop が担う。)
   codexPlanNodes = [
     "copilot-plan-review"
@@ -1784,24 +1784,24 @@ let
   };
 
   # Antigravity CLI(agy)の hook(~/.gemini/config/hooks.json の自分の名前のキー 1 つ)。Codex と同じく、
-  # Claude の宣言から導く: 新しく足した共有の hook が、agy に載せ忘れられない。
+  # Claude の宣言から導く: 新しく追加した共有の hook が、agy に載せ忘れられない。
   # ツール呼び出しの検査は `hook-router pre|post --agent antigravity`(規則の表を共有)、それ以外は
   # `hook-router wrap <Claude の command>` が、Claude の形のまま走らせて出力だけを agy の形にする
   # (docs/claude/antigravity-hook-parity.md)。agy の hook は逐次に走る(Claude は並列)ので、
   # 待ち時間は足し算になる。
   #
-  # 載せないもの(docs/claude/antigravity-hook-parity.md の「agy に同じものが無いもの」):
+  # 載せないもの(docs/claude/antigravity-hook-parity.md の「agy に同じものがないもの」):
   # - herdr-agent-metadata: herdr 本体の連携(`herdr integration install antigravity-cli`)が持つ。
-  # - agent-turn-log: UserPromptSubmit が agy に無く、ターンの開始を取れない。
-  # - atuin-history: atuin 18.15.2 の `atuin hook` が対象にするのは claude-code・codex・pi だけで、agy は無い
-  #   (バイナリ内の「Supported agents」、2026-11-27)。PostToolUseFailure も agy に無い。
+  # - agent-turn-log: UserPromptSubmit が agy にないため、ターンの開始を取れない。
+  # - atuin-history: atuin 18.15.2 の `atuin hook` が対象にするのは claude-code・codex・pi だけで、agy はない
+  #   (バイナリ内の「Supported agents」、2026-11-27)。PostToolUseFailure も agy にない。
   # - git-worktree-allow・gh-edit-allow-judge: `if` つきの allow 判定。agy の hook は matcher が道具名だけで、
-  #   Codex でも同じ理由で外している(ネイティブの承認を通す)。
-  # - plan-view: Chrome の専用窓を毎回新しく開く。agy は全ターンを計画から始めるので、小さな追従のたびに
-  #   窓が開き続ける(実測: exit_plan_mode ごとに HTML が作られた、2026-11-27)。Claude は明示的な
-  #   Plan mode のときだけ開く。本人の裁定(2026-11-27)で agy からは外す。
-  # - UserPromptSubmit・SessionEnd・PostToolUseFailure のイベント: agy に無い。
-  # SessionStart の `startup|resume|compact` の絞り込みも agy には無く、全開始で走る。
+  #   Codex でも同じ理由で除外している(ネイティブの承認を通す)。
+  # - plan-view: Chrome の専用ウィンドウを毎回新しく開く。agy は全ターンを計画から始めるので、小さな追従のたびに
+  #   ウィンドウが開き続ける(実測: exit_plan_mode ごとに HTML が作られた、2026-11-27)。Claude は明示的な
+  #   Plan mode のときだけ開く。本人の裁定(2026-11-27)で agy からは除外する。
+  # - UserPromptSubmit・SessionEnd・PostToolUseFailure のイベント: agy にない。
+  # SessionStart の `startup|resume|compact` の絞り込みも agy にはなく、全開始で走る。
   antigravitySkipNodes = [
     "herdr-agent-metadata"
     "agent-turn-log"
@@ -2022,7 +2022,7 @@ let
   #   desired が非空なら最後に set-if-different するので、retire→set の順で
   #   set が勝つ。
   # - claude-permissions: permissions.allow / ask を要素単位で冪等に同期する。
-  #   retire_* のルールは削除(無ければ何もしない)、allow / ask は無ければ追加。
+  #   retire_* のルールは削除(なければ何もしない)、allow / ask はなければ追加。
   #   ルール文字列を後から書き換えるときは旧文字列を retiredPermissionRules に
   #   移す — これで全ホストが次回の switch で旧ルールを掃除する
   #   (docs/claude/claude-permissions.md)。permissions.defaultMode や
@@ -2132,11 +2132,11 @@ let
   );
   # 入口と知識の 2 層(ADR-1400、docs/agents/tooling-conventions.md)。本人が手で打つ入口は
   # 名前を `my-` で始める。それ以外のスキルは、Claude の `/` の一覧から隠す(SKILL.md の
-  # frontmatter の先頭に `user-invocable: false` を 1 行足す。エージェントは今までどおり文脈で選べる。
+  # frontmatter の先頭に `user-invocable: false` を 1 行追加する。エージェントは今までどおり文脈で選べる。
   # Anthropic, "Extend Claude with skills", https://code.claude.com/docs/en/skills, 取得 2026-11-08)。
   # 隠す対象は名前だけから導き、スキルごとの宣言も手書きの一覧も持たない。Codex の公式文書
   # (https://learn.chatgpt.com/docs/build-skills, 取得 2026-11-08)には、本人の一覧から隠す設定の
-  # 記述が無い(`allow_implicit_invocation` は逆向きの設定)ので、`.agents/skills` には足さない。
+  # 記述がない(`allow_implicit_invocation` は逆向きの設定)ので、`.agents/skills` には追加しない。
   entrySkillPrefix = "my-";
   isEntrySkill = name: lib.hasPrefix entrySkillPrefix name;
   hiddenFromMenu =
@@ -2289,7 +2289,7 @@ assert lib.assertMsg
 
   # plan-review gate の deny 対象 severity とラウンド上限をこの環境向けに再校正する。
   # 既定(BLOCKER,MAJOR / 3 ラウンド)は実測 deny 率 69%、3 ラウンド到達が中位という
-  # 結果で、review の価値より摩擦が勝っていた。MAJOR は backlog へ落として報告のみに
+  # 結果で、review の価値より摩擦が勝っていた。MAJOR は backlog へ移して報告のみに
   # し、ラウンドも 2 に絞る。gate 本体(crates/copilot-plan-review)は触らない — closer
   # ラウンドが judge() に空文字を渡して「gate 適格 severity なし」を表現する不変条件
   # (bash 版では `${3-$GATE_SEVERITIES}` のコロンなしデフォルト、Rust 版では
@@ -2301,7 +2301,7 @@ assert lib.assertMsg
   # background check だけを止め、`claude update` 自体は動く(公式 docs 確認済み)。
   # settings.json の `env`(Claude Code 所有ファイルへの jq merge、
   # docs/claude/opusplan-model-aliases.md)ではなくここに置くのは、即時性が
-  # 要らない(次回ログインから効けば足りる)値のために merge/撤回の手続きを
+  # 不要な(次回ログインから効けば足りる)値のために merge/撤回の手続きを
   # 増やさないため。更新は config/zsh/modules/53-tools-claude.zsh 経由の
   # `claude update` 1 本に絞る。
   home.sessionVariables = {
@@ -2320,7 +2320,7 @@ assert lib.assertMsg
     # 「旧入口の削除条件」。指示文に埋める自身のパスは argv[0] 由来(store path ではなくこの安定パス)。
     "wrapup-stop-gate"
     "wrapup-session-start"
-    # plan-view: プランを HTML にして Chrome の専用窓に飛ばす hook + CLI。
+    # plan-view: プランを HTML にして Chrome の専用ウィンドウに飛ばす hook + CLI。
     # バイナリ(crates/plan-view)は CSS を起動パス(argv[0]、シンボリックリンクは
     # 解決しない)のディレクトリ相対で解決するので、配備先では 2 ファイルを
     # ~/.claude/hooks/ に並べて置く。ソースツリー上は config/claude/assets/ に
@@ -2423,7 +2423,7 @@ assert lib.assertMsg
     # daily-desk-reminder: 今日の朝の机(my-desk)が未実施なら、SessionStart で伝える。ハブ未設定の機体では無音。
     "daily-desk-reminder"
     # worklog: 作業ログの規範と同じリポジトリの直近の stuck / found を SessionStart で注入する。
-    # vault を宣言していない機体(~/.config/dotfiles/obsidian-vault が無い)では無音。
+    # vault を宣言していない機体(~/.config/dotfiles/obsidian-vault がない)では無音。
     "worklog"
     # gpg-prewarm: git commit の署名パスフレーズをログイン直後に温める。
     "gpg-prewarm"
@@ -2468,7 +2468,7 @@ assert lib.assertMsg
   ];
 
   # critic の出力契約(文書兼 jq validator の参照用)。GitHub Copilot CLI には
-  # Codex の `exec --output-schema` に相当する強制出力スキーマ機構が無いため、
+  # Codex の `exec --output-schema` に相当する強制出力スキーマ機構がないため、
   # 実際の検証は hook 内の CRITIC_SCHEMA_JQ が行う — この JSON はその契約を
   # 人間 / プロンプト向けに文書化したものである。配備先は hook と同じ
   # ~/.claude/hooks/ に並べて置く(hook が自身のディレクトリ相対で解決するため)
@@ -2510,7 +2510,7 @@ assert lib.assertMsg
   # hook ではない — settings.json には登録しない)。呼び出し側は
   # config/herdr/config.toml。詳細は docs/claude/claude-usage.md。
   # 実体は crates/claude-usage(#413)。配備先は herdr のハードコード実行パスに
-  # 合わせて引き続き ~/.claude/hooks/(拡張子は ADR-0007 に従い落とした)。
+  # 合わせて引き続き ~/.claude/hooks/(拡張子は ADR-0007 に従い削除した)。
 
   # bleep(旧 publish-guard): 会社/private リポジトリの実名が PUBLIC な面に
   # 漏れるのを防ぐ PreToolUse hook。上流を別リポジトリ tarotene/bleep に
@@ -2529,7 +2529,7 @@ assert lib.assertMsg
     source = "${pkgs.bleep-hook}/bin/bleep-hook";
   };
   # bleep の allow-tools.txt(bleep#95、tarotene/bleep#106): Bash 以外のツールのうち、
-  # repo-ref の検査から外すものをツール名の拡張正規表現で宣言する。ツール名だけで
+  # repo-ref の検査から除外するものをツール名の拡張正規表現で宣言する。ツール名だけで
   # 実値(org/repo 名)を含まないので、orgs.txt・repos.txt と違い PUBLIC なこの
   # リポジトリで宣言する(docs/agents/public-publish-guard.md)。組織内 Slack の
   # 下書きは本人が確認してから送るもので、送信のツールは宣言しない(外部発信の
@@ -2556,7 +2556,7 @@ assert lib.assertMsg
         ];
       }
       ''
-        # nix のサンドボックスには /usr/bin/env が無く、bleep-hook が exec する bleep 本体
+        # nix のサンドボックスには /usr/bin/env がなく、bleep-hook が exec する bleep 本体
         # (#!/usr/bin/env bash)が起動できない。配備された実体と同じ内容のコピーの
         # shebang だけ store の bash に直して検査する(判定ロジックには触れない)。
         hooks="$TMPDIR/hooks"
@@ -2572,7 +2572,7 @@ assert lib.assertMsg
     # 配備された hook-router の canary(ADR-1529 の段3)。bleep-canary と同じ型で、配備後の
     # レイアウトの hook-router に fixture(config/agents/hook-router-canary/cases.jsonl)を流し、
     # 判定を比べる。CI は 3 構成を build するので、「この hook が拒否するか」を機体ごとの実機確認
-    # なしに確かめられる(確認の台帳に積まず、fixture を足す。pr-description スキル §6)。
+    # なしに確かめられる(確認の台帳に積まず、fixture を追加する。pr-description スキル §6)。
     (pkgs.runCommand "hook-router-canary"
       {
         nativeBuildInputs = with pkgs; [
@@ -2588,9 +2588,9 @@ assert lib.assertMsg
         touch $out
       ''
     )
-    # agy の hooks.json の宣言の検査。reconcile は、agy が黙って捨てる形(知らないイベント・matcher の無い組・
+    # agy の hooks.json の宣言の検査。reconcile は、agy が黙って捨てる形(未知のイベント・matcher のない組・
     # 空の command など)の宣言を、ファイルを書く前に止める。その同じ検査を build の時に回し、
-    # 適用(hms)で初めて落ちる形を、generation の build で落とす。2 回目の適用で差が出ないことも確かめる。
+    # 適用(hms)で初めて失敗する形を、generation の build で失敗させる。2 回目の適用で差が出ないことも確かめる。
     # 宣言は agy を有効にしない機体でも評価されるので、この検査も全機体で回る。
     (pkgs.runCommand "antigravity-hooks-spec"
       {
@@ -2615,7 +2615,7 @@ assert lib.assertMsg
     )
     # スキル配布の検査(#1124)。`checks.<system>.agent-skills`(flake.nix)と同じ定義を、
     # 適用する配布物そのもの(この config の home.file)に掛ける。flake の check は
-    # activation build の依存ではなく、`hms .` は検査に落ちた配布物を実ホームへ置けた。
+    # activation build の依存ではなく、`hms .` は検査に失敗した配布物を実ホームへ置けた。
     (import ../tests/agent-skills.nix {
       inherit pkgs lib;
       files = config.home.file;
@@ -2640,7 +2640,7 @@ assert lib.assertMsg
         tools=${pkgs.dotfiles-tools}
         status=0
         missing() {
-          echo "dotfiles-tools-references: $1 を参照しているが、実行ファイルが dotfiles-tools に無い ($2)" >&2
+          echo "dotfiles-tools-references: $1 を参照しているが、実行ファイルが dotfiles-tools にない ($2)" >&2
           status=1
         }
         while IFS= read -r -d $'\0' link; do
@@ -2661,7 +2661,7 @@ assert lib.assertMsg
   ];
 
   # Copilot の hook は、宣言(上の copilotHookDeclarations)と所有の記録で 1 つの activation が登録する。
-  # Claude・Codex と違い、ほかに ~/.copilot/settings.json を書く activation は無い
+  # Claude・Codex と違い、ほかに ~/.copilot/settings.json を書く activation はない
   # (かつては 7 つの登録が互いの後ろに順序付けられ、lost-update の窓を避けていた)。
   home.activation.registerCopilotHooks = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
     # pipeline-node: bleep, attribution-guard, pr-title-guard, pkexec-guard, agent-turn-log, worklog, herdr-agent-metadata
@@ -2695,7 +2695,7 @@ assert lib.assertMsg
   # claude-plan-model: Plan 側モデルを Fable ⇄ Opus で切り替える(引数なし=トグル)。
   # hook ではないので ~/.claude/hooks/ ではなく ~/.local/bin に置く — git-shelve や
   # git-prune-branches と同じ「PATH で解決される実行可能ファイル」扱い(ADR-0007 に
-  # 従い配備名から .sh を落とす)。activation はこの配備物ではなく store 上の同じ
+  # 従い配備名から .sh を削除する)。activation はこの配備物ではなく store 上の同じ
   # 実体を `sync` で呼ぶ(Rust 版、#414。bash 版が要した jq・coreutils 等の PATH
   # は不要になった)。
 
@@ -2784,7 +2784,7 @@ assert lib.assertMsg
   # 独立した activation として走らせる。
   #
   # claude が未インストールなら(bootstrap 直後)何も書かずに終わる — 起動する claude が
-  # 無いのに env だけ置いても意味が無く、中途半端な model 設定のほうが有害だから。
+  # ないのに env だけ置いても意味がなく、中途半端な model 設定のほうが有害だから。
 
   # settings.json の permissions.allow/permissions.ask を冪等に拡充する。
   # registerClaudeHooks と同じ DAG 位置(writeBoundary の後)で、独立した

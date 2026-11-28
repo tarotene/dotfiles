@@ -127,7 +127,7 @@ let
 
   # Claude の slash command のうち、手で打つ入口として agy でも使えるもの(`config/claude/commands/`)を、agy の
   # skill(`~/.gemini/config/skills/<name>/SKILL.md`)にする。agy は frontmatter の `name`(ディレクトリ名と同じ)と
-  # `description` の無い skill を落とすので、ビルド時に足す(`migrate-agent-settings` の変換の規則、取得 2026-11-27)。
+  # `description` のない skill を拒否するので、ビルド時に追加する(`migrate-agent-settings` の変換の規則、取得 2026-11-27)。
   # `copilot-plan-review`・`plan-view` は、手で打つ入口でなく `exit_plan_mode` の hook として載せる
   # (docs/claude/antigravity-hook-parity.md)。本文の Claude の道具名・主語だけを agy のものに読み替える。
   commandSkills = {
@@ -255,7 +255,7 @@ let
   mcpSpecForCheck = builtins.toJSON { servers = mcpServersForAgy; };
   mcpSpec = builtins.toJSON {
     servers = mcpServersForAgy;
-    # 前回書いた名前の記録。宣言から外したサーバーだけを消し、`agy mcp add` で本人が足したものは残す。
+    # 前回書いた名前の記録。宣言から除外したサーバーだけを消し、`agy mcp add` で本人が追加したものは残す。
     state = "${home}/.local/state/dotfiles/managed-mcp-antigravity.json";
   };
 
@@ -318,7 +318,7 @@ in
     # write settings.json and hooks.json, not rules).
     home.file = lib.mkIf config.dotfiles.antigravity.enable (rulesFiles // skillFiles);
 
-    # `agy mcp add` で本人が足したサーバーは残す(所有の記録に載せた名前だけを管理する)。
+    # `agy mcp add` で本人が追加したサーバーは残す(所有の記録に載せた名前だけを管理する)。
     home.activation.registerAntigravityMcpServers = lib.mkIf config.dotfiles.antigravity.enable (
       lib.hm.dag.entryAfter [ "writeBoundary" ] ''
         run ${settingsReconcile} antigravity-mcp-servers "$HOME/.gemini/config/mcp_config.json" \
@@ -326,7 +326,7 @@ in
       ''
     );
 
-    # 宣言の形の検査を、build の時にも回す(適用で初めて落ちる形を、generation の build で落とす)。
+    # 宣言の形の検査を、build の時にも回す(適用で初めて失敗する形を、generation の build で失敗させる)。
     home.checks = [
       (pkgs.runCommand "antigravity-mcp-spec" { } ''
         f="$TMPDIR/mcp_config.json"

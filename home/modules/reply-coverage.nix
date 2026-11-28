@@ -6,7 +6,7 @@
 #     Claude の sandbox の外で動かす → home/modules/claude.nix の excludedCommands、Codex は rules)
 #   - 目印 ~/.config/dotfiles/reply-coverage。**このファイルの有無が、その機体で下書きの作成口の関所
 #     (hook-router の `reply-coverage-gate`・`reply-thread-snapshot`)が働くかどうかの唯一の印**。
-#     `dotfiles.host.name` の目印(home/modules/host.nix)と同じ型で、無ければ関所は何もしない。
+#     `dotfiles.host.name` の目印(home/modules/host.nix)と同じ型で、なければ関所は何もしない。
 #
 # 送り先は、今のセッションと同じ Anthropic だけ(検出は `claude -p`)で、データの流れが新しく増えない。
 # だから ja-polish(送り先が Google)と違い、機体・identity を限らず、既定で有効にする。
