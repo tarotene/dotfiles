@@ -2,7 +2,7 @@ name: 'Stack stage'
 description: >-
   ADR-468(docs/adr/468-stack-aware-heavy-ci.md)の stack 軸を、リポジトリ固有の
   入力(パス)を持たない部品として切り出したもの(ADR-1005 D8)。この PR が、積み重ね
-  (stacked PR)の中間段か — base が既定ブランチでなく、`ci:full` ラベルが無く、この
+  (stacked PR)の中間段か — base が既定ブランチでなく、`ci:full` ラベルがなく、この
   PR の head を base にした open の PR がある — を `intermediate` に出す。中間段は、
   上の段が最後に merge される前に、積み重ねた全体で再検査されるので、重い job を
   飛ばしてよい。
@@ -17,14 +17,14 @@ description: >-
   永遠に Pending になる(GitHub Docs, "Troubleshooting required status checks"、
   取得 2026-09-25 — ADR-468 / `stack-position` の説明と同じ)。
 
-  `ci:full` ラベルで強制するなら、呼び出し側の `pull_request.types` に `labeled` を足す
+  `ci:full` ラベルで強制するなら、呼び出し側の `pull_request.types` に `labeled` を追加する
   (既定の `opened` / `synchronize` / `reopened` だけだと、既に開いている PR にラベルを
   付けても workflow が再実行されない)。
 
   path 軸(その PR が関係するパスを触ったか)は、この action の対象ではない。
   リポジトリごとに読むパスが違うので、呼び出し側の「変更を検出する」step に任せる
   (言語別テンプレ)。dotfiles の `stack-position` は、この action の出力を入力に取って
-  path 軸を足す。
+  path 軸を追加する。
 
 outputs:
   intermediate:
@@ -49,9 +49,9 @@ runs:
       run: |
         set -uo pipefail
         # 判定順: 非 PR イベント → bottom(base==default) → ci:full ラベル
-        # → 子 PR 件数(この PR の head を base にした open PR が無ければ tip)。
+        # → 子 PR 件数(この PR の head を base にした open PR がなければ tip)。
         # gh api 失敗は fail-open。intermediate=true になるのは
-        # 「非 bottom かつ非 tip かつ ci:full 無し」の一本道だけ。
+        # 「非 bottom かつ非 tip かつ ci:full なし」の一本道だけ。
         intermediate=false
         reason=""
         if [ "$EVENT_NAME" != "pull_request" ]; then

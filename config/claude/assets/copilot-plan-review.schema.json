@@ -122,7 +122,7 @@
           },
           "rationale": {
             "type": "string",
-            "description": "その status の理由（プランのどこで解消 / 反証されたか）"
+            "description": "その status の理由(プランのどこで解消 / 反証されたか)"
           }
         }
       }

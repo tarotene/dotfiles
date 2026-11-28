@@ -10,7 +10,7 @@
 #   - condense-json >= 1.1(nixpkgs は 0.1.3)
 # `httpx`・`ijson`・`openai` などは nixpkgs の版のまま。
 #
-# 4 つとも nixpkgs が追いついたら、この overlay ごと外して `llm.withPlugins` にする
+# 4 つとも nixpkgs が追いついたら、この overlay ごと削除して `llm.withPlugins` にする
 # (herdr の overlay と同じ扱い。docs/agents/ja-polish.md)。
 #
 # 上流のタグは動かせるので、commit で固定する(obsidian-livesync-cli.nix と同じ)。
@@ -18,7 +18,7 @@
 # 前提にしていて、ビルドの sandbox の中では再現できない。代わりに `pythonImportsCheck` と
 # `pythonRuntimeDepsCheck`(要求する版が満たされているか)が走り、実際の呼び出しは
 # docs/agents/ja-polish.md の「実測」で確かめる。nixpkgs の `llm install` / `uninstall` を
-# 無効にするパッチは 0.32 に当たらないので外す(プラグインを pip で入れない環境なので実害は無い)。
+# 無効にするパッチは 0.32 に当たらないので除外する(プラグインを pip で入れない環境なので実害はない)。
 { python3, fetchFromGitHub }:
 let
   py = python3.override {

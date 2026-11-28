@@ -9,7 +9,7 @@ onboarding = false
 # (docs/worktree-lifecycle.md)の Herdr 通知が `{"shown":false,"reason":
 # "disabled"}` を返し続けていたのはこれが原因 — 誰にも見えない状態で
 # 毎分リトライしていた。in-app トーストで有効化する(アクティブタブでは
-# Herdr 自身が抑制するので、作業中の割り込みは無い)。
+# Herdr 自身が抑制するので、作業中の割り込みはない)。
 [ui.toast]
 delivery = "herdr"
 
@@ -60,7 +60,7 @@ status_indicators = "symbols"
 # command 仕様: 失敗・空出力・timeout は表示クリア)。詳細は
 # docs/claude/claude-usage.md。
 # 2 つ目の command はホストローカルの拡張スロット: ~/.config/herdr/
-# tab-bar-right.local(git 管理外の実行ファイル)が出す 1 行を表示する。無い
+# tab-bar-right.local(git 管理外の実行ファイル)が出す 1 行を表示する。ない
 # ホストでは command が失敗するので、herdr の仕様どおりこのセグメントだけが消える
 # (hostname・時計は残る)。実体の置き場と撤去条件は
 # docs/agents/herdr-tab-bar-local.md。
@@ -73,11 +73,11 @@ tab_bar_right = [
 tab_bar_right_separator = "·"
 
 # workspace(space)行。herdr 既定の 2 行(state_icon+workspace / branch+git_status)
-# を再現し、1 行目末尾にそのリポジトリの open Issue 数(PR 除く)を足す。
+# を再現し、1 行目末尾にそのリポジトリの open Issue 数(PR 除く)を追加する。
 # $issues は ~/.local/bin/herdr-issue-counts(crates/herdr-issue-counts、
 # home/modules/herdr.nix のタイマーで 5 分毎)が workspace metadata で報告する
 # (ttl 15 分)。値は nf-oct-issue_opened(U+F41B)+ 件数で、0 件も表示する。
-# GitHub remote の無い workspace には出ない。色は控えめ情報の subtext0。
+# GitHub remote のない workspace には出ない。色は控えめ情報の subtext0。
 [ui.sidebar.spaces]
 row_gap = 0
 rows = [
@@ -95,11 +95,11 @@ rows = [
 # Codex ペインは Claude と同じ 4 行構成。$branch/$model/$mode_bypass は
 # crates/herdr-agent-metadata の --agent codex が報告する($mode_bypass は
 # hook の permission_mode が bypassPermissions のときだけ。Codex の
-# permission_mode は never=bypass / それ以外=default の 2 値しか無く、default は
+# permission_mode は never=bypass / それ以外=default の 2 値しかなく、default は
 # 出さない)。4 行目の terminal_title_stripped は Codex 自身が描く端末タイトルで、
 # context 使用率と 5h の rate limit が入る(サイドバー幅に収まる 2 項目まで)。その項目は
 # home/modules/herdr.nix が ~/.codex/config.toml の tui.terminal_title に宣言する
-# (ADR-457 Amendment)。ctx/cost の hook 経路が無い理由・調べた範囲は
+# (ADR-457 Amendment)。ctx/cost の hook 経路がない理由・調べた範囲は
 # docs/agents/herdr-sidebar-metadata.md。
 # Copilot ペインは $branch/$model だけ(mode/ctx/cost/effort 相当は確実に取れない)。
 #
@@ -107,7 +107,7 @@ rows = [
 # worktree ディレクトリ名(worktree-<name>-<hex4>、
 # patches/herdr-worktree-names.patch の hololive タレント名)から
 # config/herdr/oshi-marks.tsv を引いて注入する。未確証タレント・非 worktree
-# ペインでは値が無く非表示。
+# ペインでは値がなく非表示。
 #
 # fg を明示しているのは、カラー字形が引けなかった場合の保険。カラー絵文字は
 # fg を無視するので通常は効かないが、FiraCode Nerd Font 自身がモノクロ字形を

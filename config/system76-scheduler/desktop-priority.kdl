@@ -11,7 +11,7 @@
 //
 // 同じプロセスが複数のプロファイルの include に当たると、どれが採られるかは
 // 決まらない(upstream の daemon/src/service.rs が HashMap の values() を回す)。
-// そのため、重なる dist のプロファイルには exclude を足して、片方だけが当たるようにする。
+// そのため、重なる dist のプロファイルには exclude を追加して、片方だけが当たるようにする。
 assignments {
     // ログインセッションの scope(cosmic-session・パネル・アプレット)と、
     // アプリの scope(Alacritty・Firefox・herdr・claude など)。
@@ -33,14 +33,14 @@ assignments {
     }
 
     // dist の session-services は parent=gnome-session-binary / gvfsd だけで当たるので、
-    // 上の scope と重なりうる。scope は desktop-session に任せる。
+    // 上の scope と重なる可能性がある。scope は desktop-session に任せる。
     session-services {
         exclude cgroup="/user.slice/user-*.slice/session-*.scope"
         exclude cgroup="/user.slice/user-*.slice/user@*.service/app.slice/*.scope"
     }
 
     // nix-daemon とそのビルドプロセス(同じ cgroup)は batch(nice 19・sched idle・io idle)にする。
-    // dist の system-services(nice 12)は外す。
+    // dist の system-services(nice 12)は除外する。
     system-services {
         exclude cgroup="/system.slice/nix-daemon.service*"
     }

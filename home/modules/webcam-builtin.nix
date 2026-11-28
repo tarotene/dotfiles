@@ -1,7 +1,7 @@
 # webcam-builtin — 内蔵カメラ(Intel IPU7 + ov08x40。arcturus)を、アプリが普通の Web カメラとして
 # 開けるようにする、ユーザー環境の側の中継。
 #
-# なぜ中継が要るか: IPU7 の /dev/video0〜31 は生の Bayer を返す取り込み口で、アプリはそのまま使えない。
+# なぜ中継が必要か: IPU7 の /dev/video0〜31 は生の Bayer を返す取り込み口で、アプリはそのまま使えない。
 # 色と露出は libcamera の Software ISP が整える(libcamera 0.6 以降の Simple pipeline。この機体の apt は
 # 0.2.0 で、IPU7 を扱えない)。そこで、nixpkgs の libcamera(0.7.0)で映像を取り、システム層の
 # v4l2loopback が作る仮想カメラ(/dev/video40、card_label "Built-in Camera")へ流す。
@@ -14,11 +14,11 @@
 # /dev/video0 を誰も握らず、読む側が居るあいだだけ握る)。常駐するのは待機の v4l2-relayd だけ。
 # 先行例は NixOS の services.v4l2-relayd(nixos/modules/services/video/v4l2-relayd.nix)。
 #
-# v4l2-relayd 0.1.5 を、この機体で動かすのに要った 3 点(ソース src/v4l2-relayd.c を読み、実測した):
+# v4l2-relayd 0.1.5 を、この機体で動かすのに必要になった 3 点(ソース src/v4l2-relayd.c を読み、実測した):
 #  1. 入力・待機映像のパイプラインの末尾に `appsink` を置かない。v4l2-relayd が、末尾の「リンクされていない
 #     src パッド」へ自分で appsink を付ける(backend_pipeline_create)。
-#  2. 末尾が caps だけで終わる文字列は `no element "video"` で落ちる。末尾に `identity` を置く。
-#  3. 出力の v4l2sink に `sync=false` が要る。無いと 24〜26 枚で止まり、実効 約 1.7 fps になった
+#  2. 末尾が caps だけで終わる文字列は `no element "video"` で失敗する。末尾に `identity` を置く。
+#  3. 出力の v4l2sink に `sync=false` が必要になる。ないと 24〜26 枚で止まり、実効 約 1.7 fps になった
 #     (appsink → appsrc の時刻が出力側の時計と合わず、フレームが遅れとして捨てられていると読んだが、原因の細部は未確認)。
 #
 # 全画素モード(3840x2160 出力。センサーは 3856x2176)に固定する: 低解像度の 1928x1088 モードは、

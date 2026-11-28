@@ -11,7 +11,7 @@
 # 起こし方は、実際の面を描画して測った結果と、独立した評価者の審査から得た(ADR-1701)。
 #
 # 各要件は、`principles = [...]` で、どの原則から起こしたかを指す(`principles.toml`。ADR-1708)。原則の ID の、
-# 空でない配列で書く。実在する原則を指すことと、どの要件にも使われない原則が無いことは、`web_principles`(`repo-structure-check`)が落とす。
+# 空でない配列で書く。実在する原則を指すことと、どの要件にも使われない原則がないことは、`web_principles`(`repo-structure-check`)が失敗させる。
 
 [[type]]
 id = "common"
@@ -103,13 +103,13 @@ check = "visual"
 
 [[type.requirement]]
 id = "C14"
-text = "幅 390px で、タップだけで、主なタスクが最後まで完結する(確定・取り消しなど、完了に要る操作は、画面に操作部として出す)。"
+text = "幅 390px で、タップだけで、主なタスクが最後まで完結する(確定・取り消しなど、完了に必要な操作は、画面に操作部として出す)。"
 principles = ["nn-h3", "nn-h7"]
 check = "walkthrough"
 
 [[type.requirement]]
 id = "C15"
-text = "実在しうる最悪のデータ(長い名前・長いメール・0 件/1 件/多数の件数・欠けた項目)でも、重なり・欠け・横スクロールが出ず、省略した文字は全文を読む手段がある(`title` 属性だけに頼らない)。"
+text = "実在し得る最悪のデータ(長い名前・長いメール・0 件/1 件/多数の件数・欠けた項目)でも、重なり・欠け・横スクロールが出ず、省略した文字は全文を読む手段がある(`title` 属性だけに頼らない)。"
 principles = ["wcag-1-4-10", "nn-h8"]
 check = "visual"
 
@@ -237,7 +237,7 @@ check = "visual"
 
 [[type.requirement]]
 id = "F8"
-text = "保存先が無いときは、貼り付け用の要約に縮退する。"
+text = "保存先がないときは、貼り付け用の要約に縮退する。"
 principles = ["nn-h9"]
 check = "walkthrough"
 
@@ -271,7 +271,7 @@ check = "visual"
 
 [[type.requirement]]
 id = "D4"
-text = "空(まだ無い)と完了(全部済んだ)を書き分け、空には次の一手を 1 つ出す。"
+text = "空(まだない)と完了(全部済んだ)を書き分け、空には次の一手を 1 つ出す。"
 principles = ["nn-empty"]
 check = "visual"
 

@@ -21,9 +21,9 @@ let
     pkgs.libsecret
     pkgs.restic
   ];
-  # 成功の印（ファイルの mtime）。バックアップ本体の unit が成功したときだけ、unit の ExecStartPost が
-  # 更新する。本体の実行ファイルが無い（203/EXEC）など、ExecStart が失敗すると ExecStartPost は走らず、
-  # 印は古いままになる。印を読む側は本体に依存しない（下の staleCheck、#1170 の完了条件 3）。
+  # 成功の印(ファイルの mtime)。バックアップ本体の unit が成功したときだけ、unit の ExecStartPost が
+  # 更新する。本体の実行ファイルがない(203/EXEC)など、ExecStart が失敗すると ExecStartPost は走らず、
+  # 印は古いままになる。印を読む側は本体に依存しない(下の staleCheck、#1170 の完了条件 3)。
   backupStamp = "${config.home.homeDirectory}/.local/state/dotfiles/obsidian-backup-last-success";
   staleDays = 3;
   staleCheck = pkgs.writeShellApplication {
@@ -34,7 +34,7 @@ let
       pkgs.herdr
     ];
     text = ''
-      # 印が無い間（この検査を入れた直後など）は、最初の検査の時刻から猶予を数える。
+      # 印がない間(この検査を入れた直後など)は、最初の検査の時刻から猶予を数える。
       stamp=${lib.escapeShellArg backupStamp}
       mkdir -p "$(dirname "$stamp")"
       [ -e "$stamp" ] || touch "$stamp"
@@ -89,7 +89,7 @@ in
   # Dropped while the LiveSync CLI daemon (obsidian-livesync.nix, #1328) is enabled: the
   # daemon syncs without a window, and a running Obsidian plugin and the daemon writing the
   # same vault is an unverified combination (docs/agents/obsidian-livesync-cli.md).
-  # 上の autostart の pipeline-map のノード(ADR-872)。autostart が無い(daemon が有効な)ときも、
+  # 上の autostart の pipeline-map のノード(ADR-872)。autostart がない(daemon が有効な)ときも、
   # 対応付けは害にならない。
   dotfiles.pipeline.timerNodes.autostart-obsidian = "obsidian-autostart";
 
@@ -114,14 +114,14 @@ in
 
   systemd.user.services.obsidian-backup = lib.recursiveUpdate serviceBase {
     Service.ExecStart = "${backupPath} backup --notify";
-    # 成功したときだけ印を更新する（ExecStart が失敗すると走らない）。
+    # 成功したときだけ印を更新する(ExecStart が失敗すると走らない)。
     Service.ExecStartPost = "${pkgs.coreutils}/bin/install -D -m 0600 /dev/null ${backupStamp}";
   };
 
   # 本体の unit が「失敗する」ことには `--notify` が気づけるが、unit が起動すらできない
-  # （実行ファイルが無い、timer が発火しない）と、失敗の通知も出ない。2026-10-03 から約 25 日、
-  # バックアップが取れていなかったのに、`hms` の degraded まで気づかなかった（#1170）。
-  # 成功の印が ${toString staleDays} 日より古ければ、本体に依存せず（coreutils・findutils・herdr だけ）知らせる。
+  # (実行ファイルがない、timer が発火しない)と、失敗の通知も出ない。2026-10-03 から約 25 日、
+  # バックアップが取れていなかったのに、`hms` の degraded まで気づかなかった(#1170)。
+  # 成功の印が ${toString staleDays} 日より古ければ、本体に依存せず(coreutils・findutils・herdr だけ)知らせる。
   # 失敗した unit は、`hms` の degraded と `systemctl --user --failed` にも残る。
   systemd.user.services.obsidian-backup-stale-check = {
     Unit.Description = "Check that the Obsidian vault backup succeeded within the last ${toString staleDays} days";

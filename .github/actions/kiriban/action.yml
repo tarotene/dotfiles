@@ -36,7 +36,7 @@ runs:
         ref: ${{ github.repository == 'tarotene/dotfiles' && github.sha || 'main' }}
         # Cargo.toml は cargo が workspace root を見つけるために必要。crates/* は
         # glob メンバーなので、sparse で kiriban だけを取っても workspace は
-        # 解決できる。依存ゼロなので registry から取るものは無い。
+        # 解決できる。依存ゼロなので registry から取るものはない。
         sparse-checkout: |
           /Cargo.toml
           /crates/kiriban/
@@ -97,7 +97,7 @@ runs:
         fi
 
         # n を判定して祝う。allow_request=true のときだけキリリク受付 Issue を開く。
-        # 新しく開いたキリリク Issue の番号を REQUEST_CREATED に入れる(無ければ空)。
+        # 新しく開いたキリリク Issue の番号を REQUEST_CREATED に入れる(なければ空)。
         celebrate() {
           local n="$1" allow_request="$2"
           REQUEST_CREATED=""

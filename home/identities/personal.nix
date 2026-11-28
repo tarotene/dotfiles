@@ -95,9 +95,9 @@ in
     #
     # @playwright/mcp の版の pin(0.0.83)はラッパー側の PLAYWRIGHT_MCP が持つ。
     # `--` より後ろはそのまま Playwright MCP へ渡る。--output-dir は snapshot と
-    # console log を作業ツリーの外へ逃がす(#849)。無いとサーバーは cwd 直下に
+    # console log を作業ツリーの外へ逃がす(#849)。ないとサーバーは cwd 直下に
     # `.playwright-mcp/` を作り、worktree が汚れる。screenshot に `filename` を明示
-    # すると cwd に落ちる(0.0.83 の README)ので、git.nix も `.playwright-mcp/` を
+    # すると cwd に出力される(0.0.83 の README)ので、git.nix も `.playwright-mcp/` を
     # ignore する。
     #
     # --headless は追加ウィンドウを画面に出さないため。Playwright の BiDi 版 Firefox は
@@ -120,12 +120,12 @@ in
 
     # 画面に出る、使い捨ての Chrome。デザインの目視(localhost・file://・公開ページ)のために、本人が
     # 同じ画面で見られるようにする。ログイン状態も複製も持たない(上の `playwright` と役割を分ける。
-    # ログインが要る作業は、上の headless の Firefox を使う)。同じ起動ラッパーの `--chrome` の形で、
+    # ログインが必要な作業は、上の headless の Firefox を使う)。同じ起動ラッパーの `--chrome` の形で、
     # @playwright/mcp の版の pin は PLAYWRIGHT_MCP の 1 か所に保つ。`--chrome` は Firefox の複製の
     # 引数(--rsync・--clone)と併用できない(ラッパー側で拒否する)。
     #
     # Chrome は、Firefox の BiDi 版と違い、persistent context の起動時のウィンドウをそのまま使うので、
-    # 窓は 1 つしか出ない(2026-11-26 実測、docs/claude/claude-mcp-servers.md)。--output-dir は
+    # ウィンドウは 1 つしか出ない(2026-11-26 実測、docs/claude/claude-mcp-servers.md)。--output-dir は
     # `playwright` と同じ理由(worktree を汚さない)で作業ツリーの外へ逃がす。
     playwright-chrome = {
       type = "stdio";

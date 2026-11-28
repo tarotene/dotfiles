@@ -2,7 +2,7 @@
 
 以下は Codex CLI に固有の運用で、共有 AGENTS.md の規範を Codex の hook /
 UI 概念に合わせて具体化したもの。Claude Code の `~/.claude/CLAUDE.md` に
-ある同種の節と対をなす(Codex には ExitPlanMode という UI 概念が無いため、
+ある同種の節と対をなす(Codex には ExitPlanMode という UI 概念がないため、
 文言は Codex の Plan mode(`<proposed_plan>` ブロック)向けに書き換えている)。
 
 ### Plan を出す前の自己検査
@@ -12,7 +12,7 @@ Codex の Plan mode で応答に `<proposed_plan>` ブロックを含めると�
 ごとに `## 先行例との対比` 節を置き、判断ごとに `Dn:` 行(採った判断 / 出典と
 取得日 / 先行例との差分 / `軸:`)を書く。設計判断を含まない Plan は代わりに
 1 行の免除(`先行例: 該当なし — <理由>`)でよい。書式は precedent-grounding /
-technology-selection スキル(`~/.agents/skills/`)に従う。画面の面(`.html`・
+technology-selection スキル(`~/.agents/skills/`)に従う。画面(`.html`・
 `.css`・`config/web/` など)に触れる Plan は `構造:` の行も書く(precedent-grounding
 スキル §3)。
 
@@ -43,7 +43,7 @@ Codex にも効く。
 共通の `hook-router pre --agent codex` 内の `decision-colocation-guard` と、
 CI required check(`decision-colocation-check`)の両方が検査する。
 
-PR 本文に未チェックの task list を残さず、人の確認が要る残作業は後続
+PR 本文に未チェックの task list を残さず、人の確認が必要な残作業は後続
 Issue へ払い出す原則も Codex に適用される。形式検査は `pr-followup-guard`
 (`crates/pr-followup-guard` を `--agent codex` で登録、PreToolUse deny、
 全リポジトリで発火)が担う。

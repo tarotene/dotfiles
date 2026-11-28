@@ -1,12 +1,12 @@
 # ~/Downloads を「溜め込めない場所」にする。
 #
 # 動機は溜め込み防止の強制力(/grill-me セッションで確定)。tmpfs は不採用: 守り
-# たい不変条件は「N 日より古いものが無い」だが、tmpfs が表現するのは「再起動を
+# たい不変条件は「N 日より古いものがない」だが、tmpfs が表現するのは「再起動を
 # 越えない」であり、再起動頻度が高いマシンでは朝の大きな受信物が昼に消える一方、
 # 再起動しないまま数ヶ月放置すれば何も消えない — 動機に対して代理条件が悪い。
 # 加えて standalone home-manager のユーザー systemd は非特権で tmpfs を mount
 # できず、実現にはシステム層(fstab)か $XDG_RUNTIME_DIR(3 GB 台の上限)への
-# 迂回が要り、三層モデルの層の規律を破る(ADR-0001)。
+# 迂回が必要になり、三層モデルの層の規律を破る(ADR-0001)。
 #
 # 採る手段は systemd-tmpfiles の age cleanup(14 日、home-manager 既存の
 # `systemd.user.tmpfiles.rules` 経由)。判定は tmpfiles 既定(atime/mtime/ctime
@@ -31,7 +31,7 @@
   #
   # 朝の机の紙(本文を含む印刷物の元)の出力先も、同じ年齢の掃除に載せる: 14 日より古いものは消える。ディレクトリは 0700
   # (中のファイルは、生成器が 0600 で作る)。机の起動に頼らず、規則で掃除する(宣言 > 手続き)。この束縛は
-  # pipeline-map が `# pipeline-node:` の 1 つの節点にしか結べないので、新しい束縛を足さず、同じリストに置く。
+  # pipeline-map が `# pipeline-node:` の 1 つの節点にしか結べないので、新しい束縛を追加せず、同じリストに置く。
   systemd.user.tmpfiles.rules = lib.mkIf pkgs.stdenv.isLinux [
     "d %h/Downloads - - - 14d"
     "d %h/.local/state/claude/desk/sheets 0700 - - 14d"
@@ -42,7 +42,7 @@
   # 変わり付与が無効化されるため、Apple 署名済みで path が安定する
   # /usr/bin/find を直接呼ぶ(wrapper や配備物を新設しない)。削除条件は
   # tmpfiles の既定(3 種のタイムスタンプのいずれか新しければ延命)を find の
-  # 論理積(AND)で写す。初回のみ TCC 権限付与が要る(docs/cutover-runbook.md
+  # 論理積(AND)で写す。初回のみ TCC 権限付与が必要になる(docs/cutover-runbook.md
   # の Post-cutover 手順)。
   dotfiles.pipeline.timerNodes.downloads-clean = "downloads-clean";
   launchd.agents.downloads-clean = lib.mkIf pkgs.stdenv.isDarwin {

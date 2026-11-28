@@ -8,7 +8,7 @@ description: >-
   誤解が required check context の不一致事故(#337)とテンプレートの
   権限・pin 不具合(#491)を生んだ。composite action はこの連結が発生
   しない(呼び出し側 job の `name:` だけが required check context になる)
-  ため、その事故の型自体が構造的に無くなる。
+  ため、その事故の型自体が構造的になくなる。
 
   判定ロジックは全て tarotene/dotfiles に一元化されており(PR タイトル
   文法は crates/pr-title-check、残りの 3 つの検査 — pr-merge-settings-
@@ -43,7 +43,7 @@ runs:
         # 取っても workspace は解決できる(存在するメンバーだけが対象に
         # なる)。pr-title-check と pr-contract-check はどちらも依存ゼロ
         # (標準ライブラリだけ。JSON は `gh api --jq` と `jq` に任せる)なので、
-        # registry から取るものは無い。
+        # registry から取るものはない。
         sparse-checkout: |
           /Cargo.toml
           /crates/pr-title-check/
@@ -53,8 +53,8 @@ runs:
 
     # PR タイトル文法の検査(ADR-0031)。単一正本は crates/pr-title-check
     # (#415 で bash の scripts/pr-title-check から Rust へ移植)。
-    # GitHub-hosted の ubuntu runner には cargo が入っている。無い runner
-    # (self-hosted 等)では、黙って検査を飛ばさず明示的に落とす。
+    # GitHub-hosted の ubuntu runner には cargo が入っている。ない runner
+    # (self-hosted 等)では、黙って検査を飛ばさず明示的に失敗させる。
     - name: Validate PR title
       shell: bash
       env:
@@ -73,7 +73,7 @@ runs:
     # ADR-0031 Amendment: PR タイトル契約は squash merge 設定の上に乗った
     # proxy であり、その設定が drift すると契約全体が無声でバイパスされる。
     # ここで前提の生存を required check として検査する(旧 reusable
-    # workflow から引き継ぐ挙動)。GITHUB_TOKEN の contents:write が要る
+    # workflow から引き継ぐ挙動)。GITHUB_TOKEN の contents:write が必要になる
     # (呼び出し元ワークフロー側の job permissions で明示する必要がある —
     # 下記コメント参照)。
     - name: Validate merge settings prerequisite
@@ -94,7 +94,7 @@ runs:
     # 窓の中でも毎回 3〜4 分かかっていた(#1065)。待たないので、環境変数
     # RULESETS_CONTEXT_CHECK_TIMEOUT / _INTERVAL は渡さない(古い版の action が
     # 渡していても、このバイナリは読まない)。読むのは contents API だけで、
-    # `actions: read` はこの step には要らない(呼び出し側が宣言していても害は
+    # `actions: read` はこの step には不要(呼び出し側が宣言していても害は
     # ない)。
     - name: Validate required-check contexts
       shell: bash

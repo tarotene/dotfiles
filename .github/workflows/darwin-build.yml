@@ -2,7 +2,7 @@ name: Darwin build
 
 # ADR-591(docs/adr/591-ci-workflow-naming.md D13/Q13): altair(2022 M2
 # MacBook Air, aarch64-darwin — ADR-0018)のビルドは advisory とし、
-# dotfiles 自身の required check からは外す — 共有 macOS runner キュー
+# dotfiles 自身の required check からは除外する — 共有 macOS runner キュー
 # での待ち行列(実測 4m30s〜13m49s、#419)が required check の一部だと、
 # stacked PR の中間段が macOS 待ちだけでブロックされ続けるため
 # (ADR-468)。vega/arcturus は `ci.yml`(ブロッキング)に残る。

@@ -1,9 +1,9 @@
 # apt(system 層)の host 固有 escape hatch(#3)。宣言ファイル自体
 # (`packages/declarative/apt-packages.txt`)は全 Linux ホスト共通のまま
-# 変更しない — vega だけに要る system76/virt-manager/lightdm 等をそこへ
+# 変更しない — vega だけに必要な system76/virt-manager/lightdm 等をそこへ
 # 混ぜると、`scripts/install-packages.sh` が arcturus にもインストール
 # しようとしてしまう。host module がこのモジュールの
-# `dotfiles.apt.extraPackages` へ list で足すと、home-manager が共通
+# `dotfiles.apt.extraPackages` へ list で追加すると、home-manager が共通
 # ファイルと連結して `~/.config/dotfiles/apt-packages.txt` に配備する。
 # `detect-drift`(`crates/detect-drift`)と `scripts/install-packages.sh`
 # は共にこの配備先を読む単一正本にする(3段解決の1段目、

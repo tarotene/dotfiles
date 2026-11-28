@@ -9,7 +9,7 @@ description: >-
   られない。
 
   呼び出し側は先に actions/checkout を実行しておくこと(この action は checkout
-  しない — 対象リポジトリのソースが要るため)。成果物は `site-dir` 出力(Pages
+  しない — 対象リポジトリのソースが必要なため)。成果物は `site-dir` 出力(Pages
   deploy 用)と workflow artifact(`upload: true` のとき)の両方で残る。
 
 inputs:
@@ -72,7 +72,7 @@ runs:
         set -euo pipefail
         $CARGO doc --no-deps --workspace
 
-    # lib ターゲットが無い workspace(bin のみ)では `cargo test --doc` が
+    # lib ターゲットがない workspace(bin のみ)では `cargo test --doc` が
     # "no library targets found" で失敗するため、lib の有無で分岐する。
     - name: cargo test --doc
       shell: bash

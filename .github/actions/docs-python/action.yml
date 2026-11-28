@@ -7,15 +7,15 @@ description: >-
 
   `pyproject.toml` の `[project.optional-dependencies]` に `docs` があれば
   `pip install -e '.[docs]'` で入れる(myst-parser やテーマなど、docs/conf.py
-  が使う拡張の依存をリポジトリ側で宣言するため)。無ければ `-e .` のまま。
+  が使う拡張の依存をリポジトリ側で宣言するため)。なければ `-e .` のまま。
 
-  `docs/conf.py` があればそれを使う。無ければ sphinx-apidoc で最小構成を
+  `docs/conf.py` があればそれを使う。なければ sphinx-apidoc で最小構成を
   生成する(リポジトリ側に Sphinx の設定を強要しない)。生成する構成には、
   標準ライブラリの型参照を解決する intersphinx(Python 公式の目録。取得に失敗したときは
   action に同梱した写し `python-objects.inv`)を含める。生成した conf.py は
   `doctest_global_setup` でパッケージを import する — sphinx.ext.doctest は
-  autodoc 対象モジュールを自動 import しないため、これが無いと docstring の
-  doctest が NameError で落ちる(fixture で実測)。
+  autodoc 対象モジュールを自動 import しないため、これがないと docstring の
+  doctest が NameError で失敗する(fixture で実測)。
 
 inputs:
   working-directory:
@@ -24,16 +24,16 @@ inputs:
     default: '.'
   package-dir:
     description: >-
-      sphinx-apidoc に渡すパッケージのディレクトリ。空なら `src/<pkg>`、無ければ
+      sphinx-apidoc に渡すパッケージのディレクトリ。空なら `src/<pkg>`、なければ
       直下の `__init__.py` を持つディレクトリを自動検出する。
     required: false
     default: ''
   python-version:
     description: >-
       setup-python に渡すバージョン。空なら working-directory の `.python-version`
-      を使い、それも無ければ '3.x'(最新の Python)を使う。最新の Python は、
+      を使い、それもなければ '3.x'(最新の Python)を使う。最新の Python は、
       依存が上限を持つリポジトリ(例: requires-python に現れない `Requires-Python <3.15`)
-      で `pip install -e .` を落とすので、そうしたリポジトリは `.python-version` を
+      で `pip install -e .` を失敗させるので、そうしたリポジトリは `.python-version` を
       置く(テスト job など他の job と版の正本を 1 つにできる)。明示した値は
       `.python-version` より優先する。
     required: false
@@ -52,8 +52,8 @@ runs:
   using: composite
   steps:
     # setup-python 自身にも「入力が空なら .python-version を読む」機能があるが、
-    # 読むのはカレントディレクトリ固定で working-directory を見ず、ファイルが無いと
-    # PATH 上の Python に落ちる('3.x' の従来挙動と変わる)。そのためここで解決する。
+    # 読むのはカレントディレクトリ固定で working-directory を見ず、ファイルがないと
+    # PATH 上の Python にフォールバックする('3.x' の従来挙動と変わる)。そのためここで解決する。
     - name: Resolve the Python version
       id: version
       shell: bash
@@ -117,11 +117,11 @@ runs:
           printf '\ndoctest_global_setup = "from %s import *"\n' "$name" >> "$src/conf.py"
           # nitpicky(-n)は標準ライブラリの型(pathlib.Path など)も未解決参照として
           # 警告にする。sphinx-apidoc の最小構成は intersphinx を持たないので、
-          # 型注釈に標準ライブラリの型を書いただけで strict ビルドが落ちる(2026-10-18、
+          # 型注釈に標準ライブラリの型を書いただけで strict ビルドが失敗する(2026-10-18、
           # 実リポジトリで 42 件中 36 件がこれ)。Python 公式の目録を引いて解決する。
           # 目録の場所は 2 つ並べる: 先頭の `None` は <URL>/objects.inv。取得に失敗(SSLError など。
-          # 2026-11-08 に fixture が落ちた)したら、action に同梱した写しを使う。Sphinx は場所を順に試し、
-          # あとの場所が成功すれば失敗は警告にならない(-W に引っかからない)。写しは古くなりうるが、
+          # 2026-11-08 に fixture が失敗した)したら、action に同梱した写しを使う。Sphinx は場所を順に試し、
+          # あとの場所が成功すれば失敗は警告にならない(-W に引っかからない)。写しは古くなる可能性があるが、
           # 使うのは URL が取れなかったときだけで、標準ライブラリの型名の解決には十分。
           printf '\nextensions.append("sphinx.ext.intersphinx")\nintersphinx_mapping = {"python": ("https://docs.python.org/3", (None, "%s/python-objects.inv"))}\n' "$GITHUB_ACTION_PATH" >> "$src/conf.py"
         fi

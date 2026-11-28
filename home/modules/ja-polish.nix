@@ -3,7 +3,7 @@
 # 機体にも identity にも縛られない機構で、有効にするかは `dotfiles.jaPolish.enable` の 1 行で
 # 決まる。今は個人の identity(home/identities/personal.nix)だけで立てている。理由は、送り先の
 # Gemini の扱い(送った文面が学習に使われるか)を確かめ済みの経路が、個人の無料 API キーだけだから
-# (無料枠は改善に使われうる契約で、個人の側はそれでよいと本人が裁定した)。会社の側は、会社契約の
+# (無料枠は改善に使われる可能性がある契約で、個人の側はそれでよいと本人が裁定した)。会社の側は、会社契約の
 # Claude Code から会社契約の Gemini へつなげられる見込みだが、Gemini 側の要件はまだ調べていない。
 # 確かめたら、会社の identity で enable を立て、`package`(llm と送り先のプラグイン)と `model`
 # を会社の契約に合わせる(docs/agents/ja-polish.md「横展開」)。
@@ -13,7 +13,7 @@
 #     → home/modules/claude.nix の excludedCommands)
 #   - `llm` + `llm-gemini`(nix/ja-polish-llm.nix。nixpkgs の版では gemini-3.8-flash を呼べない)
 #   - 設定ファイル ~/.config/dotfiles/ja-polish.toml。**このファイルの有無が、その機体で
-#     ja-polish が有効かどうかの唯一の印**で、関所はこれが無ければ何も検査しない。
+#     ja-polish が有効かどうかの唯一の印**で、関所はこれがなければ何も検査しない。
 #
 # API キーは置かない。各機体で一度、`llm keys set gemini` を手で実行する(キーは llm の
 # 保存先 ~/.config/io.datasette.llm/keys.json に入り、そのディレクトリは
@@ -62,7 +62,7 @@ in
     fallbackModel = lib.mkOption {
       type = lib.types.nullOr lib.types.str;
       # `crates/ja-polish/src/config.rs` の DEFAULT_FALLBACK_MODEL と同じにする。軽量モデルは、何も直さずに
-      # 返す劣化が起きたので外した(D17)。測定(2026-11-28)で、直した段落が多く、時間切れが 0 だった
+      # 返す劣化が起きたので削除した(D17)。測定(2026-11-28)で、直した段落が多く、時間切れが 0 だった
       # gemini-4-argon にした。単価は高いが、予備は主が混雑・時間切れのときだけ使う(D19)。
       default = "gemini-4-argon";
       description = ''

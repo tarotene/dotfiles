@@ -1,6 +1,6 @@
 # 未裁定のメール項目の寿命の仕様(config/agents/mail-lifecycle/spec/lifecycle.qnt)の軌跡。
 #
-# `quint run` の乱数の探索で、環境の手(受信・同期の遅れ・落ちる・行の削除・日の進み)を全部入れた
+# `quint run` の乱数の探索で、環境の手(受信・同期の遅れ・異常終了・行の削除・日の進み)を全部入れた
 # 軌跡(ITF)を数十本作る。種を固定するので、同じ入力から同じ軌跡ができる。
 # crates/worklog/tests/itf_replay.rs が、各状態のノートの行の写し(views)を実装の畳み込みに通し、
 # 仕様の畳み込みの結果(fo)と一致することを確かめる。置き場は環境変数 MAIL_LIFECYCLE_ITF_DIR で渡す。

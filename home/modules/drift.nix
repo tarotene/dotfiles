@@ -67,7 +67,7 @@ in
       自体も実行時に `gh repo view` で visibility が PRIVATE であることを
       確認し、それ以外なら fail-closed で拒否する(ADR-0034)。null のとき
       は週次 timer 自体を配備しない — cargo/npm/pipx は宣言ファイルを持たず
-      在庫全件が drift 扱いになる(#4 の設計)ため、宛先の無い timer を
+      在庫全件が drift 扱いになる(#4 の設計)ため、宛先のない timer を
       「検出だけ」で残すと `--file-issue` を付けない限り毎週 exit 1 で
       failed になり(2026-09-24 の degraded 退行と同じ形)、誰も読まない
       journal ログにしかならない。手動実行(`detect-drift`単体)は宛先の
@@ -88,7 +88,7 @@ in
 
     # 週次実行(#4 の設計どおり)。毎分実行の git-audit-worktrees と違い、
     # apt-mark/cargo/npm/pipx の照会はネットワーク I/O や比較的重い
-    # プロセス起動を伴いうるため、頻度を抑える。
+    # プロセス起動を伴う可能性があるため、頻度を抑える。
     #
     # `--file-issue` の exit code は「drift の有無」ではなく「配信の成否」
     # (crates/detect-drift の `exit_code`)を表す: 0 = 起票/コメント成功、
@@ -100,7 +100,7 @@ in
     # `cfg.issueRepo != null` を欠いた unit(検出のみ)は上と同じ理由で
     # 意図的に置かない — dotfiles.detectDrift.issueRepo のドキュメント参照。
     # `Persistent=` は OnCalendar= timer にのみ効く(systemd.timer(5))。旧来の
-    # OnBootSec=/OnUnitActiveSec= の組み合わせでは死んだ宣言になり、ログイン
+    # OnBootSec=/OnUnitActiveSec= の組み合わせでは無効な宣言になり、ログイン
     # (boot)毎に再発火していた(2026-09-24 実測、1日に3回発火し #440 に
     # 同じ内容のコメントが3回積まれた)。OnCalendar=weekly に切り替え、
     # RandomizedDelaySec でログイン直後のネットワーク未復帰との衝突を薄める

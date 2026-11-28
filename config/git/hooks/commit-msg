@@ -158,7 +158,7 @@ STUB
     # 1: no origin -> bleep is not called, the commit goes through
     echo one >> "$tmp/repo/a.txt"
     git -C "$tmp/repo" commit -q -am "no origin" 2> /dev/null && r=ok || r=blocked
-    check "1 origin が無ければ検査せず通す" "ok:0" "${r}:$(calls)"
+    check "1 origin がなければ検査せず通す" "ok:0" "${r}:$(calls)"
 
     git -C "$tmp/repo" remote add origin https://github.com/example/public-repo.git
 
@@ -218,7 +218,7 @@ STUB
     n=$(calls)
     (cd "$tmp/repo" && "$self" --staged > /dev/null 2>&1) && r=ok || r=blocked
     mv "$HOME/bleep.off" "$HOME/.claude/hooks/bleep/bleep"
-    check "13 bleep が無ければ黙って通す" "ok:$n" "${r}:$(calls)"
+    check "13 bleep がなければ黙って通す" "ok:$n" "${r}:$(calls)"
 
     # 14: the repo-local commit-msg hook is chained to, and does not see the
     # quarantine variables

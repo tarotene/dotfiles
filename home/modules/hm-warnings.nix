@@ -6,7 +6,7 @@
   # W1: `warning: Using 'builtins.derivation' to create a derivation named
   # 'options.json' ... without a proper context.`
   # home-manager manual(manpages 生成)が nixpkgs make-options-doc 経由で
-  # context の落ちた store path を参照し、Determinate Nix だけがこれに
+  # context の失われた store path を参照し、Determinate Nix だけがこれに
   # 警告する。nixpkgs 側は「Determinate Nix が警告すべきでない」として
   # 修正を拒否済み(NixOS/nixpkgs#482766, closed)。home-manager 側は
   # 未解決(nix-community/home-manager#7935, open、取得 2026-09-09
@@ -27,7 +27,7 @@
   # (modules/home-environment.nix, 固定 rev d4fd246)が
   # `nix profile install` を叩く。新しめの Nix では `install` は
   # `add` の deprecated alias。upstream は一度 `add` に修正したが
-  # (nix-community/home-manager#8756)、Lix に `nix profile add` が無く
+  # (nix-community/home-manager#8756)、Lix に `nix profile add` がなく
   # activation が壊れるため revert 済み(#8835)。#9598(open、取得
   # 2026-09-09 https://github.com/nix-community/home-manager/issues/9598)
   # は未解決で、flake update では直らない。

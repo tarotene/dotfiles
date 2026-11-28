@@ -20,7 +20,7 @@ let
 
   # PATH は世代によらず同じ固定の値にする。store パス(`lib.makeBinPath`)を埋めると
   # 世代ごとに unit / plist の中身が変わる。launchd は plist が変わると agent を bootout
-  # するので、追従が自分の走らせた switch で打ち切られうる(home-manager の
+  # するので、追従が自分の走らせた switch で打ち切られる可能性がある(home-manager の
   # modules/launchd は plist が同一なら bootout しない)。hms が呼ぶ nix・home-manager・
   # herdr・systemctl・hostname・pgrep・tailscale-prefs は、どれも次のどこかにある。
   # Linux の systemd も同じ値にして、2 つの OS で食い違わせない。

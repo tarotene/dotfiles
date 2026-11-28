@@ -1,7 +1,7 @@
 #!/usr/bin/env zsh
-# nixgl-restore.test.zsh — config/zsh/modules/05-nixgl-restore.zsh の挙動試験(#851)。
+# nixgl-restore.test.zsh — config/zsh/modules/05-nixgl-restore.zsh の挙動テスト(#851)。
 #
-# nixGL の wrapper(home/lib/nixgl.nix)は、GL の変数を足す前の値を
+# nixGL の wrapper(home/lib/nixgl.nix)は、GL の変数を追加する前の値を
 # `__NIXGL_SAVED_<VAR>` に退避し(元が未設定なら `__NIXGL_UNSET__`)、`NIXGL_WRAPPED=1` を
 # 立てる。モジュールは、印があるときだけ、対話シェルで元の値へ戻す。
 #   zsh config/zsh/tests/nixgl-restore.test.zsh
@@ -57,13 +57,13 @@ got=$(run_case "LD_LIBRARY_PATH" NIXGL_WRAPPED=1 LD_LIBRARY_PATH=/nix/mesa/lib _
 expect "2 empty original stays set-but-empty" "LD_LIBRARY_PATH=
 env=0" "$got"
 
-# 3. 印が無ければ何もしない(`nixGLIntel zsh` を自分で打った場合など、nixGL を使う操作を壊さない)。
+# 3. 印がなければ何もしない(`nixGLIntel zsh` を自分で打った場合など、nixGL を使う操作を壊さない)。
 got=$(run_case "LD_LIBRARY_PATH LIBGL_DRIVERS_PATH" LD_LIBRARY_PATH=/nix/mesa/lib LIBGL_DRIVERS_PATH=/nix/mesa/dri)
 expect "3 no mark: untouched" "LD_LIBRARY_PATH=/nix/mesa/lib
 LIBGL_DRIVERS_PATH=/nix/mesa/dri
 env=0" "$got"
 
-# 4. 退避の無い変数は、印があっても触らない(一部だけ退避された場合)。
+# 4. 退避のない変数は、印があっても触らない(一部だけ退避された場合)。
 got=$(run_case "LD_LIBRARY_PATH LIBGL_DRIVERS_PATH" NIXGL_WRAPPED=1 \
     LD_LIBRARY_PATH=/nix/mesa/lib __NIXGL_SAVED_LD_LIBRARY_PATH=/orig/lib LIBGL_DRIVERS_PATH=/mine)
 expect "4 variable without a saved value is left alone" "LD_LIBRARY_PATH=/orig/lib

@@ -398,7 +398,7 @@
         };
 
       # Self-hosted LiveSync の公式 CLI(上流のタグ 1.0.44-cli をソースから build、#1328)。
-      # nixpkgs に該当するパッケージが無い(stable・unstable の `nix search` で 0 件)ので、
+      # nixpkgs に該当するパッケージがない(stable・unstable の `nix search` で 0 件)ので、
       # 自前の derivation を置く。home/modules/obsidian-livesync.nix が、ラッパーの中でだけ
       # 参照する(生の CLI は PATH に出さない)。
       livesyncCliOverlay = final: _prev: {
@@ -549,7 +549,7 @@
           dotfiles-tools = rust.package;
           # 依存だけの build(crane の buildDepsOnly)。CI の build-host が GC root に
           # して、キャッシュに残す(.github/actions/nix-gc-roots の「Root the Rust
-          # dependency artifacts」)。ここに名前が無いと、参照する手段が無い。
+          # dependency artifacts」)。ここに名前がないと、参照する手段がない。
           dotfiles-tools-deps = rust.deps;
           dotfiles-tools-clippy = rust.clippy;
           dotfiles-tools-doc = rust.doc;
@@ -559,7 +559,7 @@
           # closure に入り、CI の `Build vega` が build する。名前で出すのは、手元で単体の
           # build を回せるようにするため。
           ja-polish-llm = pkgsFor.${system}.ja-polish-llm;
-          # overlay の撤去条件(上の `unstableUntil`)。固定した stable の版が条件を満たしたら落ちる。
+          # overlay の撤去条件(上の `unstableUntil`)。固定した stable の版が条件を満たしたら失敗する。
           # flake の更新の PR がここで赤くなるので、その PR で overlay の項目を畳む(ADR-1529 の段4)。
           unstable-overlay-removal =
             let
@@ -574,7 +574,7 @@
                 "touch $out"
               else
                 ''
-                  echo "unstable-overlay-removal: stable が追いついた。flake.nix の unstableUntil と overlay から外す:" >&2
+                  echo "unstable-overlay-removal: stable が追いついた。flake.nix の unstableUntil と overlay から削除する:" >&2
                   echo ${lib.escapeShellArg (lib.concatStringsSep "\n" lines)} >&2
                   exit 1
                 ''
@@ -605,9 +605,9 @@
             inherit lib;
           };
           # private wrapper(`lib.mkHome` の `extraModules`)のように、このリポジトリの外が
-          # pipeline-map のノードを持たない timer を足しても、評価が通ること(#992、
+          # pipeline-map のノードを持たない timer を追加しても、評価が通ること(#992、
           # home/modules/pipeline.nix)。最初の版は最終の config の名前を全部数えたので、
-          # wrapper の timer を未対応として `hms .` の評価を落とした。評価するだけで、
+          # wrapper の timer を未対応として `hms .` の評価を失敗させた。評価するだけで、
           # generation は build しない(`drvPath` を強制した後の空の derivation)。
           pipeline-external-timer =
             let
@@ -686,7 +686,7 @@
               #   gitleaks git --config .gitleaks.toml --redact --no-banner --exit-code 1 .
               # CI は `go install ...@v8.30.1` で版を固定している(.github/workflows/ci.yml)。
               # nixpkgs(nixos-26.05)の gitleaks は 8.30.1 で一致する(2026-11-08 に
-              # `nix eval` で確認)。版がずれると規則(generic-api-key など)が変わりうるので、
+              # `nix eval` で確認)。版がずれると規則(generic-api-key など)が変わる可能性があるため、
               # ci.yml の版を上げるときは、ここも同じ版か確かめる。
               pkgs.gitleaks
             ];

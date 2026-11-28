@@ -5,4 +5,4 @@
 
 `python-myst` は pyproject.toml に `docs` extra を持つ Python パッケージの
 fixture。`docs/conf.py` が `myst_parser` を使うので、action が `.[docs]` を
-入れなければ Markdown のページを読めずに落ちる。
+入れなければ Markdown のページを読めずに失敗する。

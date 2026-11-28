@@ -1,7 +1,7 @@
 # MCP サーバーを宣言的に管理する「口」(docs/claude/claude-mcp-servers.md)。宣言は 1 か所
 # (`dotfiles.agents.mcpServers`)で、Claude Code(~/.claude.json の .mcpServers)と Antigravity CLI
 # (~/.gemini/config/mcp_config.json、home/modules/antigravity.nix)の両方へ配る。旧名の
-# `dotfiles.claude.mcpServers` は別名として残す(private wrapper が同じ名前で値を足していても評価が通る)。
+# `dotfiles.claude.mcpServers` は別名として残す(private wrapper が同じ名前で値を追加していても評価が通る)。
 #
 # ~/.claude.json の .mcpServers の扱い:
 #
@@ -15,7 +15,7 @@
 # populate する。
 #
 # 書き換えは reconcile(宣言集合 = user scope の望ましい完全状態)。当初は加法的
-# merge で、`claude mcp add` で足した野良サーバーを残す設計だった — が、野良が
+# merge で、`claude mcp add` で追加した野良サーバーを残す設計だった — が、野良が
 # 9 件まで積み上がってセッションごとのコンテキスト(ツール名一覧・server
 # instructions)と起動時の接続待ちを純粋に食う状態になり、このモジュールが避け
 # ようとしていた「野良の方が正」ドリフトそのものを許していた。宣言外のキーは
@@ -82,7 +82,7 @@ in
     #   上に deep merge する。deep merge にするのは、Claude Code がリモートサーバーの
     #   認証時に書き足す `oauth` 等の下位 key を毎回の switch で剥がして再認証を強いない
     #   ため — 宣言した field 自体は毎回上書きされるので、宣言が正であることは変わらない。
-    #   `.projects` 配下(project scope)には一切触れない。変化が無ければ書き込みしない
+    #   `.projects` 配下(project scope)には一切触れない。変化がなければ書き込みしない
     #   (mtime を汚さない)。実装は crates/agent-settings-reconcile(#414)。
     home.activation.registerClaudeMcpServers = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
       run ${pkgs.dotfiles-tools}/bin/agent-settings-reconcile claude-mcp-servers "$HOME/.claude.json" ${lib.escapeShellArg (builtins.toJSON cfg.mcpServers)}

@@ -333,7 +333,7 @@ jobs:
       # エンジン。selftest はネットワーク不使用。pull_request イベントでは
       # base SHA を追加 fetch した上で base 差分限定の判定(1 PR = 最大 1 ADR、
       # PR-number era の番号一致)も走らせる — push イベント(base/PR 番号が
-      # 無い)ではリポジトリ全体の判定(重複なし・0000 残存なし・
+      # ない)ではリポジトリ全体の判定(重複なし・0000 残存なし・
       # filename==H1・README 索引網羅)のみ。
       - name: adr-number-check --selftest
         run: ./scripts/adr-number-check --selftest
@@ -347,11 +347,11 @@ jobs:
       - name: visual_diff --selftest
         run: pipx run --spec uv==0.11.21 uv run --script config/agents/skills/pr-description/scripts/visual_diff.py --selftest
 
-      # design-pin: 各面が持つ、デザイン正本(config/web/)の複写の固定を検査する共通部品(ADR-1685)。
+      # design-pin: 各画面が持つ、デザイン正本(config/web/)の複写の固定を検査する共通部品(ADR-1685)。
       - name: design-pin --selftest
         run: bash .github/actions/design-pin/check.sh --selftest
 
-      # このリポジトリ自身の面(裁定ページの雛形)が取り込んだ正本の複写を、`design-pin.toml` の固定と照合する(ADR-1710)。
+      # このリポジトリ自身の画面(裁定ページの雛形)が取り込んだ正本の複写を、`design-pin.toml` の固定と照合する(ADR-1710)。
       # 正本の内容の取得(`CHECK_UPSTREAM`)は、pin した commit の raw の内容で行う。
       - name: design-pin (this repository's own surfaces)
         env:
@@ -362,7 +362,7 @@ jobs:
 
       # vocab-graph-check (ADR-1293, docs/agents/state-vocabulary.md): 対象の状態遷移の語彙 JSON の
       # Schema とグラフの性質(到達・出口・担い手の解決など)の検査。--skills は、どの語彙にも
-      # external-objects.json にも載らない skill を落とす(全 skill を載せ切ったので配線した。ADR-1305)。
+      # external-objects.json にも載らない skill を失敗させる(全 skill を載せ切ったので配線した。ADR-1305)。
       - name: vocab-graph-check --selftest
         run: scripts/vocab-graph-check --selftest
       - name: vocab-graph-check (all vocabularies)
@@ -412,7 +412,7 @@ jobs:
       # 決定成果物(ADR/設計文書/skill)の新規追加、または既存 ADR への
       # `## Amendment` 追加に、その決定を執行する実ファイルの同梱を要求する
       # 判定エンジン。base ref は adr-number-check のステップで既に fetch
-      # 済み。push イベント(base が無い)では比較対象が無いため skip する
+      # 済み。push イベント(base がない)では比較対象がないため skip する
       # — この検査は PR の diff に対してのみ意味を持つ。
       # #415(ADR-0024 Stage 4a)で Rust(crates/decision-colocation)になった。
       # required check はこの job なので、ここで同じバイナリを build して呼ぶ
@@ -430,13 +430,13 @@ jobs:
             cargo run --locked --quiet -p decision-colocation \
               --bin decision-colocation-check -- --base "$BASE_SHA"
           else
-            echo "decision-colocation-check: push イベントには base が無いため skip"
+            echo "decision-colocation-check: push イベントには base がないため skip"
           fi
 
       # patches/herdr-worktree-names.patch の hololive タレント名配列(worktree
       # 名生成の正本)と config/herdr/oshi-marks.tsv のキー集合を双方向突合する。
-      # patch にあって TSV に無い名前は行欠落、TSV にあって patch に無い名前は
-      # 死んだエントリ — mark 列が空(未確証)なのは許容するが、行自体の欠落・
+      # patch にあって TSV にない名前は行欠落、TSV にあって patch にない名前は
+      # 無効なエントリ — mark 列が空(未確証)なのは許容するが、行自体の欠落・
       # 余剰は許さない(docs/agents/herdr-sidebar-metadata.md)。
       - name: oshi-marks.tsv matches herdr-worktree-names.patch talent list
         run: |
@@ -451,11 +451,11 @@ jobs:
           extra_in_tsv="$(comm -13 /tmp/patch-names.txt /tmp/tsv-names.txt)"
           fail=0
           if [ -n "$missing_in_tsv" ]; then
-            echo "::error::patch にあって oshi-marks.tsv に無い名前: $missing_in_tsv"
+            echo "::error::patch にあって oshi-marks.tsv にない名前: $missing_in_tsv"
             fail=1
           fi
           if [ -n "$extra_in_tsv" ]; then
-            echo "::error::oshi-marks.tsv にあって patch に無い名前: $extra_in_tsv"
+            echo "::error::oshi-marks.tsv にあって patch にない名前: $extra_in_tsv"
             fail=1
           fi
           exit "$fail"
@@ -492,7 +492,7 @@ jobs:
       # Keep the version equal to nixpkgs stable's yq-go (home/modules/packages.nix, #813).
       #
       # 取得は再試行つき(`--retry-all-errors`、5 回、間隔 10 秒)で、取得物の SHA-256 を固定する。
-      # GitHub のリリース配布物の取得が断続的に落ちた(2026-11-08、`wget` が終了コード 4 で 2 分 25 秒かけて
+      # GitHub のリリース配布物の取得が断続的に失敗した(2026-11-08、`wget` が終了コード 4 で 2 分 25 秒かけて
       # 失敗。#1395)。再試行で一過性の失敗を吸収し、固定した SHA-256 で、途中で切れた取得物や、エラーの
       # HTML を黙って実行しない。版を上げるときは、新しい版の `yq_linux_amd64` の `sha256sum` を読んで、
       # URL の版と一緒に直す。
@@ -736,7 +736,7 @@ jobs:
       - if: steps.scope.outputs.run == 'true'
         run: nix build --print-build-logs --no-link .#checks.x86_64-linux.mail-lifecycle-spec
       # 仕様の軌跡(ITF)の各状態のノートの行を、実装の畳み込みに通して、仕様の結果と一致することを確かめる。
-      # 軌跡の置き場は MAIL_LIFECYCLE_ITF_DIR で渡す(無いと cargo test の itf_replay は skip する)。
+      # 軌跡の置き場は MAIL_LIFECYCLE_ITF_DIR で渡す(ないと cargo test の itf_replay は skip する)。
       - if: steps.scope.outputs.run == 'true'
         name: Replay the spec's traces through the worklog fold
         run: |
@@ -879,7 +879,7 @@ jobs:
         with:
           upload: 'false'
 
-  # docs-{rust,python,typescript} composite action 自体の回帰試験。
+  # docs-{rust,python,typescript} composite action 自体の回帰テスト。
   # `@main` 参照で全リポジトリへ即時に届くため、strict の基準を変える PR が
   # 他リポジトリの CI を一斉に壊さないよう、tests/docs-fixtures の正常系が
   # 成功し、壊したコピー(未解決リンク)が失敗することをここで固定する。

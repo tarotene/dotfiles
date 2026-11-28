@@ -128,7 +128,7 @@
       # comma(`, <cmd>`)は nixpkgs のパッケージをインストールせず一度だけ
       # 実行する。nix-index は `nix-locate` を提供し、Layer 2 の
       # `detect-drift --porcelain` がコマンド名→nixpkgs 属性の候補注記に
-      # 使う(ADR-0005: nix-locate が無ければ注記なしで黙って続行)。
+      # 使う(ADR-0005: nix-locate がなければ注記なしで黙って続行)。
       # 初回のみ手動で `nix-index` を実行してローカル DB を作る必要がある
       # (`nix-community/nix-index-database` の事前ビルド版は新規 flake
       # input になり撤収コストが導入コストを上回るため見送った、
@@ -221,7 +221,7 @@
     # The canonical apply wrapper (docs/operations.md).  Deployed to ~/.local/bin
     # (on PATH via 10-path.zsh) so `hms` works from any directory — the whole
     # point is not depending on being inside a checkout.
-    # Rust 実装(crates/hms、#414)。シェル状態を呼び出し元に残す処理は無い独立の
+    # Rust 実装(crates/hms、#414)。シェル状態を呼び出し元に残す処理はない独立の
     # 実行ファイルなので全体を移した。
     "hms"
     # git-shelve / git-unshelve: worktree 単位で所有権が分かる stash の
@@ -259,9 +259,9 @@
     # (docs/agents/repo-scope-guard.md)。直す手順は stacked-pr スキル §4。朝の机の段 5 が呼ぶ
     # ので PATH に置く。
     "pr-hygiene-check"
-    # worktree-lease: 同じ linked worktree を別のセッションが使っている印を見る・外す CLI
+    # worktree-lease: 同じ linked worktree を別のセッションが使っている印を見る・解除する CLI
     # (crates/worktree-lease、docs/agents/worktree-lease.md)。判定はルータが呼ぶので hook の
-    # 登録は無い。deny されたとき、ユーザーが `! worktree-lease release` で外すために PATH に置く。
+    # 登録はない。deny されたとき、ユーザーが `! worktree-lease release` で解除するために PATH に置く。
     "worktree-lease"
     # decision-colocation-check: checker 単一ソース for the ADR-396 decision-
     # colocation rule (docs/agents/decision-colocation.md — 決定成果物
@@ -339,7 +339,7 @@
     # Rust、crates/apply-rulesets(ADR-0024、#414)の bin。呼び先の
     # `apply-rulesets` は自分の隣(同じ dotfiles-tools の bin/)から探す。
     "github-rulesets-apply"
-    # show-image: 本人にその場で見せる図・画像を、手元の別窓(Chrome の専用窓)に出す入口
+    # show-image: 本人にその場で見せる図・画像を、手元の別ウィンドウ(Chrome の専用ウィンドウ)に出す入口
     # (crates/show-image、ADR-1694、docs/agents/show-image.md)。エージェントが単体で呼ぶので
     # PATH に置く。sandbox の除外と許可は home/modules/claude.nix。SVG を PNG にする rsvg-convert
     # は上の librsvg。
@@ -384,8 +384,8 @@
 
   # ci-consumers: 編集するパスを入力にしている CI の検査を列挙する CLI
   # (docs/agents/ci-consumers.md)。pr-description スキル §6a と stacked-pr スキル §3 が
-  # 「どのリポジトリの根でも」引くよう求めるので、このリポジトリの `scripts/ci-consumers` だけに
-  # 置かず PATH に置く(スクリプトは cwd の git の根を見る)。無いリポジトリで exit 127 に
+  # 「どのリポジトリのルートでも」引くよう求めるので、このリポジトリの `scripts/ci-consumers` だけに
+  # 置かず PATH に置く(スクリプトは cwd の git のルートを見る)。ないリポジトリで exit 127 に
   # なる問題への対処(スキル側にも `git grep` の代替がある)。adr-number-check と同じ置き方。
   home.file.".local/bin/ci-consumers" = {
     source = ../../scripts/ci-consumers;
@@ -400,8 +400,8 @@
 
   # apply-rulesets.sh(ADR-503)自身の PATH
   # 配備。宣言(.github/rulesets/*.json)は remote(contents API)または
-  # --from-dir から読むため、この repo 自身の宣言を別途 xdg.configFile で
-  # 配備する必要はもう無い(旧: RULESETS_DIR の 3 段フォールバック・
+  # --from-dir から読むため、このリポジトリ自身の宣言を別途 xdg.configFile で
+  # 配備する必要はもうない(旧: RULESETS_DIR の 3 段フォールバック・
   # dotfiles/rulesets/*.json の複写。単一正本 > 複写+同期)。
   #
   # Rust 化(ADR-0024、#414)後の実体は crates/apply-rulesets の
@@ -432,7 +432,7 @@
 
   # ripgrep は既定で隠しディレクトリ(`.github/` など)を読まない。ファイルを移すときの旧パスの
   # 参照探しで `.github/workflows/ci.yml` の参照を取りこぼし、CI の Escape-hatch dry-run が
-  # 落ちた(2026-11-09)。`--hidden` を既定にし、`.git/` は除く。`.gitignore` の無視は従来どおり効く
+  # 失敗した(2026-11-09)。`--hidden` を既定にし、`.git/` は除く。`.gitignore` の無視は従来どおり効く
   # (`.claude/` などは除かれたまま)。home-manager が ripgreprc を書き、`RIPGREP_CONFIG_PATH` を
   # 設定する(新しいシェルから効く)。
   programs.ripgrep = {

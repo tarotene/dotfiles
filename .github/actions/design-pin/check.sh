@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# 各面が持つ、デザイン正本(config/web/)の複写の固定(design-pin.toml)を検査する(ADR-1685)。
+# 各画面が持つ、デザイン正本(config/web/)の複写の固定(design-pin.toml)を検査する(ADR-1685)。
 # 先行例: 裁定ページの保存先 Schema を、commit で固定した URL と sha256 で固定する bash 検査(個人の記録のリポジトリの型)。
 #
 # pin の形(TOML。複数の複写は [[file]] を並べる)。URL は pin に書かず、正本のリポジトリ(SOURCE_REPO。
-# action の `github.action_repository`)と commit と name から組み立てる。所有者名が各面のファイルに入らず、
+# action の `github.action_repository`)と commit と name から組み立てる。所有者名が各画面のファイルに入らず、
 # main などの浮動した参照も、別のリポジトリへの参照も、書けない。
 #
 #   [[file]]
@@ -60,14 +60,14 @@ check() {
     return 2
   fi
   if [[ ! -f "$pin_file" ]]; then
-    echo "::error::pin のファイル $pin_file が無い"
+    echo "::error::pin のファイル $pin_file がない"
     return 1
   fi
   local pin count
   pin="$(yq -p toml -o json "$pin_file")"
   count="$(jq -r '(.file // []) | length' <<< "$pin")"
   if [[ "$count" -lt 1 ]]; then
-    echo "::error::$pin_file に [[file]] が 1 つも無い"
+    echo "::error::$pin_file に [[file]] が 1 つもない"
     return 1
   fi
   local fail=0 tmp i commit name want path url got up begin end nb ne
@@ -98,7 +98,7 @@ check() {
       continue
     fi
     if [[ ! -f "$path" ]]; then
-      echo "::error::複写 $path が無い($pin_file の path)"
+      echo "::error::複写 $path がない($pin_file の path)"
       fail=1
       continue
     fi
@@ -189,9 +189,9 @@ selftest() {
   mk "$c" "variables.css" "ABC" "web/variables.css"
   expect "sha256 の形が違う" 1 "64 桁の小文字 16 進でない"
   mk "$c" "variables.css" "$h" "web/missing.css"
-  expect "複写が無い" 1 "複写 web/missing.css が無い"
+  expect "複写がない" 1 "複写 web/missing.css がない"
   printf 'title = "x"\n' > case.toml
-  expect "[[file]] が 1 つも無い" 1 "[[file]] が 1 つも無い"
+  expect "[[file]] が 1 つもない" 1 "[[file]] が 1 つもない"
   printf '[[file]]\ncommit = "%s"\nname = "variables.css"\n' "$c" > case.toml
   expect "欄が揃っていない" 1 "commit・name・sha256・path が揃っていない"
   # 1 枚だけの HTML の中の区間(begin・end)
@@ -208,10 +208,10 @@ selftest() {
   mkr "web/page-outside.html" "$b" "$e"
   expect "区間の外の変更は、区間の固定に触れない" 0 ""
   printf '[[file]]\ncommit = "%s"\nname = "variables.css"\nsha256 = "%s"\npath = "web/page.html"\nbegin = "%s"\n' "$c" "$h" "$b" > case.toml
-  expect "begin だけで end が無い" 1 "両方書くか、どちらも書かない"
+  expect "begin だけで end がない" 1 "両方書くか、どちらも書かない"
   printf '<style>\n:root { --bg: #ffffff; }\n/* %s */\n</style>\n' "$e" > web/page-nobegin.html
   mkr "web/page-nobegin.html" "$b" "$e"
-  expect "begin の印が無い" 1 "begin($b)を含む行が 0 行"
+  expect "begin の印がない" 1 "begin($b)を含む行が 0 行"
   printf '<style>\n/* %s */\n:root { --bg: #ffffff; }\n/* %s */\n/* %s */\n</style>\n' "$b" "$e" "$e" > web/page-dup.html
   mkr "web/page-dup.html" "$b" "$e"
   expect "end の印が 2 行ある" 1 "end($e)を含む行が 2 行"
@@ -219,7 +219,7 @@ selftest() {
   mkr "web/page-order.html" "$b" "$e"
   expect "end が begin より前にある" 1 "end($e)が begin($b)より前にある"
   rm -f case.toml
-  expect "pin のファイルが無い" 1 "pin のファイル"
+  expect "pin のファイルがない" 1 "pin のファイル"
   total=$((total + 1))
   set +e
   out="$(check 'bad repo' case.toml false 2>&1)"

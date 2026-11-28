@@ -12,18 +12,18 @@
 #         schema        vocabulary.schema.json に適合する(schema-validate.jq の部分集合)
 #         一意          状態 id・事象 id が一意。状態 id に予約語 none・same を使わない
 #         参照          from は状態か none、to は状態か same
-#         終端          終端の状態から出る事象が無い
+#         終端          終端の状態から出る事象がない
 #         到達          initial(none)からすべての状態に到達できる
 #         出口          終端でない状態に、別の状態へ出る事象がある(自己遷移だけでは出口にならない)
 #         見せる担い手  owner が person の状態に shown_by の担い手がある
 #         担い手の解決  shown_by・carriers・gates の名前が実在する
 #                       skill:<名前> は config/agents/skills/<名前>/、node:<id> は pipeline-map.toml の
 #                       ノード、cli:<名前> は crates/<名前>/。external:<名前> は別リポジトリの担い手で解決しない
-#         孤立          どの事象の to にも現れない状態が無い
+#         孤立          どの事象の to にも現れない状態がない
 #         種類          kinds を持つ語彙だけ(持たない語彙の事象が kinds を持つのも違反)。種類の id が一意、
 #                       既定の種類がちょうど 1 つで tag を持たず、ほかの種類の tag が一意で状態の印と重ならない。
 #                       すべての事象が kinds を持ち、宣言した種類だけを指す。種類ごとに、その種類の事象だけで
-#                       none から到達できる状態があり、reaches を持つ種類は、reaches に無い状態に至らない
+#                       none から到達できる状態があり、reaches を持つ種類は、reaches にない状態に至らない
 #                       (reaches の状態 id は語彙の状態にある)
 #         開く出来事    opens を持つ事象は from が none だけ。supersede_on_open を持つ語彙は、その event が
 #                       語彙の事象で、from が未了の状態だけ・to が終端の状態であり、opens の事象が 1 つ以上ある
@@ -42,7 +42,7 @@
 #   vocab-graph-check --stages [--root <ルート>]
 #       全語彙の事象ごとに、段階(散文・スクリプト・gate)を carriers・gates と pipeline-map.toml の
 #       レーンから導いて標準出力に報告する(ADR-543 D4。段階は宣言せず、実体から導く)。報告専用で、
-#       語彙の不備では落とさない(常に終了コード 0。語彙の検査は --all が担う)。規則の表は
+#       語彙の不備では失敗させない(常に終了コード 0。語彙の検査は --all が担う)。規則の表は
 #       docs/agents/state-vocabulary.md。
 #   vocab-graph-check --refinements [--root <ルート>] [<対応表.json>...]
 #       語彙の具体化の対応表(config/agents/vocabulary/refinements/*.json。省略時は全部)を検査する
@@ -58,13 +58,13 @@
 #                       (timer は timers のキーと機械の事象、reminder-event は機械の事象、notification は
 #                       機械の事象とその carriers、gate はその状態から出る事象の gates)
 #         P2            同じ具体の状態に shown_by の担い手がある
-#         入力          inputs の事象が具体の語彙に実在し、見せた状態から出る(null は note が要る)
+#         入力          inputs の事象が具体の語彙に実在し、見せた状態から出る(null は note が必要)
 #         画面          mail-item の対応表だけ。裁定ページの選択肢の表(inbox-adjudication の
 #                       reference/verdict-page/options.json)の verdict の集合と、inputs のキーの集合が
 #                       双方向に一致する(#1312)
 #   vocab-graph-check --selftest
 #       config/agents/vocabulary/fixtures/ の正例・負例と、一時ディレクトリに作る skill・対応表の負例で、
-#       各規則が期待どおり落ちる・通ることを確かめる。ネットワーク不使用。
+#       各規則が期待どおり失敗する・通ることを確かめる。ネットワーク不使用。
 #
 # 実装は bash + jq。JSON Schema の検証は config/agents/skills/inbox-adjudication/reference/verdict-page/
 # schema-validate.jq を再利用する(複写しない)。
@@ -155,9 +155,9 @@ def step($evs): . as $s
       | viol("到達"; "状態 \(.) が initial(none)から到達できない") ),
     ( $v.states[] | select(.terminal | not) | .id as $id
       | select([ $v.events[] | select(any(.from[]; . == $id)) | .to[] | select(. != "same" and . != $id) ] | length == 0)
-      | viol("出口"; "終端でない状態 \($id) から別の状態へ出る事象が無い") ),
+      | viol("出口"; "終端でない状態 \($id) から別の状態へ出る事象がない") ),
     ( $v.states[] | select(.owner == "person" and ((.shown_by // []) | length == 0)) | .id
-      | viol("見せる担い手"; "owner が person の状態 \(.) に shown_by の担い手が無い") ),
+      | viol("見せる担い手"; "owner が person の状態 \(.) に shown_by の担い手がない") ),
     ( $names[] | . as $r | ($r.n | capture("^(?<k>[a-z]+):(?<x>.+)$")) as $c
       | if   $c.k == "skill" and (named($skills; $c.x) | not) then viol("担い手の解決"; "\($r.w) の \($r.n) が config/agents/skills/ に実在しない")
         elif $c.k == "node"  and (named($nodes;  $c.x) | not) then viol("担い手の解決"; "\($r.w) の \($r.n) が pipeline-map.toml のノードに実在しない")
@@ -179,17 +179,17 @@ def step($evs): . as $s
                      ( $m.from[] | select(. == "none" or IN($term[]))
                        | viol("開く出来事"; "supersede_on_open の事象 \($se) の from \(.) は、未了の状態でない") ) )
             end,
-            ( if $nopen == 0 then viol("開く出来事"; "supersede_on_open があるのに、opens の事象が無い") else empty end ) )
+            ( if $nopen == 0 then viol("開く出来事"; "supersede_on_open があるのに、opens の事象がない") else empty end ) )
       else empty end ),
     # 種類(kinds を持つ語彙だけ)。持たない語彙で事象が kinds を持つのも違反
     ( if ($v | has("kinds") | not) then
-        ( $v.events[] | select(has("kinds")) | viol("種類"; "語彙に kinds が無いのに、事象 \(.id) が kinds を持つ") )
+        ( $v.events[] | select(has("kinds")) | viol("種類"; "語彙に kinds がないのに、事象 \(.id) が kinds を持つ") )
       else
         ( $kids | dups[] | viol("種類"; "種類 id \(.) が重複している") ),
         ( select(($kinds | map(select(.default == true)) | length) != 1)
           | viol("種類"; "既定の種類(default: true)がちょうど 1 つでない(\($kinds | map(select(.default == true)) | length) 個)") ),
         ( $kinds[] | select(.default == true and has("tag")) | viol("種類"; "既定の種類 \(.id) が tag を持つ") ),
-        ( $kinds[] | select(.default != true and (has("tag") | not)) | viol("種類"; "既定でない種類 \(.id) に tag が無い") ),
+        ( $kinds[] | select(.default != true and (has("tag") | not)) | viol("種類"; "既定でない種類 \(.id) に tag がない") ),
         ( [ $kinds[] | .tag? // empty ] | dups[] | viol("種類"; "tag \(.) が重複している") ),
         ( $kinds[] | select(has("tag") and (.tag | IN($tokens[]))) | viol("種類"; "種類 \(.id) の tag \(.tag) が状態の印と重なる") ),
         ( $v.events[] | . as $e
@@ -254,7 +254,7 @@ check_vocabs() {
   for f in "$@"; do
     check_file "$f" || rc=1
   done
-  # object が重複しない(JSON として読めないファイルは object が無いので除く)
+  # object が重複しない(JSON として読めないファイルは object がないので除く)
   dup=$(for f in "$@"; do jq -r --arg f "$f" 'select(type == "object" and (.object | type) == "string") | "\(.object)\t\($f)"' "$f" 2>/dev/null || true; done \
     | awk -F'\t' '{ n[$1]++; files[$1] = files[$1] (files[$1] == "" ? "" : ", ") $2 } END { for (o in n) if (n[o] > 1) printf "%s\t%s\n", o, files[o] }' | sort)
   if [[ -n $dup ]]; then
@@ -272,7 +272,7 @@ check_vocabs() {
 check_skills() {
   local root=$1 skills_dir covered ext_file d name desc canonical rc=0 missing=0
   skills_dir="$root/config/agents/skills"
-  [[ -d $skills_dir ]] || die_usage "skill のディレクトリが無い: $skills_dir"
+  [[ -d $skills_dir ]] || die_usage "skill のディレクトリがない: $skills_dir"
 
   local vocabs=()
   mapfile -t vocabs < <(discover_vocabs "$root")
@@ -398,7 +398,7 @@ report_stages() {
     fi
   done
   if ((${#ok_vocabs[@]} == 0)); then
-    printf '報告する語彙が無い\n'
+    printf '報告する語彙がない\n'
     return 0
   fi
   load_node_info "$root"
@@ -454,9 +454,9 @@ def event_of($v; $id): [ $v.events[] | select(.id == $id) ][0];
 | [ $cs[] | select($m[.] != null and (($m[.]) as $x | any($ashown[]; . == $x))) ] as $shown
 | [
     ( $cs[] | select($m[.] == null) | viol("写像"; "具体の状態 \(.) が states に載っていない") ),
-    ( $m | keys[] | select(. as $k | any($cs[]; . == $k) | not) | viol("写像"; "states のキー \(.) が具体の語彙 \($c.object) に無い") ),
+    ( $m | keys[] | select(. as $k | any($cs[]; . == $k) | not) | viol("写像"; "states のキー \(.) が具体の語彙 \($c.object) にない") ),
     ( $m | to_entries[] | select(.value as $x | any($ast[]; . == $x) | not)
-      | viol("写像"; "状態 \(.key) の写り先 \(.value) が抽象の語彙 \($a.object) に無い") ),
+      | viol("写像"; "状態 \(.key) の写り先 \(.value) が抽象の語彙 \($a.object) にない") ),
     ( $cterm[] | select($m[.] != null and (($m[.]) as $x | any($aterm[]; . == $x) | not))
       | viol("終端"; "具体の終端の状態 \(.) が、抽象の終端でない状態 \($m[.]) に写る") ),
     ( $c.events[] | . as $e
@@ -464,34 +464,34 @@ def event_of($v; $id): [ $v.events[] | select(.id == $id) ][0];
       | ($map[$f]) as $x | ($map[$t]) as $y
       | select($x != null and $y != null and $x != $y)
       | select([ $a.events[] | select(any(.from[]; . == $x) and any(.to[]; . == $y)) ] | length == 0)
-      | viol("準同型"; "事象 \($e.id) の \($f) → \($t) が、抽象では \($x) → \($y) になり、抽象の事象に無い") ),
+      | viol("準同型"; "事象 \($e.id) の \($f) → \($t) が、抽象では \($x) → \($y) になり、抽象の事象にない") ),
     ( $ashown[] | . as $s
       | select(machine_event_from($a; $s) | length == 0)
-      | viol("P1"; "抽象の状態 \($s) から出る、行為者が machine の事象(再通知か失効)が抽象の語彙に無い") ),
+      | viol("P1"; "抽象の状態 \($s) から出る、行為者が machine の事象(再通知か失効)が抽象の語彙にない") ),
     ( ($R.p1 | keys[]) | select(. as $k | any($shown[]; . == $k) | not)
       | viol("P1"; "p1 のキー \(.) は、抽象の見せた状態に写る具体の状態でない") ),
     ( $shown[] | . as $s | ($R.p1[$s]) as $p
-      | if $p == null then viol("P1"; "具体の状態 \($s) は抽象の見せた状態に写るのに、p1 の手段が無い")
+      | if $p == null then viol("P1"; "具体の状態 \($s) は抽象の見せた状態に写るのに、p1 の手段がない")
         elif $p.kind == "gate" then
           if [ $c.events[] | select(any(.from[]; . == $s) and any((.gates // [])[]; . == $p.gate)) ] | length == 0
-          then viol("P1"; "状態 \($s) の gate \($p.gate) が、その状態から出る事象の gates に無い") else empty end
+          then viol("P1"; "状態 \($s) の gate \($p.gate) が、その状態から出る事象の gates にない") else empty end
         else
           ( event_of($c; $p.event) ) as $ev
-          | if $ev == null then viol("P1"; "状態 \($s) の p1 の事象 \($p.event) が具体の語彙に無い")
+          | if $ev == null then viol("P1"; "状態 \($s) の p1 の事象 \($p.event) が具体の語彙にない")
             elif $ev.by != "machine" then viol("P1"; "状態 \($s) の p1 の事象 \($p.event) の行為者が machine でない")
             elif (any($ev.from[]; . == $s) | not) then viol("P1"; "状態 \($s) の p1 の事象 \($p.event) が、その状態から出ない")
-            elif $p.kind == "timer" and (($c.timers // {}) | has($p.timer) | not) then viol("P1"; "状態 \($s) の p1 の timer \($p.timer) が具体の語彙の timers に無い")
-            elif $p.kind == "notification" and (any(($ev.carriers // [])[]; . == $p.carrier) | not) then viol("P1"; "状態 \($s) の p1 の担い手 \($p.carrier) が事象 \($p.event) の carriers に無い")
+            elif $p.kind == "timer" and (($c.timers // {}) | has($p.timer) | not) then viol("P1"; "状態 \($s) の p1 の timer \($p.timer) が具体の語彙の timers にない")
+            elif $p.kind == "notification" and (any(($ev.carriers // [])[]; . == $p.carrier) | not) then viol("P1"; "状態 \($s) の p1 の担い手 \($p.carrier) が事象 \($p.event) の carriers にない")
             else empty end
         end ),
     ( $shown[] | . as $s | select([ $c.states[] | select(.id == $s) | (.shown_by // []) | length ][0] == 0)
-      | viol("P2"; "具体の状態 \($s) は抽象の見せた状態に写るのに、shown_by の担い手が無い") ),
+      | viol("P2"; "具体の状態 \($s) は抽象の見せた状態に写るのに、shown_by の担い手がない") ),
     ( ($R.inputs // {}) | to_entries[] | . as $i
       | if $i.value.event == null then
-          (if ($i.value.note // "") == "" then viol("入力"; "入力 \($i.key) は事象が null なので note が要る") else empty end)
+          (if ($i.value.note // "") == "" then viol("入力"; "入力 \($i.key) は事象が null なので note が必要") else empty end)
         else
           ( event_of($c; $i.value.event) ) as $ev
-          | if $ev == null then viol("入力"; "入力 \($i.key) の事象 \($i.value.event) が具体の語彙に無い")
+          | if $ev == null then viol("入力"; "入力 \($i.key) の事象 \($i.value.event) が具体の語彙にない")
             elif (any($ev.from[]; . as $f | any($shown[]; . == $f)) | not) then viol("入力"; "入力 \($i.key) の事象 \($i.value.event) が、見せた状態から出ない")
             else empty end
         end )
@@ -517,17 +517,17 @@ check_screen_inputs() {
   local file=$1 root=$2 opt out rule msg
   opt="$root/$SCREEN_OPTIONS_REL"
   if [[ ! -f $opt ]]; then
-    printf '%s: 画面: 選択肢の表 %s が無い\n' "$file" "$SCREEN_OPTIONS_REL" >&2
+    printf '%s: 画面: 選択肢の表 %s がない\n' "$file" "$SCREEN_OPTIONS_REL" >&2
     return 1
   fi
   if ! out=$(jq -r --slurpfile o "$opt" '
     ([ $o[0].kinds[]?.options[]?.verdict ] | unique) as $vs
     | ((.inputs // {}) | keys) as $ks
     | ( $vs[] | select(. as $v | any($ks[]; . == $v) | not)
-        | "画面\t選択肢の表の verdict \(.) が、対応表の inputs に無い(押したときの事象が決まっていない)" ),
+        | "画面\t選択肢の表の verdict \(.) が、対応表の inputs にない(押したときの事象が決まっていない)" ),
       ( $ks[] | select(. as $k | any($vs[]; . == $k) | not)
-        | "画面\tinputs のキー \(.) が、選択肢の表のどの verdict にも無い(画面から押せない)" ),
-      ( if ($vs | length) == 0 then "画面\t選択肢の表に verdict が 1 つも無い" else empty end )
+        | "画面\tinputs のキー \(.) が、選択肢の表のどの verdict にもない(画面から押せない)" ),
+      ( if ($vs | length) == 0 then "画面\t選択肢の表に verdict が 1 つもない" else empty end )
   ' "$file" 2>&1); then
     printf '%s: 画面: 検査が失敗した: %s\n' "$file" "$out" >&2
     return 1
@@ -589,7 +589,7 @@ check_refinements() {
       [[ -f $f ]] && files+=("$f")
     done
   fi
-  ((${#files[@]} > 0)) || die_usage "検査する対応表が無い"
+  ((${#files[@]} > 0)) || die_usage "検査する対応表がない"
   load_vocab_index "$root"
   for f in "${files[@]}"; do
     check_refinement "$f" "$root" || rc=1
@@ -621,7 +621,7 @@ selftest() {
   expect_pass() {
     local name=$1
     shift
-    if out=$(bash "$SELF" "$@" 2>&1); then ok; else ng "$name: 通るはずが落ちた: $out"; fi
+    if out=$(bash "$SELF" "$@" 2>&1); then ok; else ng "$name: 通るはずが失敗した: $out"; fi
   }
   expect_fail() {
     local name=$1 rule=$2
@@ -635,7 +635,7 @@ selftest() {
       return
     fi
     if ! grep -qF -- ": $rule: " <<<"$out"; then
-      ng "$name: 規則 $rule の行が無い: $out"
+      ng "$name: 規則 $rule の行がない: $out"
       return
     fi
     ok
@@ -659,9 +659,9 @@ selftest() {
   expect_fail "存在しない状態への参照" 参照 --root "$R" "$FIXTURES/bad-undefined-state.json"
   expect_fail "終端から出る事象" 終端 --root "$R" "$FIXTURES/bad-terminal-out.json"
   expect_fail "到達できない状態" 到達 --root "$R" "$FIXTURES/bad-unreachable.json"
-  expect_fail "出口の無い非終端" 出口 --root "$R" "$FIXTURES/bad-no-exit.json"
+  expect_fail "出口のない非終端" 出口 --root "$R" "$FIXTURES/bad-no-exit.json"
   expect_fail "自己遷移だけの非終端" 出口 --root "$R" "$FIXTURES/bad-self-loop-only.json"
-  expect_fail "見せる担い手の無い person 待ち" 見せる担い手 --root "$R" "$FIXTURES/bad-person-no-shown.json"
+  expect_fail "見せる担い手のない person 待ち" 見せる担い手 --root "$R" "$FIXTURES/bad-person-no-shown.json"
   expect_fail "解決しない skill" 担い手の解決 --root "$R" "$FIXTURES/bad-unresolved-carrier.json"
   expect_fail "解決しない node" 担い手の解決 --root "$R" "$FIXTURES/bad-unresolved-node.json"
   expect_fail "孤立した状態" 孤立 --root "$R" "$FIXTURES/bad-orphan.json"
@@ -672,7 +672,7 @@ selftest() {
   expect_code "未知のオプション" 2 --nope
   expect_code "存在しないファイル" 2 --root "$R" "$T/no-such.json"
 
-  # --- 実物の語彙を壊した版(終端から出る事象を足す、担い手の typo)
+  # --- 実物の語彙を壊した版(終端から出る事象を追加する、担い手の typo)
   local real_mail="$SELF_ROOT/config/agents/mail-lifecycle/vocabulary.json"
   jq '.events += [{"id":"zombie","from":["closed"],"to":["awaiting"],"by":"agent"}]' "$real_mail" >"$T/mail-broken-terminal.json"
   expect_fail "実物 + 終端から出る事象" 終端 "$T/mail-broken-terminal.json"
@@ -682,17 +682,17 @@ selftest() {
   jq '(.events[] | select(.id == "decide") | .opens) = true' "$real_mail" >"$T/mail-opens-from.json"
   expect_fail "実物 + from が none でない opens" 開く出来事 "$T/mail-opens-from.json"
   jq '.supersede_on_open.event = "no_such_event"' "$real_mail" >"$T/mail-supersede-missing.json"
-  expect_fail "実物 + 無い事象を指す supersede_on_open" 開く出来事 "$T/mail-supersede-missing.json"
+  expect_fail "実物 + ない事象を指す supersede_on_open" 開く出来事 "$T/mail-supersede-missing.json"
   jq '.supersede_on_open.event = "decide"' "$real_mail" >"$T/mail-supersede-nonterminal.json"
   expect_fail "実物 + 遷移先が終端でない supersede_on_open" 開く出来事 "$T/mail-supersede-nonterminal.json"
   jq 'del(.events[].opens)' "$real_mail" >"$T/mail-no-opens.json"
-  expect_fail "実物 + opens の無い supersede_on_open" 開く出来事 "$T/mail-no-opens.json"
-  # 握手の語彙: remote-trip に confirm を持たせると go に至る(reaches を超える)。kinds を外すと種類の規則が落とす
+  expect_fail "実物 + opens のない supersede_on_open" 開く出来事 "$T/mail-no-opens.json"
+  # 握手の語彙: remote-trip に confirm を持たせると go に至る(reaches を超える)。kinds を除外すると種類の規則が失敗させる
   local real_hs="$SELF_ROOT/config/agents/calendar-handshake/vocabulary.json"
   jq '(.events[] | select(.id == "confirm") | .kinds) = ["leave", "remote-trip"]' "$real_hs" >"$T/hs-remote-go.json"
   expect_fail "実物(握手)+ remote-trip が go に至る" 種類 "$T/hs-remote-go.json"
   jq 'del(.events[] | select(.id == "withdraw") | .kinds)' "$real_hs" >"$T/hs-no-kinds.json"
-  expect_fail "実物(握手)+ kinds の無い事象" 種類 "$T/hs-no-kinds.json"
+  expect_fail "実物(握手)+ kinds のない事象" 種類 "$T/hs-no-kinds.json"
 
   # --- skill 側の負例(一時ディレクトリに skills/ を作る)
   local S="$T/skills-root"
@@ -768,11 +768,11 @@ JSON
       $'gate\tdemo.gate\t' $'段階なし\tdemo.none\t' $'名指しなし\tdemo.unnamed\t' $'散文+同梱\tdemo.bundled\t' $'外部\tdemo.ext\t'; do
       grep -qF -- "$want" <<<"$out" || miss+=" [${want//$'\t'/ }]"
     done
-    if [[ -n $miss ]]; then ng "--stages: 期待した段階の行が無い:$miss: $out"; else ok; fi
+    if [[ -n $miss ]]; then ng "--stages: 期待した段階の行がない:$miss: $out"; else ok; fi
   fi
-  # 壊れた語彙があっても落とさない(報告専用)
+  # 壊れた語彙があっても失敗させない(報告専用)
   printf '{"object":"demo","states":[],"events":[{"id":"x"}]}\n' >"$G/config/agents/demo/vocabulary.json"
-  expect_pass "--stages は壊れた語彙で落とさない" --stages --root "$G"
+  expect_pass "--stages は壊れた語彙で失敗させない" --stages --root "$G"
   expect_code "--stages に --all" 2 --stages --all
 
   # --- 具体化の対応表(実物の語彙と対応表を一時ディレクトリに写し、1 か所ずつ壊す)
@@ -811,52 +811,52 @@ JSON
   expect_fail "終端が非終端に写る" 終端 --refinements --root "$Q"
   fresh_ref_root
   break_json "$RDIR/mail-item.json" 'del(.p1.awaiting)'
-  expect_fail "P1 の無い見せた状態" P1 --refinements --root "$Q"
+  expect_fail "P1 のない見せた状態" P1 --refinements --root "$Q"
   fresh_ref_root
   break_json "$RDIR/mail-item.json" '.p1.awaiting.timer = "no_such_timer"'
-  expect_fail "P1 の timer が語彙に無い" P1 --refinements --root "$Q"
+  expect_fail "P1 の timer が語彙にない" P1 --refinements --root "$Q"
   fresh_ref_root
   break_json "$RDIR/mail-item.json" '.p1.awaiting.event = "decide"'
   expect_fail "P1 の事象が machine でない" P1 --refinements --root "$Q"
   fresh_ref_root
   # 気づきの p1 は timer(失効)に改めたので、notification の規則は、再通知の事象 remind を指す p1 に差し替えて確かめる。
   break_json "$RDIR/inbox-finding.json" '.p1.open = {"kind": "notification", "event": "remind", "carrier": "node:not-a-carrier"}'
-  expect_fail "P1 の担い手が事象に無い" P1 --refinements --root "$Q"
+  expect_fail "P1 の担い手が事象にない" P1 --refinements --root "$Q"
   fresh_ref_root
   break_json "$RDIR/plan-requirement.json" '.p1.planned.gate = "node:not-a-gate"'
-  expect_fail "P1 の gate が事象に無い" P1 --refinements --root "$Q"
+  expect_fail "P1 の gate が事象にない" P1 --refinements --root "$Q"
   fresh_ref_root
   break_json "config/agents/mail-lifecycle/vocabulary.json" 'del(.states[0].shown_by)'
-  expect_fail "shown_by の無い見せた状態" P2 --refinements --root "$Q"
+  expect_fail "shown_by のない見せた状態" P2 --refinements --root "$Q"
   fresh_ref_root
   break_json "config/agents/vocabulary/awaiting-item.json" '.events |= map(select(.id != "remind" and .id != "lapse"))'
-  expect_fail "抽象に再通知も失効も無い" P1 --refinements --root "$Q"
+  expect_fail "抽象に再通知も失効もない" P1 --refinements --root "$Q"
   fresh_ref_root
   break_json "$RDIR/mail-item.json" '.concrete = "no-such-object"'
-  expect_fail "具体の語彙が無い" 参照 --refinements --root "$Q"
+  expect_fail "具体の語彙がない" 参照 --refinements --root "$Q"
   fresh_ref_root
   break_json "$RDIR/mail-item.json" '.inputs.decide.event = "no_such_event"'
-  expect_fail "入力の事象が語彙に無い" 入力 --refinements --root "$Q"
+  expect_fail "入力の事象が語彙にない" 入力 --refinements --root "$Q"
   fresh_ref_root
   break_json "$RDIR/mail-item.json" 'del(.inputs.later.note)'
-  expect_fail "null の入力に note が無い" 入力 --refinements --root "$Q"
+  expect_fail "null の入力に note がない" 入力 --refinements --root "$Q"
   fresh_ref_root
   break_json "$RDIR/mail-item.json" '.p1.awaiting.kind = "bogus"'
   expect_fail "p1 の kind が閉語彙でない" schema --refinements --root "$Q"
   # 画面(#1312): 選択肢の表と inputs の双方向の突き合わせ
   fresh_ref_root
   break_json "$SCREEN_OPTIONS_REL" '.kinds.task.options += [{id: "extra", verdict: "defer", label: "x", you: "x", agent: "x"}]'
-  expect_fail "選択肢の verdict が inputs に無い" 画面 --refinements --root "$Q"
+  expect_fail "選択肢の verdict が inputs にない" 画面 --refinements --root "$Q"
   fresh_ref_root
   break_json "$RDIR/mail-item.json" '.inputs.bogus = {event: "decide"}'
-  expect_fail "inputs のキーが選択肢の表に無い" 画面 --refinements --root "$Q"
+  expect_fail "inputs のキーが選択肢の表にない" 画面 --refinements --root "$Q"
   fresh_ref_root
   break_json "$RDIR/mail-item.json" 'del(.inputs.other)'
-  expect_fail "other が inputs に無い" 画面 --refinements --root "$Q"
+  expect_fail "other が inputs にない" 画面 --refinements --root "$Q"
   fresh_ref_root
   rm -f "${Q:?}/$SCREEN_OPTIONS_REL"
-  expect_fail "選択肢の表が無い" 画面 --refinements --root "$Q"
-  expect_code "対応表の指定が無い" 2 --refinements --root "$T/root"
+  expect_fail "選択肢の表がない" 画面 --refinements --root "$Q"
+  expect_code "対応表の指定がない" 2 --refinements --root "$T/root"
   expect_code "--refinements に --all" 2 --refinements --all
 
   printf 'vocab-graph-check --selftest: %d 件通った、%d 件失敗\n' "$pass" "$fail"
@@ -876,8 +876,8 @@ while (($# > 0)); do
       exit 0
       ;;
     --root)
-      (($# >= 2)) || die_usage "--root にはディレクトリが要る"
-      [[ -d $2 ]] || die_usage "--root のディレクトリが無い: $2"
+      (($# >= 2)) || die_usage "--root にはディレクトリが必要"
+      [[ -d $2 ]] || die_usage "--root のディレクトリがない: $2"
       ROOT=$(cd "$2" && pwd)
       shift 2
       ;;
@@ -903,7 +903,7 @@ while (($# > 0)); do
       ;;
     --*) die_usage "未知のオプション: $1" ;;
     *)
-      [[ -f $1 ]] || die_usage "ファイルが無い: $1"
+      [[ -f $1 ]] || die_usage "ファイルがない: $1"
       FILES+=("$1")
       shift
       ;;
@@ -929,7 +929,7 @@ case $MODE in
       mapfile -t found < <(discover_vocabs "$ROOT")
       ((${#found[@]} == 0)) || FILES+=("${found[@]}")
     fi
-    ((${#FILES[@]} > 0)) || die_usage "検査する語彙が無い"
+    ((${#FILES[@]} > 0)) || die_usage "検査する語彙がない"
     check_vocabs "$ROOT" "${FILES[@]}"
     ;;
 esac
