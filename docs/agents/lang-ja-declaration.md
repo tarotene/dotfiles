@@ -1,4 +1,4 @@
-# lang-ja-declaration — 日本語が正本のリポジトリを、宣言 1 つで CJK 検査から外す
+# lang-ja-declaration — 日本語が正本のリポジトリを、宣言 1 つで CJK 検査から除外する
 
 設計判断の記録: `docs/adr/805-lang-ja-declaration.md`
 宣言: リポジトリのトピック `lang-ja`
@@ -9,8 +9,7 @@
 
 README と CONTRIBUTING は英語の原文 1 本(ADR-0016 Decision 4)で、CJK が 5 文字以上あるだけで
 `readme-cjk-present` / `contributing-cjk-present` の drift になる(ADR-0017 Decision 3)。読者が日本語話者に
-限られるリポジトリでは、この前提が成り立たない。そこで、正本言語が日本語であることを宣言し、CJK の検査
-だけを外す。
+限られるリポジトリではこの前提が成り立たないため、正本言語が日本語であることを宣言し、CJK 検査だけを除外する。
 
 ## 宣言があると何が変わるか
 
@@ -22,8 +21,8 @@ README と CONTRIBUTING は英語の原文 1 本(ADR-0016 Decision 4)で、CJK �
 
 ## 宣言が嘘になったことを検出する(`lang-ja-stale`)
 
-宣言があるのに README に日本語がほとんど無いとき、charters ドメインが報告する。英語に書き直したら
-トピックを外す。
+宣言があるのに README に日本語がほとんどないとき、charters ドメインが報告する。英語に書き直したら
+トピックを削除する。
 
 ## 宣言の付け方
 

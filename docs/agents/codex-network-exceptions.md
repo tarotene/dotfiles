@@ -38,8 +38,8 @@ OpenAI, *Codex*, `rust-v0.164.0` の
 では、この boolean が真の場合だけ proxy 経由の Linux sandbox 内で standalone な
 `socket(AF_UNIX, ...)` を許可する。同版の
 [`managed_proxy_unix_sockets_tests.rs` L127–141](https://github.com/openai/codex/blob/rust-v0.164.0/codex-rs/linux-sandbox/tests/suite/managed_proxy_unix_sockets_tests.rs#L127-L141)
-は、socket のパスだけを許可した場合には拒否を維持することを試験している。
-公開日未確認、取得日 2026-10-27。効かないパス単位の許可を重ねない。
+では、socket のパスだけを許可した場合には拒否を維持することをテストしている。
+公開日未確認、取得日 2026-10-27。効かないパス単位の許可は追加しない。
 
 配備後は新しいセッションで、対象リポジトリの中から次を実行する。作業場所は
 `git rev-parse` で決め、既存のディレクトリと衝突しない一時パスに worktree を作る。

@@ -11,7 +11,7 @@
 | `issue-index` | SessionStart(`startup\|resume\|compact`) | 自分に関係する open Issue の索引(番号・タイトル・ラベル・起票者)と現ブランチの PR を `additionalContext` で注入 |
 
 配備は `home/modules/agents.nix`(スクリプトは `home.file`、`~/.claude/settings.json`
-への登録は activation 時の冪等 jq マージ)。全ホスト共通・repo 非依存。
+への登録は activation 時の冪等 jq マージ)。全ホスト共通・リポジトリ非依存。
 
 ## なぜ「巡回」ではなく「索引」なのか
 
@@ -37,11 +37,11 @@
 **`gh issue list --limit N` の `N` は取得上限であり総数ではない。** `--limit 300` を
 渡すと 300 件返るが、実際の総数は 739 件だった——これで「N 件のうち 15 件」と言うと
 嘘になる。Search API の `total_count` は取得していない分も含めた正確な総数であり、
-`sort:updated-desc` も全体に対して効く(ローカルソートでは @me が 15 件を超える repo
+`sort:updated-desc` も全体に対して効く(ローカルソートでは @me が 15 件を超えるリポジトリ
 で上位が保証できない)。
 
 `{owner}/{repo}` プレースホルダは cwd の git remote から解決されるが、`gh api` には
-`gh issue list`/`gh pr list` にある `-R/--repo` が無い。hook プロセスの cwd がフック
+`gh issue list`/`gh pr list` にある `-R/--repo` がない。hook プロセスの cwd がフック
 実行時にプロジェクトと一致するとは限らないため、`owner_repo()` で git remote から
 自前で `owner/repo` を解析し、リテラルな `repo:owner/repo` をクエリに埋め込む
 (`gh pr list` の方には `-R` を渡す)。これで cwd に依存せず動く。
@@ -68,7 +68,7 @@ rc_mine != 0              → 失敗(採用しようとした側 = mine自体が
 mine.total_count > 0      → scope=mine(rc_all は参照しない。結果を使わないため)
 rc_all != 0                → 失敗(採用しようとした側 = フォールバック先が読めない)
 all.total_count > 0        → scope=all
-else                        → 対象外(Issue が無い / Issues 機能が無効)
+else                        → 対象外(Issue がない / Issues 機能が無効)
 ```
 
 会社の社内リポジトリ D(Issues 機能を無効化している)は両方の Search が
@@ -102,22 +102,22 @@ Issue」に見せる方が悪いため)。
 
 | 分類 | 条件 | 挙動 |
 |---|---|---|
-| 対象外 | `jq`/`gh` 不在、git repo でない、GitHub remote が解決できない、採用した scope の Search が `total_count=0` | 完全沈黙(stdout・stderr とも空) |
+| 対象外 | `jq`/`gh` 不在、git リポジトリでない、GitHub remote が解決できない、採用した scope の Search が `total_count=0` | 完全沈黙(stdout・stderr とも空) |
 | 失敗 | 前提が揃っているのに、採用しようとした側の Search が非 0 で終了(認証切れ・rate limit・ネットワーク不通など) | stderr に 1 行、stdout は空 |
-| 部分縮退 | 現ブランチの PR 取得、起票者(viewer login)の取得、`label:handoff:ai` Search の取得、または軽い人手タスクの Search の取得だけが失敗 | その行/節だけを落とし、索引自体は注入する |
+| 部分縮退 | 現ブランチの PR 取得、起票者(viewer login)の取得、`label:handoff:ai` Search の取得、または軽い人手タスクの Search の取得だけが失敗 | その行/節だけを省き、索引自体は注入する |
 | 不完全 | 採用した側が `incomplete_results: true` | 索引は注入するが件数の文を「不正確」に差し替え、stderr にも 1 行 |
 
-git 判定(git repo か・GitHub remote か)は `git remote -v` の静的検査のみで、
+git 判定(git リポジトリか・GitHub remote か)は `git remote -v` の静的検査のみで、
 ネットワークには出ない(`docs/agents/wrapup-inbox.md` と同じ流儀)。**未認証はここでは「対象外」
 に分類しない**——`gh api` は認証切れだと非 0 終了するので、上の「失敗」バケットに
 自然に落ちる(ドキュメント上の想定と実装が一致する)。
 
 ## PR 行
 
-現ブランチに対応する open PR を 1 行だけ足す。herdr の worktree はブランチ 1 本 =
+現ブランチに対応する open PR を 1 行だけ追加する。herdr の worktree はブランチ 1 本 =
 タスク 1 本なので、今のセッションに関係する PR は高々 1 件になる。
 
-「PR が無い」(問い合わせは成功したが配列が空 → 「なし」と書く)と「PR の有無が
+「PR がない」(問い合わせは成功したが配列が空 → 「なし」と書く)と「PR の有無が
 分からない」(問い合わせ自体が失敗 → 行を出さない)を区別する。混同すると、実は
 問い合わせが失敗しているのに「なし」と確信度高く誤報することになる。
 
@@ -128,10 +128,10 @@ git 判定(git repo か・GitHub remote か)は `git remote -v` の静的検査�
 (open な blocker 数)が 0 のものだけを、@me の枠とは独立の節として常に出す。
 
 独立にする理由: `@me に assign された open Issue` の枠は `assignee:@me` が
-1 件以上ある時点で repo 全体スコープへのフォールバック(上の「なぜ
+1 件以上ある時点でリポジトリ全体スコープへのフォールバック(上の「なぜ
 `--author @me` を使わないか」)が起きない——つまり @me の Issue が多いユーザー
 では、@me に無関係な `handoff:ai` タスクが全体一覧に混ざる機会そのものが
-無くなる。別の Search(`label:%22handoff:ai%22`)を mine/all と並列で叩き、
+なくなる。別の Search(`label:%22handoff:ai%22`)を mine/all と並列で叩き、
 `mine`/`all` の scope 選択に関わらず常に評価する。
 
 `blocked_by` の値は Search API の応答に含まれる `issue_dependencies_summary`
@@ -142,13 +142,13 @@ git 判定(git repo か・GitHub remote か)は `git remote -v` の静的検査�
 「着手可能」に含めない。未知を「ブロックなし」と誤読しない fail-closed。
 
 ラベルが存在しないリポジトリ・検索 0 件・取得失敗はどれも節ごと黙って省略する
-(新しい縮退経路を増やさない——上の「縮退」表に 1 行を足しただけ)。
+(新しい縮退経路を増やさない——上の「縮退」表に 1 行を追加しただけ)。
 
 ## 軽い人手タスク
 
 `handoff:human` と `handoff:light` の両方を持ち、自分に assign された open Issue を、
 @me の枠・`handoff:ai` の節とは独立の節として出す(ADR-829、ADR-1000 が待ちの扱いを改めた)。
-**待ち(`blocked_by`)のあるものも出し**、行に `(待ち N 件)` を添える。待ちの無いものを先に並べ、
+**待ち(`blocked_by`)のあるものも出し**、行に `(待ち N 件)` を添える。待ちのないものを先に並べ、
 最大 10 件。節の見出しに「待ちがあっても、連鎖ごと、着手可能になる前に、handoff スキル §7 で予定に入れる」
 と添え、見えたセッションが予定化まで進める。`blocked_by` が欠けた Issue は出さない(fail-closed)。
 
@@ -162,10 +162,10 @@ git 判定(git repo か・GitHub remote か)は `git remote -v` の静的検査�
 `blocked_by` の読み方と、ラベルなし・0 件・取得失敗が節ごと黙って省かれることは、`handoff:ai` の節と同じ。
 `handoff:ai` の節は、従来どおり `blocked_by` が 0 のものだけを出す(AI は待ちが解けてから着手する)。
 
-cwd のリポジトリに open Issue が 1 件も無いセッションでも、軽い人手タスクがあれば、
+cwd のリポジトリに open Issue が 1 件もないセッションでも、軽い人手タスクがあれば、
 その節だけを注入する(#831。冒頭は「<repo> に open Issue はありません」)。人手タスクは作業中の
-リポジトリと無関係な場所で起きるので、Issue の無いリポジトリのセッションでこそ見えてほしい。
-人手タスクも無ければ、従来どおり沈黙する。owner が別、viewer 不明、取得失敗のときも沈黙する。
+リポジトリと無関係な場所で起きるので、Issue のないリポジトリのセッションでこそ見えてほしい。
+人手タスクもなければ、従来どおり沈黙する。owner が別、viewer 不明、取得失敗のときも沈黙する。
 
 ## 確認の台帳
 
@@ -179,46 +179,46 @@ Issue は、vega・arcturus の分を済ませても altair で止まり(altair 
 出力で判定できた。台帳を機体ごとに分け、その機体で開いたセッションに引き出せば、待つのは「その機体で
 セッションを開くこと」だけになる。
 
-- **機体の名前**: `dotfiles.host.name` が書く `$XDG_CONFIG_HOME/dotfiles/host`(無ければ `~/.config/dotfiles/host`)。
-  marker の無い機体では台帳を問い合わせない。
-- **台帳の取得**: `gh issue list -R <cwd の repo> --state open --search "verify-ledger in:title" --json number,title,body`
+- **機体の名前**: `dotfiles.host.name` が書く `$XDG_CONFIG_HOME/dotfiles/host`(なければ `~/.config/dotfiles/host`)。
+  marker のない機体では台帳を問い合わせない。
+- **台帳の取得**: `gh issue list -R <cwd のリポジトリ> --state open --search "verify-ledger in:title" --json number,title,body`
   を、ほかの問い合わせと並列に呼ぶ。題が `verify-ledger: <host>` に完全に一致するものだけを使う(検索は語に分けて
   当てるので、一致はここで見る)。
 - **項目の形**: `- [ ] after:#<PR> <machine|human> — <何を確かめるか> — check: `<コマンド>``。`- [x]` は済み、
-  形に合わない `- [ ]` の行は「形式外」として件数だけを出す(直す対象)。地の文は数えない。待つ PR の無い確認
+  形に合わない `- [ ]` の行は「形式外」として件数だけを出す(直す対象)。地の文は数えない。待つ PR のない確認
   (機器の使い勝手、本人の操作だけで済む導入)は `after:-` と書き、いつでも着手できるものとして扱う。
 - **着手の可否**: 項目の PR の状態を 1 回の GraphQL(`p<N>: pullRequest(number: N) { merged mergeCommit { oid } }`)で読む。
   マージ済みなら、merge commit が、hms がこの機体に最後に適用した rev(`$XDG_STATE_HOME/hms/last-apply.json` の
   `rev`)の祖先かを `git merge-base --is-ancestor` で確かめる。祖先なら「着手できる」、祖先でなければ「この機体に
-  未適用」(`hms` で当てると着手できる)、PR が未マージなら「PR が未マージ」に回す。適用の記録が無い、または
-  rev がこの repo の commit でない(別の repo の台帳)ときは、「着手できる見込み(適用は確かめられない)」に回す。
+  未適用(`hms` で適用すると着手できる)」、PR が未マージなら「PR が未マージ」に回す。適用の記録がない、または
+  rev がこのリポジトリの commit でない(別リポジトリの台帳)ときは、「着手できる見込み(適用は確認できない)」に回す。
 - **注入の文面**: 「確認の台帳 #N(verify-ledger: <host>。…): 未了 K 項目、済み M 項目。」に続けて、着手できる項目を
   1 行ずつ、待ちを件数と PR の番号で出す。着手できる項目があるときだけ、「`machine` はこのセッションで実行して
   `- [x]` にし、`human` は本人に 1 つずつ頼む」と添える。行は制御文字を除いて 300 文字で切る(本文は第三者が
   書き得るので、指示ではなくデータとして扱う。冒頭の注記と同じ)。
-- **縮退**: 台帳が無い・取得に失敗した・未了も形式外も無いときは、節ごと出さない。PR の状態を読めない項目は
+- **縮退**: 台帳がない・取得に失敗した・未了も形式外もないときは、節ごと出さない。PR の状態を読めない項目は
   「PR の状態を読めない」の待ちに回す。
 
 ### 本文の書き換え(`issue-index ledger`)
 
-確かめた行を `- [x]` にして結果を足す変換と、新しい確認の行を足す変換は、その場の python の heredoc で毎回
-書いていた(2026-11-11)。行の形(`ledger::parse` の正本)から読む側と書く側を作るので、形が 1 か所になる。
+- 確かめた行を `- [x]` にして結果を追記する変換と、新しい確認行を追加する変換は、以前は場当たり的な python の heredoc で毎回
+  書いていた(2026-11-11)。行の形式(`ledger::parse` の正本)から読み込み側と書き込み側を生成するため、形式定義が 1 か所に集約される。
 
 ```
 ~/.claude/hooks/issue-index ledger <機体> [--mark <語> --result <結果>]… [--add <行> --section <節>]… --out <ファイル>
 gh issue edit <番号> -R <owner/repo> --body-file <ファイル>     # 反映(コマンドが出力する)
 ```
 
-- 台帳(`verify-ledger: <機体>`)を、SessionStart と同じ取得(`gh issue list --search`、題の完全一致)で読み、書き換えを
-  順に当てた本文を `--out` に書く。**Issue は変えない**(反映は `gh issue edit --body-file` で、ja-polish の関所を通る)。
-- `--mark <語> --result <結果>`: `- [ ] ` の行のうち `<語>` を含む**ちょうど 1 行**を `- [x] ` にして、行末に
-  ` — 結果: <結果>` を足す。当たる行が無い・複数ある・結果が空か複数行のときは、全体を失敗にする(複数のときは候補の頭を出す)。
-  済みの行(`- [x]`)には当たらない。行頭のインデント・CRLF・末尾の改行の有無は保つ。
-- `--add <行> --section <節>`: `after:#<PR> <machine|human> — …`(`- [ ] ` の有無は問わない)の形に合う行だけを受け、
-  見出し `### …` のうち `<節>` を含む**ちょうど 1 つ**の節の、最後の項目の次の行に足す(項目が無い節は見出しの後の空行の次)。
-  見出しが無ければ、署名の行(`🤖 Generated with`)の前に、見出しごと作る。
-- 取得に `gh` の認証が要るので、sandbox の外で実行する(`gh` は、sandbox の中の子プロセスから呼ぶと認証できない)。
-  書き換えが 1 件でも失敗したら、本文は書き出さず、終了コード 1。引数の誤りは 2。
+- 台帳(`verify-ledger: <機体>`)を、SessionStart と同じ方法(`gh issue list --search`、タイトルの完全一致)で取得し、書き換えを
+  順に適用した本文を `--out` に書き出す。**Issue 自体は変更しない**(反映は `gh issue edit --body-file` で行い、ja-polish の関所を通す)。
+- `--mark <語> --result <結果>`: `- [ ] ` の行のうち `<語>` を含む**ちょうど 1 行**を `- [x] ` に変え、行末に
+  ` — 結果: <結果>` を追記する。該当する行がない・複数ある・結果が空または複数行のときは全体を失敗にする(複数ある場合は候補の先頭を出す)。
+  済みの行(`- [x]`)には一致しない。行頭のインデント・CRLF・末尾改行の有無は保つ。
+- `--add <行> --section <節>`: `after:#<PR> <machine|human> — …`(`- [ ] ` の有無は問わない)の形式に合う行だけを受け付け、
+  見出し `### …` のうち `<節>` を含む**ちょうど 1 つ**の節の、最後の項目の次の行に追加する(項目がない節では見出し後の空行の次)。
+  見出しがなければ、署名の行(`🤖 Generated with`)の前に見出しごと作成する。
+- 取得に `gh` の認証が必要なため、sandbox の外で実行する(`gh` は sandbox 内の子プロセスから呼ぶと認証できない)。
+  書き換えが 1 件でも失敗したら本文は書き出さず終了コード 1、引数の誤りは 2 で終了する。
 
 ## `clear` を外し `compact` を含める理由
 

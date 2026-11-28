@@ -1,4 +1,4 @@
-# impeccable — 画面のデザインの手順と検出器を、版を固定して配る第三者スキル
+# impeccable — 画面デザインの手順と検出器を、版を固定して配布する第三者スキル
 
 実装: `flake.nix`(入力 `impeccable`)、`home/modules/agents.nix`(スキルの配備、検出エンジンの固定、`impeccable` コマンド)、`home/tests/agent-skills.nix`(配布範囲の検査)
 決定: `docs/adr/1719-impeccable-pinned-skill.md`
@@ -11,15 +11,12 @@
 |---|---|---|
 | スキル(Claude Code) | `~/.claude/skills/impeccable` | `SKILL.md` + `reference/` + `scripts/`(ランチャー)。`/impeccable <command>` で呼ぶ |
 | スキル(Codex・Copilot) | `~/.agents/skills/impeccable` | 同じ内容の共有版(`$impeccable <command>`) |
-| 検出エンジン | `impeccable` コマンド(PATH) | 固定した版の静的バイナリ。環境変数でテレメトリ・更新確認・Pro を止める薄い wrapper |
+| 検出エンジン | `impeccable` コマンド(PATH) | 固定した版の静的バイナリ。環境変数でテレメトリ・更新確認・Pro を止める薄いラッパー |
 
-スキルは、24 のコマンド(`shape`・`critique`・`audit`・`polish`・`typeset`・`layout` など)を持つ 1 本。検出エンジンは、LLM を使わない 62 のルール
-(`impeccable detect --list-rules`)で、「AI の癖」(`side-tab`・`gradient-text`・`nested-cards` など)と、描画の品質(`low-contrast`・`tiny-text`・`text-overflow` など)を見る。
+スキルは 24 のコマンド(`shape`・`critique`・`audit`・`polish`・`typeset`・`layout` など)を持つ 1 本である。検出エンジンは LLM を使わない 62 のルール(`impeccable detect --list-rules`)で、「AI の癖」(`side-tab`・`gradient-text`・`nested-cards` など)と描画の品質(`low-contrast`・`tiny-text`・`text-overflow` など)を検査する。
 
-スキルは `config/agents/skills/` の外から、flake の入力(rev 固定)で配る。`my-` で始まらない自作スキルを `/` の一覧から隠す書き換え
-(`docs/agents/tooling-conventions.md`)は、第三者のスキルには掛けない。`/impeccable` で呼べることがこのスキルの価値だからである。
-`checks.<system>.agent-skills` が、配布先の集合に `impeccable` が名指しで入っていること、`user-invocable` が上流のままであること、
-ランチャーが実行できること、hook の置き場が無いことを検査する。
+スキルは `config/agents/skills/` の外から flake の入力(rev 固定)で配布する。`my-` で始まらない自作スキルを `/` の一覧から隠す書き換え(`docs/agents/tooling-conventions.md`)は、第三者のスキルには適用しない。`/impeccable` で呼べることがこのスキルの価値だからである。
+`checks.<system>.agent-skills` が、配布先の集合に `impeccable` が名指しで入っていること、`user-invocable` が上流のままであること、ランチャーが実行できること、hook の配置先がないことを検査する。
 
 ## 入れないもの
 
@@ -31,7 +28,7 @@
 - **plugin**(`/plugin marketplace add pbakaus/impeccable`)。管理外の手動の状態になる(ADR-0009 D2)。
 - **サインイン**(`impeccable login`)。サインインすると、`DESIGN.md` の本文と評価の報告が、リポジトリ名つきでアカウントに送られる。実行しない。
 
-サブエージェント(`.claude/agents/impeccable-*`)も配らない。スキルの `reference/degraded/` が、サブエージェントが無いときの手順を持つ。
+サブエージェント(`.claude/agents/impeccable-*`)も配らない。スキルの `reference/degraded/` が、サブエージェントがないときの手順を持つ。
 
 残る通信: 新しいデザインを始めるとき、上流のカタログ(impeccable.style)へ取得のリクエストが出る。上流の README は、テレメトリを切っても止まらないと記す。
 静的な走査(`impeccable detect <ファイル>`)は、`strace` で `connect` が 0 件だった(2026-11-26、`scripts/impeccable` 経由)。
@@ -49,16 +46,15 @@
 
 ## 更新の手順(版を上げる)
 
-スキルの rev と、エンジンの固定は、同じ版に揃える。揃っていないと、評価時に落ちる(`home/modules/agents.nix` の `assert`)。
+スキルの rev とエンジンの固定は同じ版に揃える。揃っていないと評価時に失敗する(`home/modules/agents.nix` の `assert`)。
 
 1. `flake.nix` の `impeccable` の rev を、上げたいタグ(`skill-v<版>`)の commit にする。`nix flake lock --update-input impeccable`。
-2. `home/modules/agents.nix` の `impeccableEngineVersion` を、新しい `<スキル>/scripts/VERSION` に合わせ、`impeccableEngineAssets` の 4 つの sha256 を、
-   上流の `engine-checksums.txt`(同じ rev の `.claude/skills/impeccable/scripts/engine-checksums.txt`)の値に直す。
-3. `nix build .#checks.x86_64-linux.agent-skills` が通ること。`impeccable detect --list-rules` が通ること。
+2. `home/modules/agents.nix` の `impeccableEngineVersion` を新しい `<スキル>/scripts/VERSION` に合わせ、`impeccableEngineAssets` の 4 つの sha256 を上流の `engine-checksums.txt`(同じ rev の `.claude/skills/impeccable/scripts/engine-checksums.txt`)の値に修正する。
+3. `nix build .#checks.x86_64-linux.agent-skills` が通ることと、`impeccable detect --list-rules` が通ることを確認する。
 
 Renovate は、rev を直接書いた URL の入力を上げる PR を作らないことがある(推測。確かめていない)。上の手順が正本である。
 
 ## 反映と元に戻す
 
-`hms .` で反映する。反映前に、同じ場所に管理外の `impeccable` が無いこと(`~/.claude/skills/impeccable`・`~/.agents/skills/impeccable`)を確かめる(2026-11-26 に、この機体で無いことを確かめた)。
+`hms .` で反映する。反映前に、同じ場所に管理外の `impeccable` がないこと(`~/.claude/skills/impeccable`・`~/.agents/skills/impeccable`)を確かめる(2026-11-26 に、この機体でないことを確かめた)。
 外すときは、`flake.nix` の入力、`home/modules/agents.nix` の 4 つの定義(let の束縛と 3 つの `home.file`/`home.packages`)、`home/tests/agent-skills.nix` の `thirdParty` を消す。

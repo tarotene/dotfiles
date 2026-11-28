@@ -9,8 +9,8 @@
 | 部品 | イベント | 役割 |
 |------|----------|------|
 | `esa-mirror-context` | SessionStart(`startup\|resume\|compact`) | ミラーの所在・検索手順・引用形式・最終ダンプ日を `additionalContext` で注入 |
-| `home/modules/esa-mirror-context.nix` | — | `dotfiles.esaIndex.{mirrorPath,orgs}` の口。設定された時だけ `~/.config/esa-mirror-context/config.json` を描画 |
-| `home/modules/checkout-freshness.nix` | — | `dotfiles.checkoutFreshness.extraPaths` の口。ミラーの clone を鮮度タイマーの対象に足す |
+| `home/modules/esa-mirror-context.nix` | — | `dotfiles.esaIndex.{mirrorPath,orgs}` の入口。設定されたときだけ `~/.config/esa-mirror-context/config.json` を生成 |
+| `home/modules/checkout-freshness.nix` | — | `dotfiles.checkoutFreshness.extraPaths` の入口。ミラーの clone を鮮度タイマーの対象に追加 |
 
 ## 「社内限定」の実現
 
@@ -18,7 +18,7 @@
 規則・スキーマは public、実例化した値は private)。値は private wrapper flake が
 `dotfiles.esaIndex.mirrorPath` / `orgs` と `dotfiles.checkoutFreshness.extraPaths` に
 注入する。値を注入していないホスト(個人ホスト、wrapper 未適用のホスト)では設定ファイルが
-無く、hook は無音で終わる。
+なく、hook は無音で終わる。
 
 ## 発火条件(両方が必要)
 
@@ -44,7 +44,7 @@ hook は fetch しない(起動 50 ms 未満の予算)。ミラーの clone は 
 タイマー(10 分間隔、`docs/agents/git-checkout-sync.md`)が default branch へ
 fast-forward する。hook は `git log -1 --format='%cs %ct'` で最終コミットの日付と経過日数を
 報告するだけ。これは**ダンプのコミット時刻**であり pull の健全性ではない。タイマーが止まって
-いても「古い」と報告されるだけで、「esa に更新が無かった」との区別はつかない。経過日数が
+いても「古い」と報告されるだけで、「esa に更新がなかった」との区別はつかない。経過日数が
 想定より大きいときは `journalctl --user -u git-checkout-sync` を見る。
 
 ## 縮退
@@ -53,9 +53,9 @@ fast-forward する。hook は `git log -1 --format='%cs %ct'` で最終コミ�
 
 | 分類 | 条件 | 挙動 |
 |---|---|---|
-| 対象外 | 設定ファイルなし・不正・どちらかの値が空、git repo でない、origin なし、owner が org に無い | 完全沈黙 |
+| 対象外 | 設定ファイルなし・不正・どちらかの値が空、git リポジトリでない、origin なし、owner が org にない | 完全沈黙 |
 | 失敗 | 設定はあるが `mirror_path` が存在しない | stderr に 1 行、stdout は空(無音だと壊れた設定を隠す) |
-| 部分縮退 | ミラーが git repo でない、`git log` が失敗 | `Last dump: unknown` として注入は続ける |
+| 部分縮退 | ミラーが git リポジトリでない、`git log` が失敗 | `Last dump: unknown` として注入は続ける |
 
 ## 昇格の余地
 

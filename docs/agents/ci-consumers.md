@@ -1,12 +1,8 @@
-# ci-consumers — 編集するパスを入力にしている CI の検査を、編集の前に引く
+# ci-consumers — 編集するパスを入力とする CI の検査を編集前に確認する
 
 ## なぜ必要か
 
-PR #872 で、`close-linked-issues.yml` に pipeline-node のコメントを 1 行足したところ、その配布元
-テンプレートとのバイト一致を要求する CI の step(`ci.yml` の `close-linked-issues template is in sync`、
-`Escape-hatch dry-run` job)が落ちた。ファイルを一括編集する前に、**そのファイルを入力にする CI の検査を
-探していなかった**。落ちた後に直すと、積み重ねた PR(stacked PR)では、全段の rebase と force-push の
-やり直しになる。
+PR #872 で `close-linked-issues.yml` に `pipeline-node` のコメントを 1 行追加したところ、その配布元テンプレートとのバイト一致を要求する CI の step(`ci.yml` の `close-linked-issues template is in sync`、`Escape-hatch dry-run` job)が失敗した。ファイルを一括編集する前に、**そのファイルを入力とする CI の検査を調べていなかった**ためである。失敗した後に修正すると、stacked PR では全段の rebase と force-push のやり直しになる。
 
 ## 何をするか
 
@@ -14,17 +10,16 @@ PR #872 で、`close-linked-issues.yml` に pipeline-node のコメントを 1 �
 scripts/ci-consumers <編集するパス>...
 ```
 
-引数のパスを読む箇所を、CI に効く場所だけから、`file:line` と直近の step 名つきで列挙する。
+引数のパスを参照している箇所を CI に関わるファイルから検索し、`file:line` と直近の step 名付きで列挙する。
 
 | 探す場所 | 拾うもの |
 |---|---|
-| `.github/workflows/*.yml` | workflow の step(`run:` の中のパスも) |
-| `.github/actions/*/action.yml` | composite action(`BUILD_INPUTS` などの宣言も) |
-| `scripts/*` | workflow が呼ぶスクリプトと、その selftest |
-| `crates/*/tests/**/*.rs\|sh\|toml` | `cargo test` が読むファイル(fixture の JSON は除く) |
+| `.github/workflows/*.yml` | workflow の step(`run:` の中のパスも対象) |
+| `.github/actions/*/action.yml` | composite action(`BUILD_INPUTS` などの宣言も対象) |
+| `scripts/*` | workflow が呼ぶスクリプトとその selftest |
+| `crates/*/tests/**/*.rs\|sh\|toml` | `cargo test` が読み込むファイル(fixture の JSON は除く) |
 
-一致は、パスの文字列そのもの(先頭の `./` は落とす)の固定文字列検索。ディレクトリは末尾の `/` を補い、
-配下を指す参照も拾う。引数のパス自身のファイルと、この script 自身は除く。消費者が 1 つも無ければ終了コード 1。
+一致判定はパス文字列そのもの(先頭の `./` は除く)の固定文字列検索で行う。ディレクトリ指定時は末尾の `/` を補い、配下を指す参照も拾う。引数自身のファイルとこのスクリプト自身は除外する。参照元が 1 つもなければ終了コード 1 を返す。
 
 ```console
 $ scripts/ci-consumers .github/workflows/close-linked-issues.yml
@@ -33,49 +28,28 @@ $ scripts/ci-consumers .github/workflows/close-linked-issues.yml
 .github/workflows/ci.yml:249  [step: close-linked-issues template is in sync]  <(grep -v '^# pipeline-node:' .github/workflows/close-linked-issues.yml)
 ```
 
-出た step は、手元で同じ入力で走らせる。結果は PR 本文の「検証」に書く(`pr-description` スキル §6a、
-`stacked-pr` スキル §3 の push 前の確認)。
+出力された step は手元で同じ入力を与えて実行し、結果を PR 本文の「検証」に記載する(`pr-description` スキル §6a、`stacked-pr` スキル §3 の push 前の確認)。
 
 ## 限界
 
-- 固定文字列の検索なので、パスを組み立てて(変数・連結・glob)参照する消費者は拾えない。拾えないことと、
-  無いことは別。消費者が 0 件でも、`.github/workflows/ci.yml` の `paths` フィルタや、検査が glob で
-  ディレクトリごと読む場合は、手で確かめる。
-- 拾うのは「そのパスが書かれている」箇所で、「その編集で検査が落ちる」ことまでは判定しない。落ちるかは、
-  出た step を走らせて確かめる。
-- CI に効かない場所(`docs/`、`config/` の中身など)は探さない。
+- 固定文字列検索のため、パスを変数・連結・glob で組み立てて参照する箇所は拾えない。見つからないことと存在しないことは別である。該当 0 件でも、`.github/workflows/ci.yml` の `paths` フィルタや glob でディレクトリごと読み込む検査がないかは手で確かめる。
+- 拾うのは「そのパスが書かれている箇所」であり、「その編集で検査が失敗するか」までは判定しない。失敗するかどうかは該当 step を実際に実行して確かめる。
+- CI に影響しない場所(`docs/`、`config/` の中身など)は探さない。
 
 ## 既存手段と代替
 
-- 既存手段: 自前 — 探索: `scripts/`・`.github/workflows/ci.yml`・`crates/` を `consumers`・`BUILD_INPUTS` で grep した。
-  パスの消費者を引く道具は無く、類例は `ci.yml` の「生成物の同期」の検査(render して `git status` の差分を見る)と、
-  `.github/actions/stack-position/action.yml` の `BUILD_INPUTS` の宣言だけで、どちらも消費者を事前に引くものではない。
-- 対抗馬: Rust の小さな crate(ADR-0024 の既定は新規の hook と CLI に Rust)。この道具は `scripts/` に置くが、
-  `~/.local/bin/ci-consumers` にも配る(下の「どのリポジトリでも呼べる」)ので、配布先で見れば、ADR-0024 の
-  対象の「`~/.local/bin` の CLI」にも当たる。bash に残す理由: 判定は固定文字列の grep と、直前の `- name:`
-  行の読み取りだけで、型で表現不可能にすべき不正な状態が無い(表現不可能性の軸に差が出ない)。
-- 棄却した代替: 手順への追記だけ(本人が選ばなかった)、pre-push hook で同期の検査を走らせる案(1 つの検査の
-  複製で、ほかの step には効かない)、生成化(GitHub Actions が committed な複写を要求するので、バイト一致
-  そのものを表現不可能にはできない)。
+- 既存手段: 自前 — 探索: `scripts/`・`.github/workflows/ci.yml`・`crates/` を `consumers`・`BUILD_INPUTS` で grep した。パスの消費者を検索するツールはなく、類例は `ci.yml` の「生成物の同期」検査(render して `git status` の差分を見る)と `.github/actions/stack-position/action.yml` の `BUILD_INPUTS` 宣言だけだったが、いずれも事前検索用ではなかった。
+- 対抗馬: Rust の小さな crate(ADR-0024 の既定では新規 hook と CLI は Rust)。このツールは `scripts/` に置きつつ `~/.local/bin/ci-consumers` にも配布するため(下の「どのリポジトリでも呼べる」)、配布先で見れば ADR-0024 対象の「`~/.local/bin` の CLI」にも当たる。bash に残す理由: 判定は固定文字列の grep と直前の `- name:` 行の読み取りだけで、型で表現不可能にすべき不正な状態がない(表現不可能性の軸で差が出ない)。
+- 棄却した代替: 手順への追記だけ(本人が選ばなかった)、pre-push hook で同期検査を走らせる案(1 つの検査の複製にしかならず他の step に効かない)、生成化(GitHub Actions がコミット済みのコピーを要求するためバイト一致そのものを表現不可能にはできない)。
 - 軸: 検出のみ。
-- かつての `rust-migration.toml` の監査(`migration-audit`)は、`scripts/` の新しいファイルを、Rust への
-  移植の対象か `[[excluded]]` に理由つきで載せたものかのどちらかに分類させていた(最初の版は、この分類を
-  忘れて CI の `Rust workspace` が落ちた)。移植の完了に伴い、2026-10-24 に撤去した(ADR-0024
-  Amendment 5)。新しい道具の既定が Rust であることは、`docs/rust-migration.md` の「新しい道具の既定」を参照。
+- かつての `rust-migration.toml` の監査(`migration-audit`)は、`scripts/` の新規ファイルを Rust 移植対象か理由付き `[[excluded]]` かのどちらかに分類させていた(初版ではこの分類を忘れて CI の `Rust workspace` が失敗した)。移植完了に伴い 2026-10-24 に撤去した(ADR-0024 Amendment 5)。新規ツールの既定が Rust である点は `docs/rust-migration.md` の「新しい道具の既定」を参照。
 
 ## どのリポジトリでも呼べる
 
-`home/modules/packages.nix` が、この script を `~/.local/bin/ci-consumers` に置く(`adr-number-check`
-と同じ置き方)。script は cwd の git の根(`git rev-parse --show-toplevel`)を見るので、
-`scripts/ci-consumers` を持たないリポジトリの根でも、`ci-consumers <path>...` で呼べる。そのリポジトリの
-`.github/`・`scripts/`・`crates/*/tests/` のうち、あるものだけを探す。
+`home/modules/packages.nix` がこのスクリプトを `~/.local/bin/ci-consumers` に配置する(`adr-number-check` と同じ配置)。スクリプトは cwd の git ルート(`git rev-parse --show-toplevel`)を見るため、`scripts/ci-consumers` を持たないリポジトリのルートでも `ci-consumers <path>...` として呼べる。そのリポジトリの `.github/`・`scripts/`・`crates/*/tests/` のうち、存在するものだけを探す。
 
-置く前は、`pr-description` スキル §6a が指す `scripts/ci-consumers` が無いリポジトリで終了コード 127 になり、
-消費者の確認を手で代替した(別のリポジトリで 4 回記録された)。PATH に無い機体(`hms` 前)のための
-代替は、同スキル §6a の `git grep -n -F -- '<path>' -- .github/`。
+配置前は `pr-description` スキル §6a が指す `scripts/ci-consumers` がないリポジトリで終了コード 127 になり、参照元の確認を手作業で代替していた(別リポジトリで 4 回記録された)。PATH にない機体(`hms` 適用前)向けの代替は、同スキル §6a の `git grep -n -F -- '<path>' -- .github/` である。
 
 ## 登録
 
-- `scripts/ci-consumers --selftest` は `.github/workflows/ci.yml`(`Escape-hatch dry-run` job)が実行する。
-  ネットワーク不使用で、一時のディレクトリに作った fixture で、step 名つきの列挙、消費者なし(終了コード 1)、
-  自己参照の除外、先頭の `./`、ディレクトリの接頭辞、fixture の JSON を拾わないこと、を確かめる。
+- `scripts/ci-consumers --selftest` は `.github/workflows/ci.yml`(`Escape-hatch dry-run` job)が実行する。ネットワーク不使用で、一時ディレクトリに作った fixture を使い、step 名付きの列挙、参照元なし(終了コード 1)、自己参照の除外、先頭 `./` の除去、ディレクトリ接頭辞、fixture JSON の除外を確かめる。

@@ -14,7 +14,7 @@ ADR-1136 の段2、ADR-697 の Amendment)。出口(inbox → `/my-cleanup` で�
 
 ## 流れ
 
-1. PR を作成する(gh-edit-allow の台帳に `pr ` 行が積まれる。Codex は台帳が無いので現ブランチの
+1. PR を作成する(gh-edit-allow の台帳に `pr ` 行が積まれる。Codex は台帳がないため現ブランチの
    PR のうちセッション開始後に作られたもの)。または、その場で書いたコードの痕跡がしきい値を超える。
 2. 次の Stop で `kind="retro"` のポインタが出る。モデルは
    `session-retrospective --retro-procedure <session_id>` を実行して手順書を読む。
@@ -46,12 +46,12 @@ user-correction は feedback(ユーザーが方針・結果を直した発言)�
 `issue:#<N>` と書くか、プロジェクト固有・機微な内容なら `none:<理由>` と書く。
 
 `issue:#<N>` で記録したときは、vault を宣言した機体に限り、同じ行を状態 `issued`(`issue` 欄は
-`https://github.com/<このプロジェクトの repo>/issues/<N>`)のノートとしても残す(`issue_inbox::add_issued`)。
+`https://github.com/<このプロジェクトのリポジトリ>/issues/<N>`)のノートとしても残す(`issue_inbox::add_issued`)。
 `signal`・`mechanism`・`existing` がノートに載り、日次の `promotion-detect` の、兆候ごとの採用・却下の集計
 (ADR-1276 D6。`issued` は採用と数える)に入る。指摘は「最も効く手段」の根拠になる行なので、較正から漏らさない。
 `issued` は open ではないので `--list-open` には出ず、`/my-cleanup` の裁定には載らない。ノートを書けなくても
-retro は止めない(集計の入力を足すだけ)。vault の無い機体(jsonl)では何も残さない(jsonl の行は状態を
-持たず、`issued` にすると取り除かれるだけ)。`issue:#<N>` は作業中のプロジェクトの repo の Issue と読む。
+retro は止めない(集計の入力を追加するだけ)。vault のない機体(jsonl)では何も残さない(jsonl の行は状態を
+持たず、`issued` にすると取り除かれるだけ)。`issue:#<N>` は作業中のプロジェクトのリポジトリの Issue と読む。
 
 ## 行の語彙
 
@@ -94,7 +94,7 @@ PR を作らないセッション(メールの裁定・調査・机の作業)で
 | 形を持つコマンドの反復 | `adhoc:repeat:<ハッシュ先頭 8 文字>` | 同じハッシュで、`shape` が空でないものが 2 回以上 |
 | その場のスクリプトの形 | `adhoc:shape:<形>` | 強い形(`heredoc-interp` など)が合わせて 3 回以上 |
 
-- いずれかを満たしたら、PR が無くても retro を求める。満たさなければ出来事そのものを出さない(1 回の
+- いずれかを満たしたら、PR がなくても retro を求める。満たさなければ出来事そのものを出さない(1 回の
   `python3 -c` だけでは求めない)。素の「同じコマンドの反復」は数えない(`cargo test` のやり直しなどで、
   過去 247 セッション中 106 で起きる)。
 - 形は `cmd-hash-log` が各レコードに添える(`command_inspection::cmd_shape`)。本文も長さも残さない。
@@ -117,7 +117,7 @@ PR を作らないセッション(メールの裁定・調査・机の作業)で
 指摘が含まれず、やり直しになる。1 つのセッションで複数の PR を積みながら実機の長い実行を待つと、
 指示がターンごとに 5 回以上届いた。
 
-Stop の入力にバックグラウンドの状態は無いので、transcript から導く
+Stop の入力にバックグラウンドの状態はないため、transcript から導く
 (`agent_session::transcript::pending_background_tasks`)。開始は `toolUseResult.backgroundTaskId` か、
 `toolUseResult.agentId` で `status == "async_launched"`。完了は task-notification の
 `<task-id>`(新しい記録形式は `attachment.type == "queued_command"`、古い形式は
@@ -135,9 +135,9 @@ Stop の入力にバックグラウンドの状態は無いので、transcript �
 - `gate-events.jsonl` は session_id を持たないので、突き合わせの対象にできない。
 - ユーザーの指摘を見落とさないかは、発言一覧の提示とモデルの判断に頼る(gate は判定しない)。
 - 上限(3 回)に達すると警告 1 回で通る。放置を防ぐだけで、強制し続けはしない。
-- PR の無いセッションが自動で発火するのは、その場のコードの痕跡がしきい値を超えたときだけ。しきい値に届かない
-  ときは、`/retro` で手動に踏む。
-- Codex では、scratchpad の痕跡は拾えない(Codex には session 専用の scratchpad が無い)。`cmd-hash-log` の痕跡
+- PR のないセッションが自動で発火するのは、その場のコードの痕跡がしきい値を超えたときだけ。しきい値に届かない
+  ときは、`/retro` で手動に実行する。
+- Codex では、scratchpad の痕跡は拾えない(Codex には session 専用の scratchpad がない)。`cmd-hash-log` の痕跡
   (形を持つコマンドの反復・強い形の回数)は効く。`$TMPDIR` やワークツリーに書いた一時スクリプトは拾えない。
 - scratchpad の置き場所は Claude Code の実装で、macOS では `$CLAUDE_CODE_TMPDIR` の下の構成を確かめていない
-  (未確認)。見つからなければ、scratchpad の痕跡は無いものとして扱う。
+  (未確認)。見つからなければ、scratchpad の痕跡はないものとして扱う。

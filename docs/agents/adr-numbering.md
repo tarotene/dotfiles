@@ -8,8 +8,7 @@ checker(単一ソース): `scripts/adr-number-check`
 ADR の採番衝突がこのリポジトリで 2 回起きた(2026-09-19 の ADR-0020→0021、
 2026-09-23 の ADR-0033 二重)。原因は連番が分散システム(並列 worktree・
 並列セッション)に置かれた中央アロケータであること。lock ファイルのような
-「共有セルを守る」対策ではなく、番号を PR 番号にすることで「共有セルその
-ものを無くす」——GitHub が原子的に採番するため衝突が構造的に不可能になる
+「共有セルを守る」対策ではなく、番号を PR 番号にすることで「共有セルそのものをなくす」——GitHub が原子的に採番するため衝突が構造的に不可能になる
 (先行例: rust-lang/rfcs、kubernetes/enhancements の KEP)。
 
 ## 番号帯
@@ -18,7 +17,7 @@ ADR の採番衝突がこのリポジトリで 2 回起きた(2026-09-19 の ADR
 |---|---|---|
 | `n < 0100` | grandfathered 連番(既存の 0001〜0099 帯) | 重複のみ |
 | `n >= 0100` | PR-number era。`n` は導入 PR の番号と一致必須 | 全項目 |
-| `0000` | 起草中(PR 未作成)。main に載ってはならない | 存在で fail |
+| `0000` | 起草中(PR 未作成)。main に載ってはならない | 存在すれば fail |
 
 閾値を固定値 `0100` にしたのは、grandfather 境界を「この PR の番号」の
 ような可変値にすると、並行して採られる連番 ADR(緩衝帯 `0035..0099`)との
@@ -38,15 +37,15 @@ ADR の `Issue:` 欄は `No-Issue(...)` が最頻であり、Issue 番号方式�
 1. `docs/adr/0000-<slug>.md` を書く(本文 H1 も `# ADR-0000 — ...`)。`cargo run -p docs-index -- render` で索引に載せる
 2. commit → push → `gh pr create`
 3. `<PR番号>-<slug>.md` へ改番し、本文 H1 も書き換える
-   - 段 3 が着地していれば PostToolUse hook が自動でやる。hook は opt-in:
+   - 段 3 が着地していれば PostToolUse hook が自動で実行する。hook は opt-in:
      対象プロジェクトが自前の `scripts/adr-number-check`(governance
-     テンプレートが播く複製)を持つときだけ動き、無ければ何もしない
+     テンプレートが播く複製)を持つときだけ動き、なければ何もしない
      (PATH 上のバイナリや dotfiles 側の複製は適用判定に使わない)
    - まだなら手動: `adr-number-check --fix <PR番号>`
 4. `cargo run -p docs-index -- render` で `docs/README.md` の索引を書き直す(`docs/agents/docs-index.md`)。
-   `--fix` は索引の `ADR-0000` の行の番号を書き換えるが、並び(仮番号は最後、そのほかは番号の昇順)は
-   直さないので、書き直さないと `crates/docs-index/tests/tree.rs` が落ちる。rebase で索引が衝突したときも、
-   生成の節は `render` で作り直せば解ける
+   `--fix` は索引の `ADR-0000` の行の番号を書き換えるが、並び順(仮番号は最後、それ以外は番号の昇順)は
+   直さないため、実行しないと `crates/docs-index/tests/tree.rs` が失敗する。rebase で索引が衝突したときも、
+   生成ブロックは `render` で作り直せば解消できる
 5. commit + push(この時点で CI が green になる)
 
 `--fix` は `0000-*.md` のリネームだけでなく、既に採番済みの ADR を
@@ -57,18 +56,18 @@ ADR の `Issue:` 欄は `No-Issue(...)` が最頻であり、Issue 番号方式�
 
 `0000-*.md` の改番では、ファイル名と H1 に加えて、base との差分で**追加された
 行**にある起草中の参照も書き換える: `ADR-0000-<slug>` と `ADR-0000` は
-`ADR-<PR番号>` に、`docs/adr/0000-` は `docs/adr/<PR番号>-` にする。1 PR は
-ADR を最大 1 本しか追加できない(B 系統の項目 5)ので、その PR の
+`ADR-<PR番号>` に、`docs/adr/0000-` は `docs/adr/<PR番号>-` にする。1 つの PR で追加できる
+ADR は最大 1 本(B 系統の項目 5)なので、その PR の
 `ADR-0000` は必ず改番した ADR を指す — 参照先が曖昧にならない。
 
-書き手は、起草中の ADR をコード・コメント・文書から参照するとき、題名でなく
+書き手は、起草中の ADR をコード・コメント・文書から参照するとき、題名ではなく
 `ADR-0000`(リンクなら `adr/0000-<題名>.md`)と書く。書き換えの対象はこの
-2 つの形式だけで、題名での参照(「`docs/adr/` の「…」」など)は改番で直らず、
+2 つの形式だけで、題名での参照(「`docs/adr/` の「…」」など)は改番で修正されず、
 番号のない参照が残る(2026-10-20 に実際に起き、後の段で手で直した)。
 
 - base は `--base <ref>` で渡す(PostToolUse hook は `gh pr view` の
   `baseRefName` から `origin/<base>` を渡す)。省略時は `origin/HEAD`。
-  どちらも解決できなければ書き換えを skip する。
+  どちらも解決できなければ書き換えをスキップする。
 - 書き換えるのは追加行だけ。base に既にある説明文は触らない。
 - 採番済み ADR を別番号へ付け替える `--fix <PR番号> <file>` では、旧番号の
   参照が正当な場合があるので書き換えない。
@@ -83,9 +82,9 @@ hook を通らない経路(手動の `gh pr create`、`--web`、hook 未配備�
 
 ## push 前の自己検査
 
-ADR や `## Amendment` を足す PR は、push の前に、CI の required check と同じ判定を手元で
-走らせる。CI で初めて落ちると、push のやり直しが 1 往復増える(2026-10-15、Amendment ごとに
-`### 執行点` が要ると `decision-colocation-check` に落とされた。#808)。
+ADR や `## Amendment` を追加する PR は、push の前に、CI の required check と同じ判定を手元で
+走らせる。CI で初めて失敗すると、push のやり直しが 1 往復増える(2026-10-15、Amendment ごとに
+`### 執行点` が必要だと `decision-colocation-check` に拒否された。#808)。
 
 ```
 cargo run -p decision-colocation --bin decision-colocation-check -- --base origin/main
@@ -96,10 +95,10 @@ scripts/adr-number-check --base origin/main
   (直下の段のブランチ)を `--base` に渡す。CI は PR の base と比べるので、同じ範囲で見る
 - `scripts/adr-number-check` を `--base` 無しで実行しても、`origin/HEAD` との merge-base からの
   差分に追加された起草中の参照は検出される(#762)。ただし ADR の追加数や PR 番号との一致
-  (B 系統の項目 5・6)は `--base` が要る。起草中の ADR(`docs/adr/0000-*.md`)が作業ツリー
-  にあるあいだは、起草中の参照が正当なので、この検出は skip される
-- `## Amendment` を足すときは、`### 執行点` に、非 `.md`・非 `docs/` の実体がこの PR で
-  変更されているかも確かめる。計画の段階での確かめ方は `precedent-grounding` スキルの §1b
+  (B 系統の項目 5・6)には `--base` が必要になる。起草中の ADR(`docs/adr/0000-*.md`)が作業ツリー
+  にあるあいだは、起草中の参照が正当なので、この検出はスキップされる
+- `## Amendment` を追加するときは、`### 執行点` に、非 `.md`・非 `docs/` の実体がこの PR で
+  変更されているかも確かめる。計画段階での確かめ方は `precedent-grounding` スキルの §1b
 
 ## 判定エンジンの 2 系統
 
@@ -115,7 +114,7 @@ scripts/adr-number-check --base origin/main
   無条件で通過) / 差分の追加行に起草中の参照(`ADR-0000`、`docs/adr/0000-`)が
   ない(`ADR_REF_ALLOW` のファイルを除く、#644)
 
-CI では push イベント(base/PR 番号が無い)は A のみ、pull_request
+CI では push イベント(base/PR 番号がない)は A のみ、pull_request
 イベントは base SHA を追加 fetch した上で A + B の両方を判定する。
 
 ## `github-audit` にドメインを作らない理由
@@ -129,7 +128,7 @@ audit ドメインを作らない。
 ## スコープ外(意図的)
 
 - `github-audit` での配線 presence detection — 検査が播かれているかを
-  横断監査で見るのは、必要になったら `judge_titles` と同型で足す。
+  横断監査で見るのは、必要になったら `judge_titles` と同型で追加する。
 - 既存の連番衝突(ADR-0020→0021)のバックフィル — ADR-0008 の immutable
   原則により、事後の一括改番はしない。
 
@@ -161,7 +160,7 @@ typst/rust/astro の各 `copy-files.sh` が播く。`docs/adr/` を持たない
 索引ファイルの検査(全 ADR が索引にリンクされている)は環境変数
 `ADR_INDEX` で切り替える: 未設定は `docs/README.md`(このリポジトリの
 既定)、空文字は無効化、パスを渡すとそのファイル。播種される workflow は
-索引を持たないリポジトリを想定して既定を空にしている。索引ファイル自体が無いときは、ADR ごとの
+索引を持たないリポジトリを想定して既定を空にしている。索引ファイル自体がないときは、ADR ごとの
 「未リンク」を並べず、`adr-number-check: ADR の索引 <パス> がありません。索引を持たないリポジトリは
 ADR_INDEX= を空にして呼ぶ` の 1 行だけを出して失敗する(終了コードは変えない。手元で
-`scripts/adr-number-check` を直接走らせて、全 ADR が未リンクと出て本物の失敗が埋もれた、2026-11-05)。
+`scripts/adr-number-check` を直接走らせて、全 ADR が未リンクと出力されて本来の失敗が埋もれた、2026-11-05)。

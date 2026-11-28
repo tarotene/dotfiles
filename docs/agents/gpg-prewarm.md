@@ -54,7 +54,7 @@ disable-linger` を叩くと admin 認証プロンプトが出て、ADR-0003 の
 `home.activation.assertNoLinger` は検査だけを行う: `Linger=yes` を検知したら
 `writeBoundary` の前で `exit 1` し、ファイルを一切書かずに `home-manager switch`
 自体を失敗させ、`sudo loginctl disable-linger <user>` を促す。logind が使えない
-環境(コンテナ等)では `loginctl` が非 0 で落ちて出力が空になり、`yes` に一致しない
+環境(コンテナ等)では `loginctl` が非 0 で終了して出力が空になり、`yes` に一致しない
 ので黙って通す(ADR-0005 の縮退方針)。
 
 脅威モデルの変化(2 時間ごと → ログインごと)の記録は
@@ -62,8 +62,8 @@ disable-linger` を叩くと admin 認証プロンプトが出て、ADR-0003 の
 
 ## なぜ hook が cwd に依存しないのか
 
-SessionStart 時の cwd で「署名 repo かどうか」を判定すると、非署名 repo や git 管理外
-ディレクトリで開始したセッションが、同一セッション内で署名 repo に移動してコミット
+SessionStart 時の cwd で「署名リポジトリかどうか」を判定すると、非署名リポジトリや git 管理外
+ディレクトリで開始したセッションが、同一セッション内で署名リポジトリに移動してコミット
 する経路を取りこぼす——本来温めるべきだったのに温めない。
 
 代わりに `gpg-prewarm` は常に `git -C <mktemp -d> config --get <key>` で
@@ -77,14 +77,14 @@ SessionStart 時の cwd で「署名 repo かどうか」を判定すると、�
 ## なぜオンディスク鍵だけを対象にするか
 
 card-backed な鍵を温めようとすると PIN + タッチが要求され、これはまさに
-ADR-0003 が smartcard `[S]` を避けて得た利益(毎コミットのタッチが要らないこと)
+ADR-0003 が smartcard `[S]` を避けて得た利益(毎コミットのタッチが不要なこと)
 への回帰になる。判定は `gpg --list-secret-keys --with-colons --with-fingerprint`
 の **field 15**(`S/N of a token`、GnuPG `DETAILS` ドキュメントに記載)で行う:
 
 | field 15 | 意味 | 温めるか |
 |---|---|---|
 | `+` | オンディスクで利用可能 | 温める |
-| `#` | simple stub(protect mode 1001、鍵材料が無い) | 温めない |
+| `#` | simple stub(protect mode 1001、鍵材料がない) | 温めない |
 | token の serial number(例 `D27600...`) | card-backed(protect mode 1002) | 温めない |
 | (空) | 判定できない | 温めない |
 
@@ -105,7 +105,7 @@ plan-review の BLOCKER 指摘で実測して訂正した。
 呼び出す。一方が対象外・失敗でも他方の試行を妨げない。
 
 [E] 側の対象判定は [S] と非対称である。[S] は `git config` という宣言的な
-「対象かどうか」の情報源を持つが、[E] にはそれが無いため、代わりに
+「対象かどうか」の情報源を持つが、[E] にはそれがないため、代わりに
 `crates/esa-mcp-launcher` と同じ解決規則(`ESA_TOKEN_FILE` 環境変数 →
 `XDG_CONFIG_HOME` → `$HOME/.config`)で求めた token.gpg の**実在**そのものを
 ゲートにする(ADR-0005 のファイル存在ゲートと同じ考え方)。company ホストや
@@ -123,7 +123,7 @@ pinentry を経由しないまま exit 2 になる(`--detach-sign` 系の
 見つかった。
 
 libsecret/gnome-keyring への永続化(gpg-agent の外部パスワードキャッシュ)
-でこの「ログインに 1 回」自体を無くせないか実機検証したが、この host
+でこの「ログインに 1 回」自体をなくせないか実機検証したが、この host
 (pinentry-gnome3 + GCR 3.41.2)の GCR system-prompter ダイアログには保存 UI
 が現れなかった。**この主張は #348 により狭められている**: GCR ダイアログを
 経由しない直接呼び出し(pinentry に生の Assuan `GETPIN` を送る)では、実際に
@@ -175,7 +175,7 @@ exit 0」という設計)。
 
 `home/modules/agents.nix` の `claudeHookDeclarations` を `agent-settings-reconcile claude-hooks`
 (#414)が宣言を正として反映するので、**matcher や timeout を後から変えても**
-次の `home-manager switch` で既存エントリが更新される(手で消す必要は無い)。
+次の `home-manager switch` で既存エントリが更新される(手で消す必要はない)。
 
 ## 検証
 

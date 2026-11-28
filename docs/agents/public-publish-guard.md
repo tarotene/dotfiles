@@ -28,7 +28,7 @@ D7 と同型)。
   (個々のファイルを列挙しない)。上流の shim(`hooks/bleep.sh`)は
   `realpath "$0"` で自己解決するため(旧 `claude-adapter.sh` と違い
   `CLAUDE_PLUGIN_ROOT` の明示注入は不要)、ツリー構造をそのまま保てば
-  それ以上の配慮は要らない。
+  それ以上の配慮は不要になる。
 - 登録する command:
   ```
   BLEEP_HOOK_BIN='$HOME/.claude/hooks/bleep-hook' BLEEP_LEX_BIN='$HOME/.claude/hooks/bleep-hook' bash '$HOME/.claude/hooks/bleep/hooks/bleep.sh' --host=claude
@@ -43,7 +43,7 @@ D7 と同型)。
   (`hooks/bleep.sh` の adapter 起動と、`bleep` 本体の
   `cmd_scan_bash_command` が使う字句解析)、どちらも既定では
   `~/.cargo/bin/bleep-hook`(手動 `cargo install` 経由、pin された
-  `bleep` flake input とは無関係に更新される)にフォールバックしうる。
+  `bleep` flake input とは無関係に更新される)にフォールバックする可能性がある。
   `flake.nix` の `bleepHookOverlay` が同じ `bleep` input から crane で
   ビルドし `~/.claude/hooks/bleep-hook` に配備した実体を両変数で指すことで、
   bash 本体と Rust バイナリが常に同一 pin から導出されるようになり、
@@ -64,13 +64,13 @@ D7 と同型)。
   の command は register-{codex,copilot}-hooks に追加した `--retire` で
   完全一致削除してから新 command(`hooks/bleep.sh --host={codex,copilot}`)
   を登録する — Claude 側の `retiredHookEntries` に相当する仕組みが元々
-  無かったため、改名 companion PR でこの2スクリプトに追加した。
+  なかったため、改名 companion PR でこの2スクリプトに追加した。
 - `config/git/hooks/pre-push`(`core.hooksPath` で全リポジトリ共通、
   `docs/git-sync.md`)が `BLEEP_HOST=git-pre-push` を付けて `scan-push` を
   呼ぶ(#196。`BLEEP_HOST` は ADR-478 の判定レッジャーが呼び出し元を
   区別するためのタグで、判定そのものには影響しない)。エンジン不在は
   黙ってスキップ(ADR-0005)。exit 1(ask)/2(deny)のどちらも push を
-  block する(pre-push に対話の経路が無いため)。回避は `BLEEP_ALLOW=1
+  block する(pre-push に対話の経路がないため)。回避は `BLEEP_ALLOW=1
   git push` — ただし block 時に pre-push が表示する stderr にはこのコマンド
   を書かない(上流 bleep の「deny 理由に bypass を書かない」方針、
   README「Bypass: `BLEEP_ALLOW=1`」参照: 制約対象がその場で読む理由文に
@@ -93,15 +93,15 @@ denylist と commit 時に照合する。`pre-commit` は同じ実体を `commit
   として読むだけにする。使い捨ての commit は hook の終了時に消える。denylist のロジックは
   このリポジトリに持たない。
 - **公開リポジトリ以外では何もしない**。bleep の可視性判定(PRIVATE / INTERNAL は検査しない)
-  をそのまま使う。さらに、`origin` が無いリポジトリ、bleep が未配備の機体、merge の途中は
+  をそのまま使う。さらに、`origin` がないリポジトリ、bleep が未配備の機体、merge の途中は
   黙って通す(ADR-0005)。可視性を取れないときは、bleep の既定どおり公開として検査する。
 - **メッセージ**は bleep の既存の形のまま: 語は出さず、`term_hash` と `bleep explain` の
   案内だけ。bleep が一致した commit として挙げる短い SHA は使い捨ての commit のものなので、
-  その 1 文だけ落とす。bypass の手段は書かない(上流の方針、pre-push と同じ)。
-- エディタが付ける `#` の行(ブランチ名・ファイル一覧)は、git が commit の前に落とすので、
-  検査からも外す。
+  その 1 文だけ削除する。bypass の手段は書かない(上流の方針、pre-push と同じ)。
+- エディタが付ける `#` の行(ブランチ名・ファイル一覧)は、git が commit の前に削除するため、
+  検査からも除外する。
 - この hook の下ごしらえ(`write-tree`・`commit-tree`)が失敗したときは、警告を出して通す。
-  bleep の判定が ask のときは、pre-push と同じく止める(commit の hook には確かめる対話が無い)。
+  bleep の判定が ask のときは、pre-push と同じく止める(commit の hook には確かめる対話がない)。
 - 判定レッジャーの `host` は `git-commit`(pre-commit 経由も同じ。`docs/schemas/
   agent-verdict.schema.json`、`crates/verdict-escalate/src/record.rs`)。
 - 所要時間: bleep の起動(パターン構築)が 1 回あたり 0.8 秒前後で、pre-commit と commit-msg で
@@ -112,9 +112,9 @@ denylist と commit 時に照合する。`pre-commit` は同じ実体を `commit
   commit 時の検査を飛ばしても最終的には pre-push が止める。
 
 自己検査: `./config/git/hooks/commit-msg --selftest`(CI で実行する。bleep の代わりに
-一時 HOME の置き換えを使うので、denylist も network も要らない)。
+一時 HOME の置き換えを使うので、denylist も network も不要)。
 
-## `~/.config/bleep/` の実体(dotfiles には無い)
+## `~/.config/bleep/` の実体(dotfiles にはない)
 
 `bleep` の判定語彙(`orgs.txt`・`repos.txt`)と、CLI ツール名と衝突する
 private リポジトリ名を通す `allow-stopwords.txt`(bleep README
@@ -140,8 +140,8 @@ public 単体に縮退する、#567)は 2026-09-29 Amendment のマーカー宣�
 2026-10-24 に `ls -la ~/.config/bleep/` で読んだ vega では、`orgs.txt` と
 `repos.txt`(と、次節の `allow-tools.txt`)が nix store へのリンクで、
 `allow-stopwords.txt` だけが、2026-10-18 更新・52 バイトの普通のファイルだった。つまり
-wrapper に宣言が無いまま、機体上で手で書かれていた。上の「wrapper の宣言を直す」
-が実態になるよう、wrapper に宣言を足して手書きを置き換える。移行前の機体では、
+wrapper に宣言がないまま、機体上で手で書かれていた。上の「wrapper の宣言を直す」
+が実態になるよう、wrapper に宣言を追加して手書きを置き換える。移行前の機体では、
 手書きのファイルが唯一の正本なので、この節の手順が済むまで中身を消さない。
 
 移行(機体ごとに 1 回。語の実値はこの文書にも、コマンドの出力にも出さない):
@@ -152,13 +152,13 @@ wrapper に宣言が無いまま、機体上で手で書かれていた。上の
 2. wrapper の宣言に、退避したファイルの行を移す。語とその理由コメントを 1 行ずつ、
    順序も保って移す(bleep README「Words excluded from the denylist」の書式)。
    宣言の置き場所と書式は wrapper 側が正本で、`orgs.txt`・`repos.txt` を宣言している
-   箇所と同じ経路に足す。
+   箇所と同じ経路に追加する。
 3. `hms` で適用する。既存の普通のファイルは、`-b backup` により
    `allow-stopwords.txt.backup` へ退避されてからリンクに置き換わる。
    `.backup` が前回から残っていて `checkLinkTargets` が止まったら、
    [`docs/operations.md`](../operations.md) の「`hms` fails at `checkLinkTargets`
    with a `.backup` clobber error」に従う(wrapper 側のモジュールで
-   `dotfiles.quarantine.managedFiles` に `.config/bleep/allow-stopwords.txt` を足せば、
+   `dotfiles.quarantine.managedFiles` に `.config/bleep/allow-stopwords.txt` を追加すれば、
    前回の残りごと先に退避される。その場合の退避先は `.pre-nix` 接尾辞で、
    `.backup` ではない)。
 4. 移行できたことを読み戻す。`ls -l ~/.config/bleep/` で `allow-stopwords.txt` が
@@ -171,14 +171,14 @@ wrapper に宣言が無いまま、機体上で手で書かれていた。上の
 
 ### `allow-tools.txt` はこのリポジトリで宣言する(tarotene/bleep#106)
 
-`allow-tools.txt`(Bash 以外のツールのうち、repo-ref の検査から外すものを、ツール名の
+`allow-tools.txt`(Bash 以外のツールのうち、repo-ref の検査から除外するものを、ツール名の
 拡張正規表現で 1 行ずつ宣言する。bleep README が正本)は、ツール名だけで実値を含まない
 ので、上の 3 ファイルと違い PUBLIC なこのリポジトリの `home/modules/agents.nix` が
-`xdg.configFile."bleep/allow-tools.txt"` で宣言し、全機体に同じ内容を配る。読み取り専用の
+`xdg.configFile."bleep/allow-tools.txt"` で宣言し、全機体に同じ内容を配布する。読み取り専用の
 リンクになるので、機体ごとの手での追記は食い違いの元になるため行わず、宣言を変える。現在の
 宣言は組織内 Slack の下書き(`mcp__.*__slack_send_message_draft`)と Copilot の読み取り専用ツール(`view`・`grep`・`glob`・`rg`)で、送信のツールは
 宣言しない(送信は `external-send-guard` が下書き止まりにする)。`.*` の部分はコネクタの
-サーバー名で、機体ごとに違いうるため任せている。
+サーバー名で、機体ごとに異なる可能性があるため任せている。
 
 ## 未検証の前提
 
@@ -190,7 +190,7 @@ wrapper に宣言が無いまま、機体上で手で書かれていた。上の
 denylist には非公開リポジトリ名が登録され、その中に一般語と同じ綴りのものが
 ある。空白で区切られた単語として追加行や commit メッセージに現れると、pre-push が
 一致で止める(ハイフン・下線でつながった形、`automated-…-fixes` のようなものは
-通る)。後から語が denylist に加わると、過去に通った文章も止まりうる。
+通る)。後から語が denylist に加わると、過去に通った文章も止まる可能性がある。
 
 - **エージェントの扱い**: 追加行と commit メッセージを、その語を単語として
   使わない言い換えに直して通す。止まった語は黙って言い換えるだけで終えず、

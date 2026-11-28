@@ -31,16 +31,16 @@ PreToolUse(`main-checkout-guard pre`)が deny する:
 絶対パス引数)、`~/.local/state/claude/main-checkout/<session_id>.baseline` に 1 行追記する:
 `top<TAB>branch<TAB>sha<TAB>status_hash<TAB>pristine<TAB>may_write`。`status_hash` は
 `git status --porcelain=v2` の FNV-1a、`pristine` は「クリーンかつ default branch」、
-`may_write` は「書きうる操作で触れたか」(下の表)。6 列目の無い旧い書式の行は `may_write = 1`
+`may_write` は「書き込みになり得る操作で触れたか」(下の表)。6 列目のない古い書式の行は `may_write = 1`
 として読む(後方互換)。
 
-### 書きうる操作か(#898)
+### 書き込みになり得る操作か(#898)
 
 | 触れ方 | `may_write` |
 |---|---|
 | Read / Grep / Glob | 0 |
 | 読み取り専用の許可リストにある Bash(下) | 0 |
-| 許可リストに無い Bash(`sed -i`・`touch`・`rm`・`cargo`・`make`・`gh` など) | 1 |
+| 許可リストにない Bash(`sed -i`・`touch`・`rm`・`cargo`・`make`・`gh` など) | 1 |
 | ファイルへ書き出すリダイレクト(`>`・`>>`・`&>`)を含む Bash | 1(全文) |
 
 読み取り専用の許可リスト(`crates/main-checkout-guard/src/lib.rs` の `READ_ONLY_COMMANDS` と
@@ -53,11 +53,11 @@ PreToolUse(`main-checkout-guard pre`)が deny する:
 `show-ref` `show-branch` `for-each-ref` `name-rev` `merge-base` `diff-*` `fetch` `version`、
 `reflog`(参照)、`stash list|show`、`worktree list`、`branch`(参照)、`remote`(`-v`・`show`・
 `get-url`)、`config`(`--get*`・`--list`)、`tag --list`。`pull`(`--ff-only` を含む)・`gc`・`push`
-は載せない(書きうる)。許可リストに漏れたコマンドは「書きうる」側に倒れるだけで、従来どおり
+は載せない(書き込みになり得る操作とみなす)。許可リストに漏れたコマンドは「書き込みになり得る」側に倒れるだけで、従来どおり
 block になる(安全側)。
 
-読み取りで記録した checkout に、後から書きうる操作で触れたときは、その時点の状態で baseline
-を取り直す(`may_write = 1` の行を追記)。書きうる操作の前の移動は、このセッションの書き込みの
+読み取りで記録した checkout に、後から書き込みになり得る操作で触れたときは、その時点の状態で baseline
+を取り直す(`may_write = 1` の行を追記)。書き込みになり得る操作の前の移動は、このセッションの書き込みの
 結果ではないので、基準に含めない。
 
 Stop(`main-checkout-guard stop`)は記録した checkout だけを再確認し、`pristine` かつ
@@ -81,7 +81,7 @@ block の後は、エージェントが直そうとしても PreToolUse が deny
 block しない。PreToolUse が `additionalContext` で 1 回だけ注意する(Claude のみ。Codex は
 PreToolUse の `additionalContext` を出さない)。
 
-ただし、`origin/HEAD` が無く(既定ブランチが分からない)、main / master でもない所にいる
+ただし、`origin/HEAD` がなく(既定ブランチが分からない)、main / master でもない所にいる
 checkout は、使い捨ての clone とみなして注意しない(#845)。`git clone --branch gh-pages
 --depth 5 <url> /tmp/x` のように、デプロイ用ブランチに何が push されたかを読むだけの clone
 が典型で、「既定ブランチで clean でない」という文言が虚偽になり、`origin/<default>` が参照

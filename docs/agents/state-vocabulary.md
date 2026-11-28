@@ -31,7 +31,7 @@ skill は、エージェントが行う事象の手順書で、語彙の `carrie
 - `to` は常に配列。`["same"]` は自己遷移、複数は「どれか」(握手の判定)。`from` は状態の id か `none`。
 - `by` / `owner` は `person`(本人)・`agent`(エージェント)・`machine`(hook・gate・CI・スクリプト)。補足は `by_detail` / `owner_detail`。
 - 担い手の名前: `skill:<skill 名>`(`config/agents/skills/` に実在)、`node:<id>`(`pipeline-map.toml` のノード)、`cli:<crate 名>`(`crates/`)、
-  `external:<名前>`(別リポジトリの担い手。解決しない)。`by` が `person` でも、記録を書く担い手があれば `carriers` に書く。無ければ省く。
+  `external:<名前>`(別リポジトリの担い手。解決しない)。`by` が `person` でも、記録を書く担い手があれば `carriers` に書く。なければ省く。
 - `owner` が `person` の状態は、`shown_by` に本人へ見せる担い手を書く(必須)。
 - `timers`(対象ごとの数値)は時間の決まりを持つ対象だけ。握手の語彙は `token`・`hold`・`group_key` も持つ。
 - `opens`(事象の真偽値)と `supersede_on_open`(語彙の `event`・`description`)は、項目を開く事象と、開くときの暗黙の
@@ -58,20 +58,20 @@ scripts/vocab-graph-check --selftest               # fixtures/ の正例・負�
 | `schema` | `vocabulary.schema.json` に適合(`schema-validate.jq` の部分集合) |
 | `一意` | 状態 id・事象 id が一意。状態 id に `none`・`same` を使わない |
 | `参照` | `from` は状態か `none`、`to` は状態か `same` |
-| `終端` | 終端の状態から出る事象が無い |
+| `終端` | 終端の状態から出る事象がない |
 | `到達` | `none` からすべての状態に到達できる |
 | `出口` | 終端でない状態に、別の状態へ出る事象がある(自己遷移だけでは出口にならない) |
 | `見せる担い手` | `owner` が `person` の状態に `shown_by` の担い手がある |
 | `担い手の解決` | `shown_by`・`carriers`・`gates` の名前が実在する |
-| `孤立` | どの事象の `to` にも現れない状態が無い |
-| `種類` | `kinds` を持つ語彙だけ(握手の語彙)。種類の id・tag が一意で、既定の種類(`default: true`)がちょうど 1 つで tag を持たず、すべての事象が宣言した種類だけを `kinds` で指す。種類ごとに、その種類の事象だけで `none` から到達できる状態があり、`reaches` を持つ種類は、そこに無い状態に至らない。`kinds` を持たない語彙の事象が `kinds` を持つのも違反 |
+| `孤立` | どの事象の `to` にも現れない状態がない |
+| `種類` | `kinds` を持つ語彙だけ(握手の語彙)。種類の id・tag が一意で、既定の種類(`default: true`)がちょうど 1 つで tag を持たず、すべての事象が宣言した種類だけを `kinds` で指す。種類ごとに、その種類の事象だけで `none` から到達できる状態があり、`reaches` を持つ種類は、そこにない状態に至らない。`kinds` を持たない語彙の事象が `kinds` を持つのも違反 |
 | `開く出来事` | `opens` の事象は `from` が `none` だけ。`supersede_on_open` を持つ語彙は、その `event` が語彙の事象で、`from` が未了の状態だけ・`to` が終端の状態であり、`opens` の事象が 1 つ以上ある |
 | `対象の一意` | 渡した全語彙で `object` が一意 |
 
 `--skills` は、`config/agents/skills/` の各 skill(別名 `Compatibility entry for <X>` は X に読み替える)が、全語彙の
 `shown_by`・`carriers`・`gates`、または `config/agents/vocabulary/external-objects.json`(`[{"object": "<名前>", "skills": ["<skill 名>"]}]`。
 別リポジトリの対象の名前と skill 名だけを持ち、中身は書かない)のどれかに載っているかを見る。CI の `dry-run` ジョブが回すので、
-載っていない skill を足した PR は落ちる(例外の一覧は持たない)。`external-objects.json` の `object` は、kebab-case で、そのファイル内で一意で、
+載っていない skill を追加した PR は失敗する(例外の一覧は持たない)。`external-objects.json` の `object` は、kebab-case で、そのファイル内で一意で、
 dotfiles の語彙の `object` と重ならない。
 
 ## 事象ごとの段階を導く(`--stages`)
@@ -82,7 +82,7 @@ scripts/vocab-graph-check --stages                 # 全語彙の事象ごとの
 
 事象を、散文(skill の手順書)・スクリプト・gate(自動で前提を検査する機械)のどれで担っているかを、宣言せず、事象の
 `carriers`・`gates` の名前と `pipeline-map.toml` のノードの `lane`・`auto` から導く(`docs/adr/543-existing-means-and-deterministic-promotion.md`
-の D4。宣言欄は作らない)。**報告専用**で、語彙の不備を見つけても落とさず、終了コードは常に 0(語彙の検査は `--all` が担う)。
+の D4。宣言欄は作らない)。**報告専用**で、語彙の不備を見つけても失敗させず、終了コードは常に 0(語彙の検査は `--all` が担う)。
 出力はコミットしない。段階の分布は、昇格の候補(散文だけで、`by` が `agent` の事象)を探す入口で、`promotion-detect` の兆候の置き換えではない。
 
 名前ごとの種類を決め、事象の段階は、含む種類のうち最も強いもの(gate > スクリプト > 散文 > 外部)とする。
@@ -102,8 +102,8 @@ scripts/vocab-graph-check --stages                 # 全語彙の事象ごとの
 | 散文 | 散文だけ(外部との組み合わせを含む) |
 | 散文+同梱 | 散文だけで、名指しされた skill のディレクトリに `scripts/` がある(語彙に名前の出ない同梱のスクリプトを補う) |
 | 外部 | 外部だけ |
-| 段階なし | 名前が無く、`by` が `person`(本人が行う事象) |
-| 名指しなし | 名前が無く、`by` が `agent` か `machine`(担い手が語彙に書かれていない。不備の候補) |
+| 段階なし | 名前がなく、`by` が `person`(本人が行う事象) |
+| 名指しなし | 名前がなく、`by` が `agent` か `machine`(担い手が語彙に書かれていない。不備の候補) |
 
 - `carriers` の node を gate にしない。`gates` は「前提を検査する機械」で、`carriers` は「行う」担い手だから。自動で発火する機構が `carriers` に
   あっても、事象の段階はスクリプトとして数える。
@@ -111,15 +111,15 @@ scripts/vocab-graph-check --stages                 # 全語彙の事象ごとの
 - 対応表の抽象の語彙(`awaiting-item`)は、具体の語彙の事象を写す先の表で担い手を持たないので、数えない。
 - 事象の一部だけがスクリプト化されているとき、事象の単位では最も強い段階しか出ない。出力の「構成」の列に、含む種類の組(`gate+prose` など)を併記する。
 
-## 新しい skill の足し方
+## 新しい skill の追加方法
 
-skill を足す PR は、同じ PR で、その skill が行う事象か前提を満たす事象を、語彙に名指しする(`agent-tooling-authoring` §2 の配線チェックリストの 4)。
+skill を追加する PR は、同じ PR で、その skill が行う事象か前提を満たす事象を、語彙に名指しする(`agent-tooling-authoring` §2 の配線チェックリストの 4)。
 
 1. 対象が dotfiles にある(状態をこのリポジトリの語彙が持つ)とき: `config/agents/<対象>/vocabulary.json` の事象の `carriers`(行う)か `gates`
-   (前提を検査する機械)に `skill:<skill 名>` を足す。本人に見せる状態なら `shown_by` でもよい。対象の語彙がまだ無いときは、skill 本文から
-   読み取れる状態と事象だけで、語彙を新しく起こす(本文に無い状態は作らない。読めない遷移は ADR に「不明」と書く)。
+   (前提を検査する機械)に `skill:<skill 名>` を追加する。本人に見せる状態なら `shown_by` でもよい。対象の語彙がまだないときは、skill 本文から
+   読み取れる状態と事象だけで、語彙を新しく起こす(本文にない状態は作らない。読めない遷移は ADR に「不明」と書く)。
 2. 対象が別の person-state リポジトリにあるとき: `config/agents/vocabulary/external-objects.json` に
-   `{"object": "<一般語の名前>", "skills": ["<skill 名>"]}` を足す。中身も個人の対象の詳細も書かない(名前と skill 名だけ)。
+   `{"object": "<一般語の名前>", "skills": ["<skill 名>"]}` を追加する。中身も個人の対象の詳細も書かない(名前と skill 名だけ)。
 3. 別名の skill(`description` が `Compatibility entry for <X>` で始まる)は、正の skill X が載っていれば足りる。
 4. `scripts/vocab-graph-check --all` と `--skills` を回す。どの語彙にも載せられない skill は、仕えている skill への統合の候補で、
    `--skills` の例外にはしない。
@@ -148,8 +148,8 @@ skill を足す PR は、同じ PR で、その skill が行う事象か前提�
 |---|---|---|---|
 | メール項目 | `mail-lifecycle/vocabulary.json` | awaiting → shown、decided・instructed → decided、closed → applied、dismissed → declined、stale → lapsed、superseded → handed_off | timer: `remind_after_days` と事象 `remind`(失効は `stale`) |
 | 作業中の気づき | `wrapup-inbox/vocabulary.json` | open → shown、fixed・dropped → settled、issued → handed_off | notification: セッション開始時の件数通知(`node:session-wrapup-start`)の事象 `remind` |
-| リポジトリ設定のずれ | `repo-config-drift/vocabulary.json` | drifted → picked、drafted → shown、approved → decided、applied → applied、routed → handed_off、excluded・exempt → declined | reminder-event: `redetect`(次の `github-audit` の実行が同じ組を再び報告する。定期の実行は無い) |
-| 計画の要求項目 | `plan-requirement/vocabulary.json` | listed → picked、planned → shown、approved → decided、implemented → applied、obsolete → lapsed、blocked_upstream・user_excluded → declined | gate: `plan-scope-gate`(処分の無い項目があると承認の依頼まで進めない) |
+| リポジトリ設定のずれ | `repo-config-drift/vocabulary.json` | drifted → picked、drafted → shown、approved → decided、applied → applied、routed → handed_off、excluded・exempt → declined | reminder-event: `redetect`(次の `github-audit` の実行が同じ組を再び報告する。定期の実行はない) |
+| 計画の要求項目 | `plan-requirement/vocabulary.json` | listed → picked、planned → shown、approved → decided、implemented → applied、obsolete → lapsed、blocked_upstream・user_excluded → declined | gate: `plan-scope-gate`(処分のない項目があると承認の依頼まで進めない) |
 
 裁定ページの選択(`decide`・`pass`・`later`・`other`)は独立の状態機械ではなく、メール項目の事象への入力である。対応表 `mail-item.json` の
 `inputs` に、`decide` → 事象 `decide`、`pass` → 事象 `pass`、`later` → 事象なし(何も書かない。状態は動かず、時計が動き続ける)、
@@ -178,8 +178,8 @@ scripts/vocab-graph-check --refinements <対応表>   # 指定した対応表
 | `準同型` | 具体の各事象(from → to)を抽象へ写すと、抽象の事象に存在するか、同じ状態への自己遷移になる |
 | `P1` | 上記。抽象の側と、写された具体の状態ごと |
 | `P2` | 上記 |
-| `入力` | `inputs` の事象が具体の語彙に実在し、`shown` に写る状態から出る(事象なしは `note` が要る) |
-| `画面` | `mail-item.json` だけ。`options.json` の全 `kind` の `verdict` の集合と `inputs` のキーの集合が一致する。選択肢に `inputs` が無い語(押したときの事象が決まらない)も、`inputs` に選択肢が無い語(画面から押せない)も落とす。`options.json` が無くても落ちる |
+| `入力` | `inputs` の事象が具体の語彙に実在し、`shown` に写る状態から出る(事象なしは `note` が必要) |
+| `画面` | `mail-item.json` だけ。`options.json` の全 `kind` の `verdict` の集合と `inputs` のキーの集合が一致する。選択肢に `inputs` がない語(押したときの事象が決まらない)も、`inputs` に選択肢がない語(画面から押せない)も失敗させる。`options.json` がなくても失敗する |
 
 限界: P1 は手段の**実在**を見る。手段が実際に働くか(`github-audit` を定期に回す人がいるか)は検査しない。
 

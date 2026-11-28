@@ -6,47 +6,29 @@
 規約側: `config/claude/CLAUDE.md`「GitHub に投稿するテキストには生成元を明示する」
 Issue: #190、#192(Codex CLI / Copilot CLI への展開)、#415(Rust 移植、ADR-0024 Stage 4a)
 
-Claude Code / Codex CLI / Copilot CLI が GitHub に書く外向きテキスト（PR / Issue の
-`create`・`edit`、Issue / PR コメント、`gh pr review` のレビュー本体)に attribution
-フッターが載っていることを保証する。以下は主に Claude Code 版の判定エンジンの
-設計記録(Codex/Copilot への展開は #192 の節を参照)。
+Claude Code / Codex CLI / Copilot CLI が GitHub に投稿する外向きテキスト(PR / Issue の `create`・`edit`、Issue / PR コメント、`gh pr review` のレビュー本体)に attribution フッターが付いていることを保証する。以下は主に Claude Code 版の判定エンジンの設計記録である(Codex/Copilot への展開は #192 の節を参照)。
 
 ## なぜ必要だったか
 
-PR 本文に付く `🤖 Generated with [Claude Code](...)` フッターは、**このリポジトリの
-ルールではなく harness 側の attribution 指示**（セッションごとに注入される
-system-reminder）由来である。そのため 2 つの穴があった。
+PR 本文に付く `🤖 Generated with [Claude Code](...)` フッターは、**このリポジトリのルールではなく harness 側の attribution 指示**(セッションごとに注入される system-reminder)に由来する。そのため 2 つの穴があった。
 
-1. **コメント投稿には一切付かない。** `gh pr comment` / `gh issue comment` /
-   `gh pr review --body` で Claude が投稿したテキストは、GitHub 上では人間の発言と
-   区別が付かない。mention を含むコメントは相手に直接通知が飛ぶため、人間の発言と
-   誤読されるコストが最も高い面である。
-2. **PR / Issue 本文側も保証されていない。** `pr-gate` は `G_link`（closing
-   keyword）と `G_visual`（視覚証跡）を検査するが attribution は見ていない。harness
-   の指示が変わる・欠ける・セッションによって注入されないと、repo 側は何も気付かずに
-   静かに落ちる。
+1. **コメント投稿には一切付かない。** `gh pr comment` / `gh issue comment` / `gh pr review --body` で Claude が投稿したテキストは、GitHub 上では人間の発言と区別が付かない。mention を含むコメントは相手に直接通知が飛ぶため、人間の発言と誤読されるコストが最も高い場面である。
+2. **PR / Issue 本文側も保証されていない。** `pr-gate` は `G_link`(closing keyword)と `G_visual`(視覚証跡)を検査するが attribution は見ていない。harness の指示が変わる・欠ける・セッションによって注入されない場合、リポジトリ側は何も気づかずに素通りしてしまう。
 
-規約（自発的に付ける）+ 機械 gate（漏れを拾う）の二層にした。`pr-gate` の
-`No-Issue:` / `No-Visual:` と同じ設計思想 — 沈黙を決定に変え、抜けた事実と理由を
-grep 可能な形で残す。
+規約(自発的に付ける)と機械 gate(漏れを拾う)の二層にした。`pr-gate` の `No-Issue:` / `No-Visual:` と同じ設計思想であり、沈黙を決定に変えて抜けた事実と理由を grep 可能な形で残す。
 
 ## なぜ Stop hook ではなく PreToolUse か
 
-コメント投稿は通知が飛ぶ**不可逆操作**で、事後に怒っても取り返せない。`pr-gate`
-が Stop で成立するのは、PR の本文は後から `gh pr edit` で直せるからである。投稿
-そのものを止められる位置は PreToolUse しかない。
+コメント投稿は通知が飛ぶ**不可逆操作**で、事後に対処しても取り返せない。`pr-gate` が Stop で成立するのは、PR 本文は後から `gh pr edit` で直せるからである。投稿そのものを止められる位置は PreToolUse しかない。
 
-`ask`（人間に確認を出す）にもしなかった。フッターの追記は Claude が自分でできるので、
-確認は人間の手数を増やすだけになる。`deny` なら往復 1 回で、人間の手数は 0。
+`ask`(人間に確認を出す)にもしなかった。フッターの追記は Claude が自分でできるため、確認は人間の手間を増やすだけになる。`deny` なら往復 1 回で済み、人間の手間は 0 である。
 
 ## なぜ mention の有無で分岐しないか
 
 依頼の発端は「メンション付きコメント」だったが、対象はコメント全般にした。
 
-- mention が無くても watcher / assignee / subscriber には通知が飛ぶので、「人間に
-  届くか」は mention の有無で決まらない。
-- `@` の出現をパースする条件分岐は偽陰性を生む（コードブロック内の `@`、メール
-  アドレス、`@` を付けずに名前を書くケース）。
+- mention がなくても watcher / assignee / subscriber には通知が飛ぶため、「人間に届くか」は mention の有無で決まらない。
+- `@` の出現をパースする条件分岐は偽陰性を生む(コードブロック内の `@`、メールアドレス、`@` を付けずに名前を書くケース)。
 - AI 生成物である事実は、読者が誰かに依存しない。
 
 ## 判定の境界
@@ -55,73 +37,45 @@ grep 可能な形で残す。
 |----|------|
 | 本文に attribution フッターがある | 通す |
 | 本文に `No-Attribution: <理由>` がある | 通す |
-| 本文フラグが無い（`gh pr edit --add-label`） | 通す（判定不能） |
-| `--body-file` が読めない絶対パスのリテラル | **deny**（#1109。footer を確かめられない。本文の Write が終わる前の並列投稿もここで止まる） |
-| `--body-file` が読めない相対パス・`-`・変数やコマンド置換を含むパス | 通す（判定不能。実行時の値が分からない） |
-| 本文がコマンド置換（`--body "$(cat f)"`） | 通す（判定不能） |
+| 本文フラグがない(`gh pr edit --add-label`) | 通す(判定不能) |
+| `--body-file` が読めない絶対パスのリテラル | **deny**(#1109。footer を確認できない。本文の Write が終わる前の並列投稿もここで止まる) |
+| `--body-file` が読めない相対パス・`-`・変数やコマンド置換を含むパス | 通す(判定不能。実行時の値が分からない) |
+| 本文がコマンド置換(`--body "$(cat f)"`) | 通す(判定不能) |
 | 上記以外 | **deny** |
 
-deny の理由文には**抜け道 `No-Attribution:` を明示的に書く**。bleep は
-`verdict_reason()` に「bypass 手段はここに書かない。README 参照」と逆方針を明記して
-いるが、あちらは漏洩防止で、抜け道を教えると自分で抜けてしまう。`No-Attribution:` は
-正当な判断であり、Claude が使えないと意味がない。
+deny の理由文には**抜け道 `No-Attribution:` を明示的に書く**。bleep は `verdict_reason()` に「bypass 手段はここに書かない。README 参照」と逆の方針を明記しているが、あちらは漏洩防止目的であり抜け道を教えるとすり抜けられる。一方 `No-Attribution:` は正当な判断記録であり、Claude が使えないと意味がない。
 
-`No-Attribution:` は理由を伴って初めて成立する（`pr-gate` の `NO_ISSUE_RE` と
-同型）。空の `No-Attribution:` を通すと、沈黙を決定に変える目的が崩れる。
+`No-Attribution:` は理由を伴って初めて成立する(`pr-gate` の `NO_ISSUE_RE` と同型)。空の `No-Attribution:` を通すと、沈黙を決定に変える目的が崩れる。
 
 ## 検査範囲の切り出し — ここが一番の勘所
 
-**コマンド文字列全体でマーカーを探してはいけない。** 次は Claude が自然に書く形だが、
-全体スキャンでは comment 側が create 側のフッターによって通ってしまう。
+**コマンド文字列全体でマーカーを探してはいけない。** 次は Claude が自然に書く形だが、全体スキャンでは comment 側が create 側のフッターによって通ってしまう。
 
 ```
 gh pr create --title t --body "…🤖 Generated with [Claude Code](…)" \
   && gh pr comment 1 --body "短いコメント"
 ```
 
-よって「**対象コマンドの出現位置から、次の対象コマンドの出現位置まで**」を 1 投稿ぶんの
-範囲として切り出し、範囲ごとに独立に判定する（1 件でも deny なら deny）。
+よって「**対象コマンドの出現位置から、次の対象コマンドの出現位置まで**」を 1 投稿分の範囲として切り出し、範囲ごとに独立して判定する(1 件でも deny なら deny)。
 
-区切りをシェル metachar（`;` `&&` `||` `|`）にしなかった理由: 長文コメントの典型形
-`--body "$(cat <<'EOF' … EOF)"` は本文中に metachar を含みうる。metachar で切ると
-本文が後段セグメントに落ちてマーカーを見失い、**false deny が頻発する**。「次の対象
-コマンドまで」で切れば heredoc 内の metachar は打ち切り要因にならない。
+区切りをシェル metachar(`;` `&&` `||` `|`)にしなかった理由: 長文コメントの典型形 `--body "$(cat <<'EOF' … EOF)"` は本文中に metachar を含み得る。metachar で切ると本文が後段セグメントに分かれてマーカーを見失い、**false deny が頻発する**。「次の対象コマンドまで」で切れば heredoc 内の metachar は打ち切り要因にならない。
 
-`git-stash-guard.sh` は metachar 分割を採っているが、あちらが分割するのは
-`git stash pop` のような短い呼び出しで、本文のような長い値を持たない。
-`git-worktree-allow.sh:49` は metachar を含むコマンドで判定自体を諦めているが、あれは
-allow 側で「諦める = 許可を出さない = 安全側」。deny 側では諦め = 素通しになるため
-同じ倒し方はできない（この非対称性は `git-stash-guard.sh:21-27` が明記している）。
+`git-stash-guard.sh` は metachar 分割を採っているが、あちらが分割するのは `git stash pop` のような短い呼び出しであり、本文のような長い値を持たない。
+`git-worktree-allow.sh:49` は metachar を含むコマンドで判定自体を諦めているが、あれは allow 側で「諦める = 許可を出さない = 安全側」になるためである。deny 側では諦め = 素通しになるため同じ倒し方はできない(この非対称性は `git-stash-guard.sh:21-27` に明記している)。
 
 ## 対象コマンドの検出は「コマンド位置」に限る
 
-範囲を切る前に、そもそも**対象コマンドが実行されるコマンドなのか、別コマンドに渡される
-文字列なのか**を区別しなければならない。ここを外すと gate は運用に耐えない。
+範囲を切る前に、そもそも**対象コマンドが実行されるコマンドなのか、別コマンドに渡される文字列なのか**を区別しなければならない。ここを誤ると gate は運用に耐えない。
 
-初版はコマンド文字列全体を正規表現で見ていた。その結果、**この hook 自身を commit
-しようとして止まった** — コミットメッセージ本文に設計の説明として
-`gh pr create --body "…" && gh pr comment 1 --body "y"` と書いたためである。続けて、
-その誤検知を直すための修正スクリプトのコメント文でも止まった。
+初版はコマンド文字列全体を正規表現で見ていた。その結果、**この hook 自身を commit しようとして止まった** — コミットメッセージ本文に設計の説明として `gh pr create --body "…" && gh pr comment 1 --body "y"` と書いたためである。続けて、その誤検知を直すための修正スクリプトのコメント文でも止まった。
 
-`git-stash-guard.sh:139-148` が同じ罠の記録を残している（「`stash` という単語がパスに
-含まれるだけの無関係な複数行コマンドまで deny してしまう実害のある誤検知だった
-（このファイル自身のパスで実際に踏んだ）」）。ただし違いがある: `stash` はコミット
-メッセージに書く語ではないが、**投稿コマンドの綴りはこのリポジトリの docs と
-コミットメッセージに頻出する**。だから粗い判定で済ませられない。
+`git-stash-guard.sh:139-148` が同じ罠の記録を残している(「`stash` という単語がパスに含まれるだけの無関係な複数行コマンドまで deny してしまう実害のある誤検知だった(このファイル自身のパスで実際に踏んだ)」)。ただし違いがある: `stash` はコミットメッセージに書く語ではないが、**投稿コマンドの綴りはこのリポジトリの docs とコミットメッセージに頻出する**。そのため粗い判定では済ませられない。
 
-2 段で絞る。
+2 段階で絞り込む。
 
-1. **heredoc 本体を分離する**（`split_heredoc`）。本体の各行は改行の直後に来るので、
-   分離しないと本体に書いた例文がコマンド位置に見える。分離した本体は捨てずに
-   `HD_BODIES` に保持し、`--body "$(cat <<'TAG' … TAG)"` の本文候補として使う。
-   bash 版のコメントは「`<<<`(herestring)はタグの正規表現にマッチせず除外される」と
-   書いていたが、実際には `<<<EOF` / `<<< "x"` も 2 文字目からの `<<` で一致し
-   heredoc として扱われる。Rust 移植(#415)は bash の実挙動を保った
-   (`crates/command-inspection/src/shell.rs` のテストで固定。その doc コメントに、
-   実挙動のまま保った点を書いてある)。
-2. **残りをトークン化し、コマンド位置の `gh` 呼び出しだけを対象とする**。コマンド位置 =
-   トークン列の先頭、または区切りトークン（`;` `|` `&` `(` `)` 改行）の直後。クォート
-   された文字列は 1 トークンになるのでコマンド位置には来ない。
+1. **heredoc 本体を分離する**(`split_heredoc`)。本体の各行は改行の直後に来るため、分離しないと本体に書いた例文がコマンド位置に見えてしまう。分離した本体は捨てずに `HD_BODIES` に保持し、`--body "$(cat <<'TAG' … TAG)"` の本文候補として使う。
+   bash 版のコメントは「`<<<`(herestring)はタグの正規表現にマッチせず除外される」と書いていたが、実際には `<<<EOF` / `<<< "x"` も 2 文字目からの `<<` で一致し heredoc として扱われる。Rust 移植(#415)では bash の実挙動を保った(`crates/command-inspection/src/shell.rs` のテストで固定し、その doc コメントに実挙動のまま保った経緯を記載している)。
+2. **残りをトークン化し、コマンド位置の `gh` 呼び出しだけを対象とする**。コマンド位置 = トークン列の先頭、または区切りトークン(`;` `|` `&` `(` `)` 改行)の直後。クォートされた文字列は 1 トークンになるためコマンド位置には来ない。
 
 この結果、次はすべて素通しになる。
 
@@ -133,30 +87,17 @@ echo 'gh issue comment 1 --body x'
 
 ### wrap-up inbox の出自フッターは生成元表示を兼ねる
 
-`wrapup-stop-gate` の起票手順は出自フッター
-`🤖 Filed from [Claude Code](https://claude.com/claude-code) wrap-up inbox` を
-要求する。当初は「生成元表示」と「inbox 由来を grep で絞る出自フッター」を
-別行で 2 本付けていたが、出自フッター自体に `Claude Code` へのリンクを含めれば
-1 行で両方を満たせる。`ATTRIBUTION_RE` はそのため
-`(Generated with|Filed from)[[:space:]]*\[?Claude Code` の alternation にして
-おり、統合形・旧 2 行形式のどちらも受理する(旧形式で起票済みの Issue を
-書き換える必要はない)。`Claude Code` を含まない出自フッター単独(例:
-`🤖 Filed from wrap-up inbox`)は引き続き deny される。
+`wrapup-stop-gate` の起票手順は出自フッター `🤖 Filed from [Claude Code](https://claude.com/claude-code) wrap-up inbox` を要求する。当初は「生成元表示」と「inbox 由来を grep で絞る出自フッター」を別行で 2 本付けていたが、出自フッター自体に `Claude Code` へのリンクを含めれば 1 行で両方を満たせる。`ATTRIBUTION_RE` はそのため `(Generated with|Filed from)[[:space:]]*\[?Claude Code` の alternation にしており、統合形・旧 2 行形式のどちらも受理する(旧形式で起票済みの Issue を書き換える必要はない)。`Claude Code` を含まない出自フッター単独(例: `🤖 Filed from wrap-up inbox`)は引き続き deny される。
 
 ### gate 自身を直すときは gate を外す
 
-この guard のバグを直す作業そのものが guard に止められることがある（実際に起きた）。
-その場合は `~/.claude/settings.json` から該当エントリを一時的に外して作業し、
-修正後に `hms` で戻す。settings.json は activation 時の冪等マージで復元されるので、
-手で戻す必要はない。
+この guard のバグを直す作業そのものが guard に止められることがある(実際に起きた)。その場合は `~/.claude/settings.json` から該当エントリを一時的に外して作業し、修正後に `hms` で戻す。settings.json は activation 時の冪等マージで復元されるため、手で戻す必要はない。
 
 ## 本文の抽出 — なぜ自前トークナイザなのか
 
-範囲内から `--body` / `--body-file` の**値だけ**を取り出す。これをしないと
-`--title "🤖 Generated with [Claude Code]" --body "x"` が通る。
+範囲内から `--body` / `--body-file` の**値だけ**を取り出す。これをしないと `--title "🤖 Generated with [Claude Code]" --body "x"` が通ってしまう。
 
-**`xargs` は使えない（実測）。** GNU xargs はクォート内の改行を扱えず
-`unmatched single quote` で失敗する。
+**`xargs` は使えない(実測)。** GNU xargs はクォート内の改行を扱えず `unmatched single quote` で失敗する。
 
 ```console
 $ printf "%s" "gh pr comment 1 --body '## 見出し
@@ -168,99 +109,63 @@ comment
 xargs: unmatched single quote; by default quotes are special to xargs unless you use the -0 option
 ```
 
-改行を含む本文は長文コメントの典型なので、xargs では主要ケースが常にフォールバックに
-落ちる。
+改行を含む本文は長文コメントの典型なので、xargs では主要ケースが常にフォールバックに落ちてしまう。
 
-**`read -r -a` の素朴な空白分割も使えない。** `git-stash-guard.sh:63-74` はこれを
-採っている（「素朴な空白分割(git-worktree-allow と同じ割り切り)」と明記）が、あちらが
-扱うのは `git stash push -u -m <tag>` のような値に空白が入らない短いフラグ列である。
-この guard が取り出すのは Markdown 本文で、**`- 箇条書き` が必ず含まれる**。「次の
-`-` 始まりトークンまで」で切る実装にすると本文が毎回途中で切れ、末尾のフッターを
-常に見失って全 deny になる。
+**`read -r -a` の素朴な空白分割も使えない。** `git-stash-guard.sh:63-74` はこれを採っている(「素朴な空白分割(git-worktree-allow と同じ割り切り)」と明記)が、あちらが扱うのは `git stash push -u -m <tag>` のような値に空白が入らない短いフラグ列である。この guard が取り出すのは Markdown 本文で、**`- 箇条書き` が必ず含まれる**。「次の `-` 始まりトークンまで」で切る実装にすると本文が毎回途中で切れ、末尾のフッターを常に見失って全 deny になる。
 
-よってクォートを解釈する自前トークナイザ（`tokenize()`）を持つ。`LC_ALL=C` の
-バイト単位走査で UTF-8 は安全 — 継続バイトは 0x80-0xBF で、ASCII のクォート・空白と
-衝突しない。
+よってクォートを解釈する自前トークナイザ(`tokenize()`)を持つ。`LC_ALL=C` のバイト単位走査で UTF-8 も安全に扱える(継続バイトは 0x80-0xBF であり、ASCII のクォート・空白と衝突しない)。
 
 ## 抽出不能時の倒し方は経路ごとに違う
 
 | 経路 | 倒し方 | 理由 |
 |------|--------|------|
-| heredoc（`<<`）を含む | 抽出した本文に heredoc 本体を足して検査 | 本体が `command` 文字列内に実在する |
-| コマンド置換のみ（`$(` / `` ` ``） | 判定不能 → 通す | 中身が不明。deny に倒すと `--body "$(cat body.md)"` が常に弾かれる |
-| 本文フラグが無い | 判定不能 → 通す | `gh pr edit --add-label` を誤検知しない |
-| 読めない絶対パスの `--body-file` | deny | `gh` 自身もファイルが無ければ失敗するので、止めて失うものが無い。通すと付け忘れが静かに残る（#1109） |
+| heredoc(`<<`)を含む | 抽出した本文に heredoc 本体を足して検査 | 本体が `command` 文字列内に実在する |
+| コマンド置換のみ(`$(` / `` ` ``) | 判定不能 → 通す | 中身が不明。deny に倒すと `--body "$(cat body.md)"` が常に弾かれる |
+| 本文フラグがない | 判定不能 → 通す | `gh pr edit --add-label` を誤検知しない |
+| 読めない絶対パスの `--body-file` | deny | `gh` 自身もファイルがなければ失敗するため止めて失うものがない。通すと付け忘れが静かに残る(#1109) |
 | トークナイザが unmatched quote | 判定不能 → 通す | トークン列が空になる |
 
-「判定できない場合は断定に変えず素通す」は `crates/pr-gate`(`src/lib.rs` 冒頭)の縮退表と同じ思想。
-ただし heredoc だけは素通しではなく本体を本文候補に加える — 本体が実在するので
-判定材料がある。
+「判定できない場合は断定に変えず素通しする」という方針は `crates/pr-gate`(`src/lib.rs` 冒頭)の縮退表と同じ思想である。ただし heredoc だけは素通しではなく本体を本文候補に加える — 本体が実在するため判定材料がある。
 
-初版の設計記録は heredoc と unmatched quote を「範囲文字列全体を検査」と書いていたが、
-bash 実装は当初から上表のとおりだった(Rust 移植 #415 で実装に合わせて表を直した)。
+初版の設計記録では heredoc と unmatched quote を「範囲文字列全体を検査」と書いていたが、bash 実装は当初から上表のとおりだった(Rust 移植 #415 で実装に合わせて表を修正した)。
 
-## `gh api` の判定（#195）
+## `gh api` の判定(#195)
 
-正規経路（`gh pr|issue comment`、`gh pr review`）が揃っていても、`gh api` の
-生呼び出しで同じ投稿ができてしまう穴があった。規約（CLAUDE.md）側は経路を
-問わず要求しているため、`gh api` のうち**外向き投稿とわかるエンドポイント**
-だけを対象に追加した。判定は `decide_tokens()` と対になる `decide_api_tokens()`
-が担う（`is_target_at()` が `gh api` をコマンド位置として検出し、範囲ごとの
-判定を `TARGET_KIND` で `decide_tokens`/`decide_api_tokens` に振り分ける）。
+正規経路(`gh pr|issue comment`、`gh pr review`)が揃っていても、`gh api` の生呼び出しで同じ投稿ができてしまう穴があった。規約(CLAUDE.md)側は経路を問わず要求しているため、`gh api` のうち**外向き投稿とわかるエンドポイント**だけを対象に追加した。判定は `decide_tokens()` と対になる `decide_api_tokens()` が担う(`is_target_at()` が `gh api` をコマンド位置として検出し、範囲ごとの判定を `TARGET_KIND` で `decide_tokens`/`decide_api_tokens` に振り分ける)。
 
 | 形 | 判定 |
 |----|------|
-| `repos/OWNER/REPO/issues`（作成）/ `issues/N`（編集） | judge |
-| `issues/N/comments` / `issues/comments/N`（コメント作成・編集） | judge |
-| `repos/OWNER/REPO/pulls`（作成）/ `pulls/N`（編集）/ `pulls/N/reviews`（レビュー） | judge |
-| `pulls/N/comments` / `pulls/comments/N`（インラインレビューコメント） | 対象外（下の既知の限界どおり） |
-| 上記以外の URL パス（`rulesets` 等） | 対象外（素通り） |
+| `repos/OWNER/REPO/issues`(作成)/ `issues/N`(編集) | judge |
+| `issues/N/comments` / `issues/comments/N`(コメント作成・編集) | judge |
+| `repos/OWNER/REPO/pulls`(作成)/ `pulls/N`(編集)/ `pulls/N/reviews`(レビュー) | judge |
+| `pulls/N/comments` / `pulls/comments/N`(インラインレビューコメント) | 対象外(下の既知の限界どおり) |
+| 上記以外の URL パス(`rulesets` 等) | 対象外(素通り) |
 | `-X`/`--method` が明示 `GET`/`HEAD`/`DELETE` | 判定不能 → 通す |
 
-インラインの除外は追加の正規表現を持たない — 対象パスの正規表現
-（`API_JUDGED_RE`）は `pulls` に `(/[0-9]+)?(/reviews)?` までしか許さないため、
-`pulls/N/comments` はそもそもこの正規表現にマッチせず自然に非対象になる。
+インラインの除外には追加の正規表現を持たない — 対象パスの正規表現(`API_JUDGED_RE`)は `pulls` に `(/[0-9]+)?(/reviews)?` までしか許さないため、`pulls/N/comments` はそもそもこの正規表現にマッチせず自然に非対象になる。
 
-本文は `-f`/`--field`/`-F`/`--raw-field` の `body=<値>`、または `--input <file>`
-（jq で `.body` を読む）から取る。`--input -`（stdin）は判定不能 → 通す
-（heredoc と併用していれば heredoc 本体を検査する、既存の倒し方と同じ）。
+本文は `-f`/`--field`/`-F`/`--raw-field` の `body=<値>`、または `--input <file>`(jq で `.body` を読む)から取得する。`--input -`(stdin)は判定不能 → 通す(heredoc と併用していれば heredoc 本体を検査する、既存の倒し方と同じ)。
 
-## 既知の限界（意図的な選択）
+## 既知の限界(意図的な選択)
 
-- **コード行へのインラインレビューコメントは対象外。** 1〜2 行が典型で、フッターが
-  本文より長くなり S/N を壊す。投稿経路も `gh api` / MCP に発散する。
-- **フォールバック経路では `--title` 等の他フラグにマーカーがあると通る。** 厳密経路
-  （本文抽出が成功した場合）では塞がっている。脅威モデルは敵対的入力ではなく Claude
-  自身が生成するコマンドなので許容している（`git-stash-guard.sh:31-33` と同じ前提）。
-- **1 コマンド中に複数の heredoc がある場合、本体と投稿コマンドの対応付けはしない。**
-  範囲内に heredoc リダイレクトがあれば、分離した本体すべてを本文候補にする。
-- **MCP GitHub は未接続のまま実装している。** tool 名を書き込み系の語で絞り、
-  `.tool_input.body` / `.comment` を見る。実際の命名規則は接続時に確認が必要
-  （#161 が bleep について同じ課題を抱えている）。matcher を `Bash` 単体に
-  しなかったのは、接続した瞬間に無検査になるのを防ぐため — bleep の旧実装が
-  まさにこれで「最大の機能欠陥」を抱えていた（`home/modules/agents.nix` の登録
-  コメントに記録がある）。
+- **コード行へのインラインレビューコメントは対象外。** 1〜2 行が典型で、フッターが本文より長くなり S/N を壊す。投稿経路も `gh api` / MCP に発散する。
+- **フォールバック経路では `--title` 等の他フラグにマーカーがあると通る。** 厳密経路(本文抽出が成功した場合)では塞がっている。脅威モデルは敵対的入力ではなく Claude 自身が生成するコマンドなので許容している(`git-stash-guard.sh:31-33` と同じ前提)。
+- **1 コマンド中に複数の heredoc がある場合、本体と投稿コマンドの対応付けはしない。** 範囲内に heredoc リダイレクトがあれば、分離した本体すべてを本文候補にする。
+- **MCP GitHub は未接続のまま実装している。** tool 名を書き込み系の語で絞り、`.tool_input.body` / `.comment` を見る。実際の命名規則は接続時に確認が必要(#161 が bleep について同じ課題を抱えている)。matcher を `Bash` 単体にしなかったのは、接続した瞬間に無検査になるのを防ぐため — bleep の旧実装がまさにこれで「最大の機能欠陥」を抱えていた(`home/modules/agents.nix` の登録コメントに記録がある)。
 
 ## Codex CLI / Copilot CLI への展開(#192)
 
-裁定(#192): 別エージェントには別の文言が必要という当初の懸念(「文言を
-増やすと grep 対象が分散する」)は、汎用の「AI generated」ではなく
-**エージェント名入りの文言**で展開する方針で解消した。読者が「どの
-エージェントが生成したか」を本文だけで判別できることを、grep 対象の
-一元化より優先する。
+裁定(#192): 別エージェントには別の文言が必要という当初の懸念(「文言を増やすと grep 対象が分散する」)は、汎用の「AI generated」ではなく**エージェント名入りの文言**で展開する方針で解消した。読者が「どのエージェントが生成したか」を本文だけで判別できることを、grep 対象の一元化より優先する。
 
 判定はエージェント非依存で、3 エージェントから同じ 1 バイナリ
 `crates/attribution-guard` を `--agent claude|codex|copilot` で呼ぶ(#415、
 #391)。bash 時代は `config/claude/hooks/attribution-guard.sh` の判定エンジンを
 `config/{codex,copilot}/hooks/attribution-guard.sh` が `source` して薄い I/O
 adapter だけを持つ型(`tarotene/bleep` の旧 `adapters/{codex,copilot}-adapter.sh`
-を踏襲)だったが、Rust には `source` が無いので、bleep 自身が #25-28 で
+を踏襲)だったが、Rust には `source` がないので、bleep 自身が #25-28 で
 単一 shim `hooks/bleep.sh --host=<name>` に統合したのと同じ形にした。
 
-エージェントごとに変わるのはフッターのエージェント名と URL だけ
-(`Attribution::for_agent`。bash 版では adapter が `ATTRIBUTION_AGENT_NAME` /
-`ATTRIBUTION_AGENT_URL` を `source` 前に上書きしていた)。フッターは
-`🤖 Generated with [<エージェント名>](<URL>)` の形で統一する:
+エージェントごとに変わるのはフッターのエージェント名と URL だけである(`Attribution::for_agent`。bash 版では adapter が `ATTRIBUTION_AGENT_NAME` / `ATTRIBUTION_AGENT_URL` を `source` 前に上書きしていた)。フッターは `🤖 Generated with [<エージェント名>](<URL>)` の形で統一する:
 
 | エージェント | 名前 | URL |
 |---|---|---|
@@ -280,45 +185,25 @@ Codex/Copilot の PreToolUse 入出力の形は Claude と異なり、これは
 | Codex CLI | `tool_input.command` | `Bash`(大文字、Claude と同型) | `hookSpecificOutput` でラップ(Claude と同型) |
 | Copilot CLI | `toolArgs.command` | `bash`(小文字) | ラップしない直下の JSON |
 
-Copilot CLI の `preToolUse` には matcher が無く全 tool call で無条件発火
-するため、`toolName=="bash"` 以外はバイナリ内部で早期 exit する。
+Copilot CLI の `preToolUse` には matcher がなく全 tool call で無条件発火するため、`toolName=="bash"` 以外はバイナリ内部で早期 exit する。
 
-`--agent` は `agent_session::entry` が厳密に解析する(`docs/agents/agent-libraries.md`)。値が無い・
-`claude|codex|copilot` 以外・2 回以上は、標準エラーに理由を出して終了コード 1 で終わる
-(`tests/cmd/agent-0*.toml`)。従来は、未知の値が黙って Claude の形に倒れていたので、タイプミスの登録が
-検査を素通りにする経路だった。出力の形(上の表)は、`Reply::render` が持つ。
+`--agent` は `agent_session::entry` が厳密に解析する(`docs/agents/agent-libraries.md`)。値がない・`claude|codex|copilot` 以外・2 回以上指定された場合は、標準エラーに理由を出して終了コード 1 で終了する(`tests/cmd/agent-0*.toml`)。従来は未知の値が黙って Claude 向けとして処理されていたため、タイプミスの登録が検査を素通りにする経路になっていた。出力の形(上の表)は `Reply::render` が持つ。
 
 ### スコープ外にしたもの
 
-MCP GitHub tool の命名規則は Codex・Copilot のいずれでも未確認のまま
-(#161 が同じ課題を bleep について記録している)。この展開では
-Bash 経由の `gh` コマンドのみを対象にし、`decide_mcp`(`mcp__github*`
-前提)は `--agent claude` のときだけ呼ぶ。
+MCP GitHub tool の命名規則は Codex・Copilot のいずれでも未確認のまま(#161 が同じ課題を bleep について記録している)。この展開では Bash 経由の `gh` コマンドのみを対象にし、`decide_mcp`(`mcp__github*` 前提)は `--agent claude` のときだけ呼ぶ。
 
 ### bash 版エンジンの削除
 
-`config/claude/hooks/attribution-guard.sh` は、7 本の bash guard が `source` する共有エンジンとして、
-他の guard の移植が済むまで残していた。全 guard が `crates/github-command` の上に移ったので、#415 で削除した
-(配備 `~/.claude/hooks/attribution-guard.sh` と CI の `--selftest` も同時に消した)。
+`config/claude/hooks/attribution-guard.sh` は、7 本の bash guard が `source` する共有エンジンとして、他の guard の移植が済むまで残していた。全 guard が `crates/github-command` の上に移ったため、#415 で削除した(配備 `~/.claude/hooks/attribution-guard.sh` と CI の `--selftest` も同時に削除した)。
 
 ## 縮退と検査
 
-- stdin 不正は黙って `exit 0`（ADR-0005 の binary-existence gating に倣う縮退）。
-- `crates/attribution-guard/tests/cmd/` の trycmd fixture が、bash 版
-  `--selftest` のケース 1〜33(45 アサーション、`st*.toml`)・旧 Codex/Copilot
-  adapter の selftest(各 4 件)・Claude の hook 入出力の追加ケース(`hook-*.toml`)を
-  ネットワーク無しに検査する(期待値は bash 版から生成した。bash 版は #415 で削除した)。
-  ケース 1〜33 の内訳:うち 3 件は Copilot plan review の指摘 R1-B-1 の
-  回帰ケース（`&&` 連結での取り違え / 手前の `echo` からの混入 / 閉じクォートを
-  理由と誤認）、1 件は「Markdown 箇条書きで本文が切れて全 deny になる」false
-  deny の回帰ケース、3 件は「コマンド位置にない投稿コマンドの綴りで発火する」
-  false deny の回帰ケース、3 件は wrap-up inbox の統合フッター(前節)の受理・
-  非受理・旧形式回帰、ケース 25〜33(9 件)は `gh api` の判定(前節)——
-  対象パス judge/deny・インライン除外・`--input` ファイル/stdin・PATCH 編集・
-  GET 通過・非対象パス(`rulesets`)素通りの回帰。
-  **false deny 系が落ちると gate は実用上使えない。**
-- `attribution-guard [--agent <a>] --check '<コマンド文字列>'` で手動 e2e ができる
-  (deny なら `deny: <理由>` で exit 1、通すなら `pass`)。
+- stdin 不正は黙って `exit 0`(ADR-0005 の binary-existence gating に倣う縮退)。
+- `crates/attribution-guard/tests/cmd/` の trycmd fixture が、bash 版 `--selftest` のケース 1〜33(45 アサーション、`st*.toml`)・旧 Codex/Copilot adapter の selftest(各 4 件)・Claude の hook 入出力の追加ケース(`hook-*.toml`)をネットワークなしで検査する(期待値は bash 版から生成した。bash 版は #415 で削除した)。
+  ケース 1〜33 の内訳: うち 3 件は Copilot plan review の指摘 R1-B-1 の回帰ケース(`&&` 連結での取り違え / 手前の `echo` からの混入 / 閉じクォートを理由と誤認)、1 件は「Markdown 箇条書きで本文が切れて全 deny になる」false deny の回帰ケース、3 件は「コマンド位置にない投稿コマンドの綴りで発火する」false deny の回帰ケース、3 件は wrap-up inbox の統合フッター(前節)の受理・非受理・旧形式回帰、ケース 25〜33(9 件)は `gh api` の判定(前節)——対象パス judge/deny・インライン除外・`--input` ファイル/stdin・PATCH 編集・GET 通過・非対象パス(`rulesets`)素通りの回帰である。
+  **false deny 系が失敗すると gate は実用上使えない。**
+- `attribution-guard [--agent <a>] --check '<コマンド文字列>'` で手動 e2e ができる(deny なら `deny: <理由>` で exit 1、通すなら `pass`)。
 
 ## 登録形
 
@@ -328,15 +213,9 @@ Claude Code:
 PreToolUse / matcher: "Bash|mcp__.*" / timeout 10
 ```
 
-bleep と同じ複合 matcher 1 本。Bash と MCP を 2 つの hook エントリに分けない
-— `register()` の存在判定は command 文字列の完全一致だけで matcher を見ないため、
-同一 command を 2 つの matcher で登録しようとすると 2 回目が早期 return し、MCP 経路が
-無検査のまま残る。`if` は付けない（`Bash(*)` のような permission rule 構文は MCP の
-tool 名に一致しない）。絞り込みは hook 内部の早期 exit に置く。
+bleep と同じ複合 matcher 1 本。Bash と MCP を 2 つの hook エントリに分けられない — `register()` の存在判定は command 文字列の完全一致だけで matcher を見ないため、同一 command を 2 つの matcher で登録しようとすると 2 回目が早期 return し、MCP 経路が無検査のまま残る。`if` は付けない(`Bash(*)` のような permission rule 構文は MCP の tool 名に一致しない)。絞り込みは hook 内部の早期 exit に置く。
 
-Codex CLI（`~/.codex/hooks.json`、`home/modules/agents.nix` の
-`registerCodexAttributionGuardHooks`、bleep の Codex 登録の後ろに
-明示的に順序付け、lost-update 対策は同モジュールの既存コメント参照）:
+Codex CLI(`~/.codex/hooks.json`、`home/modules/agents.nix` の `registerCodexAttributionGuardHooks`、bleep の Codex 登録の後ろに明示的に順序付け、lost-update 対策は同モジュールの既存コメント参照):
 
 ```
 PreToolUse / matcher: "Bash|mcp__.*" / timeout 10
@@ -346,11 +225,9 @@ command: '~/.claude/hooks/attribution-guard' --agent codex
 旧 bash adapter の command は `--retire` で完全一致削除してから登録する。
 新しい command は Codex 側で一度 `/hooks` から trust し直す必要がある。
 
-Copilot CLI（`~/.copilot/settings.json`、同モジュールの `copilotHookDeclarations` の 1 行。
-かつては専用の activation で bleep の登録の後ろに順序付けていたが、Copilot の登録は 1 つの
-activation `registerCopilotHooks` にまとまった）:
+Copilot CLI(`~/.copilot/settings.json`、同モジュールの `copilotHookDeclarations` の 1 行。かつては専用の activation で bleep の登録の後ろに順序付けていたが、Copilot の登録は 1 つの activation `registerCopilotHooks` にまとまった):
 
 ```
-preToolUse / matcher なし（Copilot 自体が対応していない）/ timeoutSec 10
+preToolUse / matcher なし(Copilot 自体が対応していない)/ timeoutSec 10
 command: '~/.claude/hooks/attribution-guard' --agent copilot
 ```

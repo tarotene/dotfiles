@@ -34,12 +34,12 @@ skill は、使われ方で 2 層に分け、名前の付け方も層ごとに�
   旧名 `/wrapup-chores` は 32 回打たれていたが、責務どおりに改名した `/backlog-cleanup` は 0 回で、習慣の名前が切れていた。
   一覧に全 skill が並ぶと、`/` を打っても習慣の入口を探せない。入口に共通の接頭辞を付ければ、覚えるのは `/my` だけになる。
 - **隠す仕組みは名前から導く**: `home/modules/agents.nix` が、`my-` で始まらない skill の `SKILL.md` に、frontmatter の先頭の 1 行として
-  `user-invocable: false` を足して Claude 用に配る。この設定は、`/` の一覧から消し、`/名前` と打っても動かさず、エージェントは
+  `user-invocable: false` を追加して Claude 用に配る。この設定は、`/` の一覧から消し、`/名前` と打っても動かさず、エージェントは
   今までどおり文脈で選べる(Anthropic, "Extend Claude with skills", https://code.claude.com/docs/en/skills, 取得 2026-11-08)。
   skill ごとの宣言も手書きの一覧も持たない。`checks.<system>.agent-skills` は、隠した skill の `SKILL.md` が、2 行目の 1 行を除いて元と
-  一致すること、入口に足されていないこと、Codex 用(`.agents/skills`)に足されていないことを検査する。
-- **Codex では隠さない**: Codex の公式文書(https://learn.chatgpt.com/docs/build-skills, 取得 2026-11-08)には、本人の一覧から隠す設定が無い
-  (`allow_implicit_invocation` は逆向きの設定)ので、Codex 用には足さない。Codex では接頭辞で絞るだけになる。
+  一致すること、入口に追加されていないこと、Codex 用(`.agents/skills`)に追加されていないことを検査する。
+- **Codex では隠さない**: Codex の公式文書(https://learn.chatgpt.com/docs/build-skills, 取得 2026-11-08)には、本人の一覧から隠す設定がない
+  (`allow_implicit_invocation` は逆向きの設定)ので、Codex 用には追加しない。Codex では接頭辞で絞るだけになる。
 - **新しい skill は、既定で知識の層**に置く。入口にするのは、手打ちの実績があるときだけにする。実績は会話記録から数える:
   `grep -rhoE '<command-name>/[a-z0-9:-]+</command-name>' ~/.claude/projects --include='*.jsonl' | sort | uniq -c | sort -rn`。
   入口にするときは名前を `my-` で始め、`config/agents/skills/agent-tooling-authoring/SKILL.md` の配線チェックリストに従う。
@@ -53,7 +53,7 @@ skill は、使われ方で 2 層に分け、名前の付け方も層ごとに�
 共有 skill は `config/agents/skills/`、共有参照資料は `config/agents/reference/`、共有指示は
 `config/agents/AGENTS.md`、共有設計文書は `docs/agents/` に置く。
 共有の配布・hook 宣言は `home/modules/agents.nix` が持つ。`home/modules/` の全ファイルは `home/common.nix` が import する(全ホストが評価する集合)。
-`pkgs.dotfiles-tools` の実行ファイルの配備は、`dotfiles.binaries.<配備先のディレクトリ> = [ "<名前>" ]`(`home/modules/binaries.nix`)に名前を足す。配備先のファイル名は実行ファイルの名前と同じで、違う名前で配るもの(`codex`、`apply-rulesets.sh`、`open` と `xdg-open`)だけが手書きの `home.file`。
+`pkgs.dotfiles-tools` の実行ファイルの配備は、`dotfiles.binaries.<配備先のディレクトリ> = [ "<名前>" ]`(`home/modules/binaries.nix`)に名前を追加する。配備先のファイル名は実行ファイルの名前と同じで、違う名前で配るもの(`codex`、`apply-rulesets.sh`、`open` と `xdg-open`)だけが手書きの `home.file`。
 製品固有の設定・説明は `config/claude/`・`config/codex/`・`docs/claude/` など製品別の場所に残す。
 配布先と対応製品の範囲は、共有正本への移動だけを理由に広げない。
 
@@ -70,7 +70,7 @@ skill の frontmatter の `name` は、その `SKILL.md` を含むディレク�
 ### 外部依存の版は workspace に集める
 
 外部依存の版と `default-features` は、root の `Cargo.toml` の `[workspace.dependencies]` が唯一の正本。
-メンバー crate は `name.workspace = true` で継承し、必要な feature だけを `features = [...]` で足す。
+メンバー crate は `name.workspace = true` で継承し、必要な feature だけを `features = [...]` で追加する。
 例外は `pr-title-check` と `pr-contract-check` の 2 つで、他リポジトリの CI が 1 crate ずつ sparse-checkout して
 build するため、`[dependencies]` を空(標準ライブラリだけ)に保つ。検査は
 [`repo-structure-check`](repo-structure-check.md)(`cargo test`)が行う。
@@ -84,7 +84,7 @@ Claude 専用のままとする。`repo-governance-common` は補助ディレク
 各ディレクトリをビルド時にコピーし、相対リンクを実体化したうえで共有スクリプト・ruleset・
 参照資料を合成する。実行権限を保持し、Home Manager は `recursive = false` で
 ディレクトリ全体へのリンクを配置する。`SKILL.md` 自体をリンクにしない。
-`checks.<system>.agent-skills` が配布範囲、通常ファイル、元資料との一致(Claude 用で隠した `SKILL.md` は、足した 1 行を除く)、実行権限を検査する。
+`checks.<system>.agent-skills` が配布範囲、通常ファイル、元資料との一致(Claude 用で隠した `SKILL.md` は、追加した 1 行を除く)、実行権限を検査する。
 
 Antigravity CLI(`agy`)は、共有の `.agents/skills/` を自動で発見する(agy 1.5.16 の changelog)ため、skill の配備は
 行わない。その代わり、agy が読み取る条件(frontmatter の `name` がディレクトリ名と一致し、`description` が空でないこと。出典は、agy 同梱の
@@ -96,7 +96,7 @@ Antigravity CLI(`agy`)は、共有の `.agents/skills/` を自動で発見する
 同じ場所の `<スキル名>.backup` に残る。同名のバックアップがあれば適用が止まるため、
 既存バックアップを別名へ退避してから再実行する。削除や上書きはしない。
 管理外のシンボリックリンクは `-b backup` の対象外であるため、衝突したリンク自体を
-バックアップへ退避してから再実行する（上書き先がないことを確認する）。
+バックアップへ退避してから再実行する(上書き先がないことを確認する)。
 管理対象外の第三者製スキルは移動しない。
 
 既存手段: `home/modules/agents.nix` — 拡張 — Nix のビルドと Home Manager の
@@ -106,12 +106,12 @@ Antigravity CLI(`agy`)は、共有の `.agents/skills/` を自動で発見する
   [discovery.rs L66–83, L142–153](https://github.com/openai/codex/blob/fe3b29455488c2e189e43ad5526a107900c5e1b7/codex-rs/ext/skills/src/loader/discovery.rs#L66) と
   [discovery_tests.rs L42–99](https://github.com/openai/codex/blob/fe3b29455488c2e189e43ad5526a107900c5e1b7/codex-rs/ext/skills/src/loader/discovery_tests.rs#L42)、
   OpenAI, [Build skills](https://learn.chatgpt.com/docs/build-skills), 公開日記載なし
-  （取得 2026-10-27）。公式のディレクトリリンク方式と一致し、補助資料の合成だけを追加する。
+  (取得 2026-10-27)。公式のディレクトリリンク方式と一致し、補助資料の合成だけを追加する。
   Codex 0.164.0 の `skills/list` でファイルリンクは0/41件、ディレクトリリンクは41/41件と実測した。
 - 判断: 移行は既存のバックアップに任せる。nix-community, home-manager rev
   `24f8f8e786f87d6a818e1746cb2389bf922afdab`,
   [modules/files.nix L187–224](https://github.com/nix-community/home-manager/blob/24f8f8e786f87d6a818e1746cb2389bf922afdab/modules/files.nix#L187)、
-  公開日記載なし（取得 2026-10-27）。`crates/hms/src/lib.rs` の `-b backup` 指定をそのまま使う。
+  公開日記載なし(取得 2026-10-27)。`crates/hms/src/lib.rs` の `-b backup` 指定をそのまま使う。
 
 ## 変更は配線と検証まで揃える
 
@@ -128,6 +128,6 @@ Nix 評価と `crates/pipeline-map/tests/coverage.rs` で検査する。
 
 ## 出典
 
-- Sameer Ajmani, “Package names”, 2015-02-04, https://go.dev/blog/package-names （取得 2026-10-26）。短く明確な責務名を選ぶ考え方を採用し、Go 固有の綴りは移植しない。
-- Google, “C++ Style Guide — Choosing Names”, 公開日記載なし, https://google.github.io/styleguide/cppguide.html#Choosing_Names （取得 2026-10-26）。読者に意味が伝わる名前を選ぶ原則を採用する。
-- Agent Skills, “Specification — name field”, 公開日記載なし, https://agentskills.io/specification#name-field （取得 2026-10-26）。ディレクトリ名と name の一致を採用する。
+- Sameer Ajmani, “Package names”, 2015-02-04, https://go.dev/blog/package-names (取得 2026-10-26)。短く明確な責務名を選ぶ考え方を採用し、Go 固有の綴りは移植しない。
+- Google, “C++ Style Guide — Choosing Names”, 公開日記載なし, https://google.github.io/styleguide/cppguide.html#Choosing_Names (取得 2026-10-26)。読者に意味が伝わる名前を選ぶ原則を採用する。
+- Agent Skills, “Specification — name field”, 公開日記載なし, https://agentskills.io/specification#name-field (取得 2026-10-26)。ディレクトリ名と name の一致を採用する。

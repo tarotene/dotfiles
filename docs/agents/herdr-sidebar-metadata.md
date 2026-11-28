@@ -17,8 +17,8 @@ Claude Code は必要な情報を 1 か所で公開していない:
 
 | 情報 | hook input JSON | statusline JSON |
 |------|-----------------|-----------------|
-| `permission_mode` | ✅ あり | ❌ 無い(mode 変更時に再実行はされる) |
-| model / context% / cost / effort | ❌ 無い | ✅ あり(プリ計算済み) |
+| `permission_mode` | ✅ あり | ❌ ない(mode 変更時に再実行はされる) |
+| model / context% / cost / effort | ❌ ない | ✅ あり(プリ計算済み) |
 
 そのため `herdr-agent-metadata`(hook、source=`claude-hook`)が mode を、
 `claude-statusline`(statusline、source=`claude-statusline`)がモデルとメトリクス
@@ -112,7 +112,7 @@ statusline はストリーミング中 ~300ms 毎に再実行され得る。ソ�
 ## 消し忘れ対策
 
 主経路は SessionEnd での null クリア(チャネル A)。チャネル B(statusline)には
-終了イベントが無いので、両チャネルとも `ttl_ms = 4h` を保険にする — クラッシュや
+終了イベントがないので、両チャネルとも `ttl_ms = 4h` を保険にする — クラッシュや
 kill でも残骸は 4 時間で消える。SessionEnd がチャネル B を `applies_to_source` で
 横断クリアできるかは未検証のため、初版では ttl 任せにしている。
 
@@ -142,7 +142,7 @@ kill でも残骸は 4 時間で消える。SessionEnd がチャネル B を `ap
   同乗させる(SessionEnd/clear では他トークンと同様 null)。
 - **`config.toml`**: `rows_by_agent` の 3 節すべて、1 行目の `workspace` の
   直後に `{ token = "$oshi", fg = "#CDD6F4" }` を追加。`fg` はカラー字形が
-  引けなかった場合の保険（次節）。
+  引けなかった場合の保険(次節)。
 - **整合性**: 名前リストの正本は patch 内の Rust 配列。CI(`ci.yml`
   `oshi-marks.tsv matches herdr-worktree-names.patch talent list`)が patch の
   名前集合と TSV のキー集合を双方向突合し、片方にしかない名前があれば fail
@@ -161,7 +161,7 @@ kill でも残骸は 4 時間で消える。SessionEnd がチャネル B を `ap
 - **表示**: `config/herdr/config.toml` の `[ui.sidebar.spaces]`。`rows` を
   明示すると herdr 既定の行定義を丸ごと置き換えるので、既定 2 行
   (`["state_icon", "workspace"]` / `["branch", "git_status"]`、
-  `herdr --default-config` 0.8.2)を再現したうえで 1 行目末尾に足している。
+  `herdr --default-config` 0.8.2)を再現したうえで 1 行目末尾に追加している。
   値は `` + 件数(nf-oct-issue_opened、U+F41B。FiraCode Nerd Font に収録済みで
   モノクロ字形なので `fg` が効く)。0 件も ` 0` と出す — 「取得済みで 0 件」と
   「未取得」を見分けるため。
@@ -178,8 +178,8 @@ kill でも残骸は 4 時間で消える。SessionEnd がチャネル B を `ap
 - **古い値の消え方**: ローカルキャッシュは持たず、`ttl_ms` = 15 分(タイマー
   間隔の 3 周期)だけに任せる。タイマーが止まれば herdr 自身が値を消す。
   tab bar の `claude-usage` が stale-if-error キャッシュを持つのは「command
-  の失敗 = 即表示クリア」という tab bar の仕様のためで、workspace metadata は
-  ttl まで値を保持するので二重の状態は要らない。
+  の失敗 = 即表示クリア」という tab bar の仕様のためであり、workspace metadata は
+  ttl まで値を保持するので二重の状態管理は不要。
 - **exit code**: 配信の成否だけを表す(detect-drift と同じ考え方、#442)。
   herdr 未起動・gh 未認証・GitHub remote のある workspace がゼロ、は恒久状態に
   なり得るので stderr に 1 行出して 0。GraphQL のレート制限超過(時間あたりの
@@ -191,8 +191,8 @@ kill でも残骸は 4 時間で消える。SessionEnd がチャネル B を `ap
   skip して他は報告する — このとき `gh api graphql` は非 0 で終わるが stdout に
   `data` が入るので、成否は終了コードでなく応答の中身で判断している。
 - **対象外**: herdr が `worktree` 情報を付けない workspace(git 外で開いた
-  もの)と、GitHub remote の無いリポジトリ。remote は `origin` を優先し、
-  無ければ最初の github.com remote を使う(`issue-index` の `owner_repo()`
+  もの)と、GitHub remote のないリポジトリ。remote は `origin` を優先し、
+  なければ最初の github.com remote を使う(`issue-index` の `owner_repo()`
   と同じ判定だが、リポジトリ名の `.` を許す点だけ異なる)。
 - **CLI の引数順**: herdr 0.8.2 の `workspace report-metadata` は workspace ID を
   先に置かないと `--source <ID>` の値を未知のオプションとして弾く(2026-09-24
@@ -207,7 +207,7 @@ journalctl --user -u herdr-issue-counts      # skip / 失敗の理由
 herdr api snapshot | jq '.result.snapshot.workspaces[] | {workspace_id, tokens}'
 ```
 
-下の「2 系統」は `$issues` にも当てはまる: snapshot に値があって画面に無ければ
+下の「2 系統」は `$issues` にも当てはまる: snapshot に値があって画面になければ
 表示層(フォント・色・再描画)を疑う。
 
 ## トークンが出ないときの 2 系統(#305)
@@ -315,10 +315,10 @@ rate limit を見送った。0.160.0 で openai/codex の `rust-v0.153.2` と `r
 - **hook の `permission_mode` が粗い理由**: スキーマ上の enum は 5 値だが、値を作る
   `codex-rs/core/src/hook_runtime.rs:1032-1040`(v0.160.0)は承認方針が `never` のときだけ
   `bypassPermissions` にし、それ以外(on-request も untrusted も)をすべて `default` にする。
-  SessionEnd の payload には無い。
+  SessionEnd の payload にはない。
 - **rollout JSONL を使わない理由**: 公式の hooks ページが「transcript の形式は hook の
   stable な interface ではない」と明言している(https://learn.chatgpt.com/docs/hooks、
-  取得 2026-10-20)。形式が変わると誤った値を出しうる。
+  取得 2026-10-20)。形式が変わると誤った値を出す可能性がある。
 - **端末タイトルを採った理由**: 設定キー `tui.terminal_title` は documented
   (https://learn.chatgpt.com/docs/config-file/config-reference)で、項目 ID は上流が
   「改名・削除は設定ファイルの破壊的変更」と扱う
@@ -326,7 +326,7 @@ rate limit を見送った。0.160.0 で openai/codex の `rust-v0.153.2` と `r
   herdr が `terminal_title_stripped` として受け取り、そのまま表示するので、こちらは
   文字列を解釈しない。書式が変わっても見た目が変わるだけで、誤った値は出ない。
 - **Claude の statusLine に相当する仕組み**(JSON を stdin に渡して外部コマンドを周期実行)は
-  Codex に無い(`tui.status_line` / `tui.terminal_title` はどちらも組み込みの項目 ID を並べる
+  Codex にない(`tui.status_line` / `tui.terminal_title` はどちらも組み込みの項目 ID を並べる
   だけ、`codex-rs/config/src/types.rs`、v0.160.0)。
 
 ### 表示の決め方
@@ -340,15 +340,15 @@ rate limit を見送った。0.160.0 で openai/codex の `rust-v0.153.2` と `r
   (`Context 0% used | medium | 5h ...` で切れた実機の表示からの推定。幅そのものは
   herdr の API から取れていない)。最初は `reasoning` と `weekly-limit` も入れていたが、
   58 文字(`Context 0% used | medium | 5h 100% left | weekly 100% left`)になって 5h・
-  週の値が切れた(2026-10-20)ので、context と 5h の 2 項目(31 文字)に絞った。上流の
-  言い回しは短くできないので、項目の数で収める。`reasoning` と `weekly-limit` は
-  上の表のとおり出せる項目で、幅に余裕ができれば足せる。`project-name` は workspace 列と
-  重なるので外している。`~/.codex/config.toml` への反映は
+  週の値が切れた(2026-10-20)ため、context と 5h の 2 項目(31 文字)に絞った。上流の
+  言い回しは短くできないので項目の数で収める。`reasoning` と `weekly-limit` は
+  上の表のとおり出せる項目で、幅に余裕ができれば追加できる。`project-name` は workspace 列と
+  重なるので除外している。`~/.codex/config.toml` への反映は
   `agent-settings-reconcile codex-config`(宣言したキーだけを書式を保って合わせる。
   ADR-457 Amendment 2026-10-20)。
 - **rate limit は tab-bar ではなくペインのタイトル**に出す。Codex のペインが開いて
-  いる間だけ見える(ペイン非依存の常時表示ではない)。常時表示が要るなら
-  #117 のとおり `codex app-server` の `account/rateLimits/read` を叩く command が要るが、
+  いる間だけ見える(ペイン非依存の常時表示ではない)。常時表示が必要なら
+  #117 のとおり `codex app-server` の `account/rateLimits/read` を叩く command が必要だが、
   そのコマンド自体が experimental のままなので採っていない(メソッド単体は
   `#[experimental]` が付かず documented、`codex-rs/app-server-protocol/src/protocol/common.rs:1309`、
   https://learn.chatgpt.com/docs/app-server)。
@@ -357,7 +357,7 @@ rate limit を見送った。0.160.0 で openai/codex の `rust-v0.153.2` と `r
 
 | データ | Copilot CLI |
 |---|---|
-| model | payload に無い(`~/.copilot/settings.json` の `.model` から読む) |
+| model | payload にない(`~/.copilot/settings.json` の `.model` から読む) |
 | cwd(→branch) | hook payload に documented |
 | permission/approval | 無し |
 | reasoning effort | n/a |
@@ -377,14 +377,14 @@ hook payload の `.model` から、mode は `.permission_mode`(`bypassPermission
 (`registerCodexSharedHooks`)・同じ所有の記録(`managed-hooks-codex.json`)で登録される。かつては
 `home/modules/herdr.nix` が `codex-hooks`(argv 形。いまは削除した)で別に登録し、`worktree.nix` の activation の後ろに
 `entryAfter` で順序付けて lost-update(#61 と同種)を避けていたが、書き手が 1 つになったので
-その順序付けは要らない。旧 `scripts/register-codex-hooks`(さらに旧 `register-codex-worktree-hooks`)の
+その順序付けは不要。旧 `scripts/register-codex-hooks`(さらに旧 `register-codex-worktree-hooks`)の
 後継。
 
 **Codex の hook trust**: `~/.codex/config.toml` の `hooks.state.*.trusted_hash`
 はエントリ単位で、command・matcher・timeout の変更や並び替えは trust を無効化
 するが、**末尾への追記は既存エントリの trust を壊さない**(確認済み)。ただし
 新しいエントリ自体は初回、Codex 側で `/hooks` から対話的に trust するまで
-無音で発火しない — 各ホストで switch 後に一度だけ手作業が要る。
+無音で発火しない — 各ホストで switch 後に一度だけ手作業が必要。
 
 ### Copilot: `crates/herdr-agent-metadata`(`--agent copilot`)
 
@@ -396,7 +396,7 @@ Copilot CLI の hook payload には event 名も model も乗らない(公式リ
   `… report` を、`sessionEnd` に `… clear` を登録する。
 - model は payload からではなく **`~/.copilot/settings.json` の `.model`**
   (Copilot CLI 自身が永続化する現在のモデル設定)から読む。`/model` 直後は
-  Copilot 側の書き込みタイミング次第で遅延しうるが、表示専用なので許容する。
+  Copilot 側の書き込みタイミング次第で遅延する可能性があるが、表示専用なので許容する。
 
 登録は `agent-settings-reconcile copilot-hooks-spec`(`home/modules/agents.nix` の `copilotHookDeclarations`、
 旧 `scripts/register-copilot-hooks`)。Copilot の native hook 形は
@@ -410,7 +410,7 @@ timeoutSec}` を camelCase イベント配列に直置きする形なので(herd
 
 ### 見送った表示: Copilot の tab-bar usage
 
-Copilot の premium request quota には安定した取得手段が無い(2026-06 の billing 移行で
+Copilot の premium request quota には安定した取得手段がない(2026-06 の billing 移行で
 legacy 化予定の REST エンドポイントのみ)。tab-bar 拡張は実装していない。調査メモは
 別 Issue(#117)にある。Codex の rate limit は上の「表示の決め方」のとおり、ペインの
 端末タイトル経由で出している。
@@ -512,7 +512,7 @@ WCAG 相対輝度は「実際に画面に出る RGB 値」を前提にした指�
   (`home/modules/agents.nix`)に載っている command を完全一致で settings.json から
   削除する。これが効くのは新しい generation への **forward** switch だけで、
   home-manager generation の `--rollback` では効かない — rollback 先の世代の
-  activation は当時のコードをそのまま実行するため、撤回機構自体がまだ無い世代に
+  activation は当時のコードをそのまま実行するため、撤回機構自体がまだない世代に
   戻れば孤児が再発し得る(`retiredPermissionRules` も同じ限界を持つ、
   home-manager の generation モデル一般の制約)。緊急 rollback 後は
   `docs/operations.md` の孤児チェックを走らせること。
@@ -523,10 +523,10 @@ WCAG 相対輝度は「実際に画面に出る RGB 値」を前提にした指�
   `~/.codex/`, `~/.copilot/hooks/`, `~/.config/devin/` への統合ファイル配備だけで、
   `statusLine` には一切触れない — 実行バイナリの静的解析で確認済み)。この
   integration hook は herdr のネイティブ agent セッション復元
-  (`[session] resume_agents_on_restore`、既定 on)が動く前提条件でもある
-  — 無いと `herdr server` 再起動後の復元は layout だけになり、claude ペインは
-  素のシェルとして戻る。初回設定 フローでしか入らず、本リポジトリは
-  `config/herdr/config.toml` で 初回設定を無効にしているため、
+  (`[session] resume_agents_on_restore`、既定 on) が動く前提条件でもある
+  — ないと `herdr server` 再起動後の復元は layout だけになり、claude ペインは
+  素のシェルとして戻る。初回設定フローでしか入らず、本リポジトリは
+  `config/herdr/config.toml` で初回設定を無効にしているため、
   `home/modules/herdr.nix` の `home.activation.installHerdrClaudeIntegration`
   が `herdr integration install claude` を代わりに(未導入時のみ)実行する。
   同じ理由・同じ仕組みで codex/copilot にも `installHerdrCodexIntegration` /
@@ -535,7 +535,7 @@ WCAG 相対輝度は「実際に画面に出る RGB 値」を前提にした指�
   ガードにしており、素のターミナルでは statusline の表示だけが動く(ADR-0005 の
   binary-existence gating に倣い、欠如時は黙って no-op)。
 - **herdr バイナリは nix 管理**(`home/modules/herdr.nix`)。nixos-26.05 に herdr が
-  無いため flake の `nixpkgs-unstable` input から overlay で取っている — 安定
+  ないため flake の `nixpkgs-unstable` input から overlay で取っている — 安定
   チャネルに入ったら input ごと畳むこと(Issue #42)。旧 self-installed
   `~/.local/bin/herdr` は `home.activation.quarantineSelfInstalledHerdr` が
   `.pre-nix` へ自動的に退避する(手動削除の手順は置かない — ADR-0001 のゼロ手

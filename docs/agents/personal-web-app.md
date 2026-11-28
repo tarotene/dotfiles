@@ -11,9 +11,9 @@
 
 | 作るもの | 置き場 | 理由 |
 |---|---|---|
-| 閲覧だけの静的サイト(private) | `Cloudflare Workers` の静的アセット([`deploy-worker.md`](deploy-worker.md)) | 保存先と Worker のスクリプトが要らない |
-| 画面から入力し、保存する(private、本人だけ) | `Cloudflare Workers` + `D1`(この文書) | 入力を受ける口(API)と保存先が要る。`GitHub Pages` は private 公開を `GitHub Enterprise Cloud` に限る(ADR-1553 の Context) |
-| 誰でも見てよい | `GitHub Pages`(`repo-governance` の `astro-site` の雛形) | 門を外す宣言が要らない |
+| 閲覧だけの静的サイト(private) | `Cloudflare Workers` の静的アセット([`deploy-worker.md`](deploy-worker.md)) | 保存先と Worker のスクリプトが不要 |
+| 画面から入力し、保存する(private、本人だけ) | `Cloudflare Workers` + `D1`(この文書) | 入力を受ける口(API)と保存先が必要。`GitHub Pages` は private 公開を `GitHub Enterprise Cloud` に限る(ADR-1553 の Context) |
+| 誰でも見てよい | `GitHub Pages`(`repo-governance` の `astro-site` の雛形) | 公開制限を外す宣言が不要 |
 
 claude.ai の Artifact(db つき)は、この標準の対象でない。置き場が別(claude.ai)で、リポジトリの CI・配信・About の URL と一続きにならないため。
 
@@ -43,10 +43,10 @@ claude.ai の Artifact(db つき)は、この標準の対象でない。置き�
 }
 ```
 
-- `run_worker_first: true` にする理由: Access の例外(bypass)を誤って足しても、Worker が検証するので、アセットも API も開かない。Cloudflare の文書: 「`run_worker_first = true` will unconditionally invoke your Worker script」(Static Assets, Binding、取得 2026-11-20)。
+- `run_worker_first: true` にする理由: Access の例外(bypass)を誤って追加しても、Worker が検証するので、アセットも API も開かない。Cloudflare の文書: 「`run_worker_first = true` will unconditionally invoke your Worker script」(Static Assets, Binding、取得 2026-11-20)。
 - Free の注意: 「When using `run_worker_first`, requests matching the specified patterns will always invoke your Worker script.」「If you exceed your free tier request limits, these requests will receive a 429 (Too Many Requests) response」(Static Assets, Billing and limitations、取得 2026-11-20)。1 日 100,000 回は「Accounts on the Workers Free plan have a daily request limit of 100,000 requests」(Platform Limits、取得 2026-11-20)。個人用の量には収まる。
 - `TEAM_DOMAIN`・`POLICY_AUD`・`OWNER_EMAIL` は秘密でないが、サイトのリポジトリには複写しない。インフラのリポジトリが、チーム名・AUD・本人のメールを宣言し(`account/` の出力を `bootstrap/` が読む)、`app` の印のあるサイトのリポジトリの Actions 変数として書く(インフラのリポジトリの ADR-16 Amendment 2026-11-21)。サイトの `wrangler.jsonc` に値を書くと、AUD が変わったときにずれる(最初の app では、AUD をダッシュボードで読んで手で複写した)。このリポジトリ(dotfiles)には、本人のメールを書かない。
-- `database_id` を書かない理由: `wrangler` は、設定に `database_id` が無くても、`database_name` で D1 を名前から引く(`d1 migrations apply --remote` も同じ。workers-sdk `packages/wrangler/src/d1/utils.ts`、`wrangler@4.102.0` の変更履歴 #14275、タグ `wrangler@4.166.0`、取得 2026-11-21)。D1 が無いと、マイグレーションの段で `Couldn't find a D1 DB named …` で落ちるので、D1 は最初の配信より前に、インフラのリポジトリが宣言して作る。
+- `database_id` を書かない理由: `wrangler` は、設定に `database_id` がなくても、`database_name` で D1 を名前から引く(`d1 migrations apply --remote` も同じ。workers-sdk `packages/wrangler/src/d1/utils.ts`、`wrangler@4.102.0` の変更履歴 #14275、タグ `wrangler@4.166.0`、取得 2026-11-21)。D1 がないと、マイグレーションの段で `Couldn't find a D1 DB named …` で失敗するので、D1 は最初の配信より前に、インフラのリポジトリが宣言して作る。
 
 ## 認証: Access が門、Worker も検証する
 
@@ -78,8 +78,8 @@ export async function isOwner(request: Request, env: Env): Promise<boolean> {
 ```
 
 - 鍵は、決め打ちで持たず、証明書の URL から取る。文書: 「Validate tokens using the external endpoint rather than saving the public key as a hard-coded value.」(同上)。署名鍵は定期的に回る(「By default, Access rotates the signing key every 6 weeks.」)。
-- 本人の特定は `email` の claim。文書: 「The email address of the authenticated user, verified by the identity provider.」(Application token、取得 2026-11-20)。サービストークンの JWT には `email` が無いので、ここでは通らない(定時実行など、機械から呼ぶ口が要るときは別に設計する)。
-- **実測(2026-11-20)**: 最初の app の初回配信で、アセット付きの Worker が、アカウント全体の Access の下でこのヘッダを受け取り、検証が通った。`POLICY_AUD` を壊した状態では 401 になった(インフラのリポジトリの Issue #32 の記述。画面と端末での確認は本人が行った。2 回目以降の app では、壊した AUD の確認を、配信でなく app の単体試験(JWT の異常系)で代える。本人の裁定、2026-11-21)。
+- 本人の特定は `email` の claim。文書: 「The email address of the authenticated user, verified by the identity provider.」(Application token、取得 2026-11-20)。サービストークンの JWT には `email` がないので、ここでは通らない(定時実行など、機械から呼ぶ口が必要なときは別に設計する)。
+- **実測(2026-11-20)**: 最初の app の初回配信で、アセット付きの Worker が、アカウント全体の Access の下でこのヘッダを受け取り、検証が通った。`POLICY_AUD` を壊した状態では 401 になった(インフラのリポジトリの Issue #32 の記述。画面と端末での確認は本人が行った。2 回目以降の app では、壊した AUD の確認を、配信でなく app の単体テスト(JWT の異常系)で代える。本人の裁定、2026-11-21)。
 - **AUD はアプリごと**: Cloudflare の文書は「Cloudflare Access assigns a unique AUD tag to each application.」と書く(Validate JWTs、取得 2026-11-21)。アカウント全体のアプリ(全 Worker を本人だけに閉じる)の AUD は 1 つで、最初の app はそれで通った。共有の Worker(共同開発者に開く)は、自前のアプリを持つので、AUD が別になる。どちらの AUD を `POLICY_AUD` に渡すかは、インフラのリポジトリがサイトごとに選んで宣言する(上のとおり、サイトは値を複写しない)。
 
 ## 経路と書き込み
@@ -112,7 +112,7 @@ export const routes = [/* ... */] as const satisfies readonly Route[];
 
 ## 配信
 
-build(secret なし)と deploy(secret あり)を分ける。deploy は共通の action を呼び、`d1-database` と `vars` を渡す。マイグレーションが先に走り、失敗したら配信しない(順序は action が持つので、呼び出し側が間違えられない)。`vars` の値は、インフラのリポジトリが宣言したこのリポジトリの Actions 変数で、値が空なら、action がアップロードの前に落とす。
+build(secret なし)と deploy(secret あり)を分ける。deploy は共通の action を呼び、`d1-database` と `vars` を渡す。マイグレーションが先に走り、失敗したら配信しない(順序は action が持つので、呼び出し側が間違えられない)。`vars` の値は、インフラのリポジトリが宣言したこのリポジトリの Actions 変数で、値が空なら、action がアップロードの前に失敗させる。
 
 ```yaml
   deploy:
@@ -154,8 +154,8 @@ build(secret なし)と deploy(secret あり)を分ける。deploy は共通の 
 ```
 
 - プレビューの job は置かない(`mode: preview` と `d1-database`・`vars`・`access-login-check` の併用は action が拒否する)。プレビューの version が本番の D1 を指すかは未確認で、指す見込みで扱う。
-- token と D1 と変数: サイトの deploy token・D1・Actions 変数は、インフラのリポジトリの `bootstrap/sites.tf` が、サイト一覧の印(`d1`・`app`)から宣言する。`d1` のサイトの token には `D1 Write` が付く。`bootstrap/` は人が適用する(インフラのリポジトリの ADR-16 Amendment 2026-11-20 と 2026-11-21)。`wrangler d1 create` を手で実行して、`wrangler.jsonc` に UUID を書く手順は、もう要らない。
-- 初回配信の `10007`: 新しい Worker の最初の配信が、アップロードとマイグレーションの成功のあとに `10007`(Worker does not exist)で落ちることがある(cloudflare/workers-sdk#17069)。action は、`10007` のときだけ `wrangler triggers deploy` を間隔を空けて最大 6 回(合計約 10 分)再試行する。それでも続くなら、action は落ちる。人が `wrangler triggers deploy` を実行する前に、Worker が作られているか(ダッシュボードの Workers の一覧)を見る。
+- token と D1 と変数: サイトの deploy token・D1・Actions 変数は、インフラのリポジトリの `bootstrap/sites.tf` が、サイト一覧の印(`d1`・`app`)から宣言する。`d1` のサイトの token には `D1 Write` が付く。`bootstrap/` は人が適用する(インフラのリポジトリの ADR-16 Amendment 2026-11-20 と 2026-11-21)。`wrangler d1 create` を手で実行して、`wrangler.jsonc` に UUID を書く手順は、もう不要。
+- 初回配信の `10007`: 新しい Worker の最初の配信が、アップロードとマイグレーションの成功のあとに `10007`(Worker does not exist)で失敗することがある(cloudflare/workers-sdk#17069)。action は、`10007` のときだけ `wrangler triggers deploy` を間隔を空けて最大 6 回(合計約 10 分)再試行する。それでも続くなら、action は失敗する。人が `wrangler triggers deploy` を実行する前に、Worker が作られているか(ダッシュボードの Workers の一覧)を見る。
 
 ## 配信の最後: About の Website 欄
 
@@ -165,16 +165,16 @@ build(secret なし)と deploy(secret あり)を分ける。deploy は共通の 
 gh repo edit OWNER/REPO --homepage https://<Worker 名>.<アカウントのサブドメイン>.workers.dev/
 ```
 
-`gh repo edit` は、リポジトリを引数で取る。`-R` は取らない(最初の app で、この文書が `-R` を書いていて誤りだった)。管理者権限が要る。
+`gh repo edit` は、リポジトリを引数で取る。`-R` は取らない(最初の app で、この文書が `-R` を書いていて誤りだった)。管理者権限が必要。
 
-実態: Cloudflare に置いた学習サイトは workers.dev の URL、Pages に置いた 2 つのサイトは `github.io` の URL(2026-11-20、`gh repo list` で読んだ)。この手順を決めた文面は、dotfiles の `docs/adr`・Issue・個人用の記録のリポジトリには見つからなかった。deploy の action は、配信のあとで欄を読み戻し、空なら警告する。設定そのものは、action が行わない。`GITHUB_TOKEN` は `administration` の権限を持てない(workflow の `permissions:` のキーに無い)うえ、GitHub App にその権限を足すと、ブランチ保護・ruleset・リポジトリの削除・移管にも届く(GitHub Docs, Permissions required for GitHub Apps、取得 2026-11-21)。`homepage` だけを書き換えるより狭い権限は、文書に記述が無い。だから、人かエージェントが、配信のあとに上の 1 行を打つ。
+実態: Cloudflare に置いた学習サイトは workers.dev の URL、Pages に置いた 2 つのサイトは `github.io` の URL(2026-11-20、`gh repo list` で読んだ)。この手順を決めた文面は、dotfiles の `docs/adr`・Issue・個人用の記録のリポジトリには見つからなかった。deploy の action は、配信のあとで欄を読み戻し、空なら警告する。設定そのものは、action が行わない。`GITHUB_TOKEN` は `administration` の権限を持てない(workflow の `permissions:` のキーにない)うえ、GitHub App にその権限を追加すると、ブランチ保護・ruleset・リポジトリの削除・移管にも届く(GitHub Docs, Permissions required for GitHub Apps、取得 2026-11-21)。`homepage` だけを書き換えるより狭い権限は、文書に記述がない。だから、人かエージェントが、配信のあとに上の 1 行を打つ。
 
 ## 完了条件(最初の app の初回配信で確かめる)
 
-1. ログインなしで URL を開くと、Access のログインへ転送される(門が閉じている)。**action が配信のたびに確かめる**(`access-login-check: 'true'`。302 で `cloudflareaccess.com` のログインへ転送されなければ、配信の job が落ちる)。
+1. ログインなしで URL を開くと、Access のログインへ転送される(認証ゲートが閉じている)。**action が配信のたびに確かめる**(`access-login-check: 'true'`。302 で `cloudflareaccess.com` のログインへ転送されなければ、配信の job が失敗する)。
 2. 本人でログインして、画面が出る(本人のブラウザで 1 回)。
-3. **Worker が JWT を受け取って検証に通っている**(2026-11-20 に最初の app で確かめた。上の「認証」)。検証を壊した状態(`POLICY_AUD` を間違える)で 401 になることは、本番の Worker を壊すので、配信では確かめず、app の単体試験(JWT の異常系)で確かめる。
-4. 未知の鍵への書き込みが 400 になる(app の単体試験と、本人のブラウザの 1 回)。
+3. **Worker が JWT を受け取って検証に通っている**(2026-11-20 に最初の app で確かめた。上の「認証」)。検証を壊した状態(`POLICY_AUD` を間違える)で 401 になることは、本番の Worker を壊すので、配信では確かめず、app の単体テスト(JWT の異常系)で確かめる。
+4. 未知の鍵への書き込みが 400 になる(app の単体テストと、本人のブラウザの 1 回)。
 5. About の Website 欄に URL が載っている(action の警告が出ていない)。
 
 ## バックアップ
@@ -190,20 +190,20 @@ app の README に、段を宣言する。
 
 ## 画面の作り方(ADR-1677・ADR-1685、dotfiles#1664)
 
-この標準で作る app の画面の既定。閲覧だけの静的サイトの面も、1〜5 は同じである。値(色・書体・尺度)の正本は `config/web/variables.css` で、各面が複写して pin する(ADR-1685)。
+この標準で作る app の画面の既定。閲覧だけの静的サイトも、1〜5 は同じである。値(色・書体・尺度)の正本は `config/web/variables.css` で、各画面が複写して pin する(ADR-1685)。
 役割と部品の見た目は、見本ページ `config/web/specimen.html` で確かめる。明暗を解いた値の一覧は、生成した `config/web/variables.json`(手で書かない)。
-CSS を HTML の中に持つ 1 枚だけの面(Artifact の雛形)は、正本を HTML の中の印を付けた区間に複写し、`design-pin.toml` の `begin`・`end` でその区間を固定する(ADR-1700)。
+CSS を HTML の中に持つ単一ページの画面(Artifact の雛形)は、正本を HTML の中の印を付けた区間に複写し、`design-pin.toml` の `begin`・`end` でその区間を固定する(ADR-1700)。
 
-1. **CSP `style-src 'self'` の下の書き方。** インラインの `style` を使わない。位置と大きさは、CSS のクラスと SVG の属性で与える。MDN は、`element.style.<名前> =` は止められないが、`setAttribute("style", …)` と `cssText` は止められると書く(MDN, "Content-Security-Policy: style-src directive"、最終更新 2025-12-15。dotfiles#1664 の記載による)。この境目に頼らないよう、静的試験で `.style`・`setAttribute("style"`・`cssText` を禁じる。
-2. **書体とスクリプト。** 第三者の配信元からは読み込まない(ADR-1677 D6。スクリプトを含める方針は ADR-1703 D4 で明確にしており、`web_assets` が検査する)。`font-src` を開けず、機体の書体を使う(`--font-sans`・`--font-mono`。明朝は `serif` に落ちる)。外部スクリプトが必要なときは、同梱して自サイトから配信し、`sha256` を pin する。
-3. **色と尺度。** 役割(`--bg`・`--surface`・`--text`・`--text-muted`・`--border`・`--accent`・`--on-accent`・`--ok`・`--ng`・`--warn` など)だけを使い、16 進を直書きしない。面の主色は、`--accent`・`--on-accent`・`--accent-text`・`--focus` の値だけを上書きする。暗色は OS の設定に追従するだけで、切り替えを置かない。accent の上の文字は `--on-accent` を使い、固定の `#fff` を書かない(暗色で、淡い accent の上の白文字が 2.0〜2.5:1 になる型が、実機の審査で複数の面から見つかった)。正本のコントラストは、明暗の両方で `web_variables` が検査する。面の上書きの値は、この検査の外なので、同じ組(文字 4.5:1・図形 3:1)を自分で計算する。
-4. **狭い画面の表。** 表の要素のまま、CSS で 1 行 1 枚に組み替える。各欄の名前は `data-label` 属性から `::before` で出す。ARIA の role は足さない(Adrian Roselli, "Tables, CSS Display Properties, and ARIA"、更新 2024-01-29。dotfiles#1664 の記載による)。幅の狭い画面で、列を隠さない(隠した列の情報が、スマートフォンで消える)。
+1. **CSP `style-src 'self'` の下の書き方。** インラインの `style` を使わない。位置と大きさは、CSS のクラスと SVG の属性で与える。MDN は、`element.style.<名前> =` は止められないが、`setAttribute("style", …)` と `cssText` は止められると書く(MDN, "Content-Security-Policy: style-src directive"、最終更新 2025-12-15。dotfiles#1664 の記載による)。この境目に頼らないよう、静的テストで `.style`・`setAttribute("style"`・`cssText` を禁じる。
+2. **書体とスクリプト。** 第三者の配信元からは読み込まない(ADR-1677 D6。スクリプトを含める方針は ADR-1703 D4 で明確にしており、`web_assets` が検査する)。`font-src` を開けず、機体の書体を使う(`--font-sans`・`--font-mono`。明朝は `serif` にフォールバックする)。外部スクリプトが必要なときは、同梱して自サイトから配信し、`sha256` を pin する。
+3. **色と尺度。** 役割(`--bg`・`--surface`・`--text`・`--text-muted`・`--border`・`--accent`・`--on-accent`・`--ok`・`--ng`・`--warn` など)だけを使い、16 進を直書きしない。画面の主色は、`--accent`・`--on-accent`・`--accent-text`・`--focus` の値だけを上書きする。暗色は OS の設定に追従するだけで、切り替えを置かない。accent の上の文字は `--on-accent` を使い、固定の `#fff` を書かない(暗色で、淡い accent の上の白文字が 2.0〜2.5:1 になる型が、実機の審査で複数の画面から見つかった)。正本のコントラストは、明暗の両方で `web_variables` が検査する。画面の上書きの値は、この検査の外なので、同じ組(文字 4.5:1・図形 3:1)を自分で計算する。
+4. **狭い画面の表。** 表の要素のまま、CSS で 1 行 1 枚に組み替える。各欄の名前は `data-label` 属性から `::before` で出す。ARIA の role は追加しない(Adrian Roselli, "Tables, CSS Display Properties, and ARIA"、更新 2024-01-29。dotfiles#1664 の記載による)。幅の狭い画面で、列を隠さない(隠した列の情報が、スマートフォンで消える)。
 5. **値の導出は build の 1 か所。** 状態語の意味づけ(要対応・済み・対象外など)、表の列の位置、時刻を分にした値は、build が `model.json` に載せる。ページは語や時刻の書式を知らない。CSS に語を複写しない。
-6. **操作。** 次の 3 つは、手書きせず、共有の部品 `config/web/behavior.js`(`window.pageBehavior` の `saver`・`keyguard`・`viewstate`。ADR-1703 D2)を、複写して pin して使う(複数ファイルの面は `design-pin.toml` の `[[file]]`、1 枚だけの HTML は `begin`・`end` の区間 pin)。使い方は、動く見本 `config/web/specimen.js` が示す。
+6. **操作。** 次の 3 つは、手書きせず、共有の部品 `config/web/behavior.js`(`window.pageBehavior` の `saver`・`keyguard`・`viewstate`。ADR-1703 D2)を、複写して pin して使う(複数ファイルの画面は `design-pin.toml` の `[[file]]`、単一ページの HTML は `begin`・`end` の区間 pin)。使い方は、動く見本 `config/web/specimen.js` が示す。
    - 保存は「保存中… → 保存済み」と出し、**書き込みの成功を確かめてから**「保存済み」にする。失敗は、その項目の横に、再保存の操作と一緒に出す(`role="status"`)。成功を先に出さない。失敗を握りつぶさない(`.catch(() => {})` を書かない)。→ `saver`
    - ショートカットのキーは、ボタン・リンク・`summary`・`select` にフォーカスがあるとき、その要素の標準のキー操作を奪わない。同じ操作を、タップできるボタンとしても置く(幅 390px で、タップだけで主なタスクが完結する)。→ `keyguard`
    - 日常の操作に確認ダイアログを使わず、選び直しで戻せる。
-   - 読み込み中・失敗・空を、同じ表示にしない。失敗には再読み込みの導線を出す。エラーの出し先を、DOM に常に置く(初回の読み込みの失敗で、出し先が無く、「読み込み中…」のまま止まる型が見つかった)。→ `viewstate`
+   - 読み込み中・失敗・空を、同じ表示にしない。失敗には再読み込みの導線を出す。エラーの出し先を、DOM に常に置く(初回の読み込みの失敗で、出し先がなく、「読み込み中…」のまま止まる型が見つかった)。→ `viewstate`
    - 操作部は 24×24 CSS px 以上(基準は 44px)。リンクを縦に並べるときは、行の高さを 24px 以上にする。
 7. **画面の確認の仕方。**
    - Playwright の `page.route` と `route.fulfill({ path })` で、本番と同じ CSP のヘッダを付けて返す。
@@ -216,14 +216,14 @@ CSS を HTML の中に持つ 1 枚だけの面(Artifact の雛形)は、正本�
 
 10. **ページの構造は、課題の性質から選び、宣言する(ADR-1711)。** 縦に並べるか、1 件ずつ進むか、は、好みでなく、課題の性質(軸の値)で決める。進め方は次のとおり。
     1. **課題の性質を、軸の値で書く。** 項目間の独立性・比較の要否・反復頻度・1 件あたりの情報量・取り消しの可否・件数・順序の自由度。語彙は `config/web/structures.toml` の `[[axis]]`。
-    2. **構造パターンを選び、退けた案と理由を書く。** 軸の値から、`[[pattern]]` の `fits` で候補が出る。順次の裁定・質問に答える面の既定は `step`(1 件 1 画面 + 全件の概観 + 選ぶと次へ + 確認画面)。既定は強制でなく、外れるときは理由を書く(`page-structure-deviation`)。反復する本人の面では、利用者を閉じ込めない手当て(概観の常時表示・自動で次へ・キーだけで完結・確認画面から任意の件へ戻れる)を入れる。
-    3. **「もの」が複数あり、一覧 → 詳細 → 操作になる面だけ、〈もの・関係・操作〉の表**を、1 面あたり 1 枚、先に書く。手順が本質の面では要らない。
+    2. **構造パターンを選び、退けた案と理由を書く。** 軸の値から、`[[pattern]]` の `fits` で候補が出る。順次の裁定・質問に答える画面の既定は `step`(1 件 1 画面 + 全件の概観 + 選ぶと次へ + 確認画面)。既定は強制でなく、外れるときは理由を書く(`page-structure-deviation`)。反復する本人の画面では、利用者を閉じ込めない手当て(概観の常時表示・自動で次へ・キーだけで完結・確認画面から任意の件へ戻れる)を入れる。
+    3. **「もの」が複数あり、一覧 → 詳細 → 操作になる画面だけ、〈もの・関係・操作〉の表**を、1 画面あたり 1 枚、先に書く。手順が本質の画面では不要。
     4. **構造の候補が複数あるときは、同じ架空のデータで並べた練習用の画面を、本人が触って選ぶ。** 選んだ結果と理由を、決定文書に残す。
     5. **検査する。** 宣言は `<meta name="page-structure">`・`<meta name="page-axes">`(HTML の `<head>`)に書く。リポジトリ内のすべての HTML に、`web_structures`(`repo-structure-check`)が宣言を要求する。`visual_diff.py audit` の F10 が、描画したページを宣言に突き合わせる(`step` はページ全体が縦にスクロールしない)。画面を作る・変える計画は、`## 先行例との対比` の中に `構造:` の行を書く(ADR-1711 の続きの規則。`plan-precedent-gate`)。
 
 画面を作る・直すときの、見た目の進め方は、第三者のスキル impeccable(https://github.com/pbakaus/impeccable 、Apache-2.0。配備と使い方: [`impeccable.md`](impeccable.md)、決定: ADR-1719)の手順に従う: `shape`(計画のみ。上の構造の選択が先) → 実装 → `critique`(読み取りだけの評価) → `polish`(磨き上げ) → 撮って比べる(`visual_diff.py`)。次の 4 つは、impeccable の助言より優先する: 基準(ADR-1677)、複写して固定した区間(`design-pin`)、第三者の書体・スクリプトの禁止、構造の宣言。
 
-`audit` の検査は、impeccable に置き換えない。最小の違反例と旧版の裁定ページを、`audit` と impeccable の検出器の両方にかけた(2026-11-25)。`keyboard`・`hover`・`input-size`・`targets`・`third-party`・`document` は、impeccable が同じ違反を落とさなかった。`overflow` は、旧版の裁定ページでは当たったが、最小の違反例では当たらなかった。`contrast` は、暗い配色の違反例を impeccable が落とさず、placeholder と `:hover` の状態は impeccable だけが測るので、併用する。`structure` ほかは、上流の 62 ルールに該当するものが見つかっていない(読んだ範囲)。逆に、impeccable の「AI の癖」の 31 ルール(`side-tab`・`nested-cards`・`gradient-text` など)には、手元に該当する検査が無いので、手元の検査との重なりでなく、足りない検査として使う。
+`audit` の検査は、impeccable に置き換えない。最小の違反例と旧版の裁定ページを、`audit` と impeccable の検出器の両方にかけた(2026-11-25)。`keyboard`・`hover`・`input-size`・`targets`・`third-party`・`document` は、impeccable が同じ違反を検出しなかった。`overflow` は、旧版の裁定ページでは当たったが、最小の違反例では当たらなかった。`contrast` は、暗い配色の違反例を impeccable が検出せず、placeholder と `:hover` の状態は impeccable だけが測るので、併用する。`structure` ほかは、上流の 62 ルールに該当するものが見つかっていない(読んだ範囲)。逆に、impeccable の「AI の癖」の 31 ルール(`side-tab`・`nested-cards`・`gradient-text` など)には、手元に該当する検査がないので、手元の検査との重なりでなく、足りない検査として使う。
 
 未確認: 明るい配色の実際の画面と、スマートフォンの実機での見え方(dotfiles#1664 の記載)。上の 6 の操作の規則を、出力した HTML の検査にするかは、後続の裁定(未実装、意図あり)。
 
@@ -241,7 +241,7 @@ CSS を HTML の中に持つ 1 枚だけの面(Artifact の雛形)は、正本�
 
 2026-11-20 の最初の app の実装で分かったこと(インフラのリポジトリの Issue #32 の記述):
 
-- `wrangler dev --local` は、sandbox の中では `~/.config/.wrangler` に書けず `EROFS` で落ちる。`WRANGLER_REGISTRY_PATH` と `WRANGLER_LOG_PATH` を、書ける場所(scratchpad など)に変える。
+- `wrangler dev --local` は、sandbox の中では `~/.config/.wrangler` に書けず `EROFS` で失敗する。`WRANGLER_REGISTRY_PATH` と `WRANGLER_LOG_PATH` を、書ける場所(scratchpad など)に変える。
 - sandbox は、Bash の呼び出しごとにネットワークを分ける。別の呼び出しで起動したサーバーには、次の呼び出しから届かない。サーバーの起動と要求を、1 本のシェルにまとめる。
 
 ## 未実測・未確認(2026-11-21)
@@ -250,5 +250,5 @@ CSS を HTML の中に持つ 1 枚だけの面(Artifact の雛形)は、正本�
 - 共有の Worker(自前のアプリを持つ)で、`POLICY_AUD` に自前のアプリの AUD を渡して検証が通るか(未実測。最初の共有の app で確かめる)。
 - `jose` の保守表示と最終 commit(未確認。採用する app の実装前に読む)。
 - プレビューの version が本番の D1 を指すか(未確認)。
-- action の Cloudflare に対する実行のうち、`10007` の再試行で通る間隔(未実測。2026-11-20 に人が手で `wrangler triggers deploy` を実行して通ったのは数分後)と、`access-login-check` と `vars` の実際の配信(未実測。次に新しい Worker を足す、または最初の app の次の配信で確かめる)。偽の `wrangler`・`curl` で、呼び出しの順序・失敗時の停止・再試行の上限・警告の出力は確かめた(ADR-1660 Amendment 2026-11-21)。
+- action の Cloudflare に対する実行のうち、`10007` の再試行で通る間隔(未実測。2026-11-20 に人が手で `wrangler triggers deploy` を実行して通ったのは数分後)と、`access-login-check` と `vars` の実際の配信(未実測。次に新しい Worker を追加する、または最初の app の次の配信で確かめる)。偽の `wrangler`・`curl` で、呼び出しの順序・失敗時の停止・再試行の上限・警告の出力は確かめた(ADR-1660 Amendment 2026-11-21)。
 - `database_id` を書かない `wrangler.jsonc` で、`wrangler deploy` が D1 の binding を名前で解決するか(`wrangler` のソースは読んだが、実行は未実測。deploy token の権限で、存在の確認が 403 になると、自動のプロビジョニングを飛ばす。`provision-bindings.ts`)。最初の app が `database_id` を消した最初の配信で確かめる。

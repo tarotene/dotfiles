@@ -30,8 +30,8 @@ layer = "L0"
 - `layer` は `L0`〜`L4` のどれか。小文字・未知の層・未知のキーは、宣言を読めない扱いになる。
 - 1 パス 1 層。`git ls-files` の各ファイルに当たる glob がちょうど 1 つであること。dotfiles では
   `cargo test -p record-layer`(`tests/dotfiles_declaration.rs`)が検査する: 漏れ(0 個)・重なり(2 個以上)・どのファイルにも当たらない
-  glob(消えたパスの宣言の残り)で落ちる。
-- 新しいトップレベルのディレクトリや、`docs/` の新しい階層を足す PR は、宣言に 1 行足す。
+  glob(消えたパスの宣言の残り)で失敗する。
+- 新しいトップレベルのディレクトリや、`docs/` の新しい階層を追加する PR は、宣言に 1 行追加する。
 
 宣言を置かないリポジトリでは、何も発火しない(opt-in)。会社・org 共有のリポジトリには置かない。
 
@@ -41,21 +41,21 @@ PreToolUse の `Write` で、宣言のあるリポジトリ(書き込み先の g
 
 | 書き込み先 | 判定 |
 |---|---|
-| どの glob にも当たらない | 拒否。宣言に `[[path]]` を足してから Write し直す |
+| どの glob にも当たらない | 拒否。宣言に `[[path]]` を追加してから Write し直す |
 | L3・L4 の glob に当たる | 拒否。Git の外に置く(L3 は Obsidian Vault、L4 は vault の外) |
 | L0〜L2 の glob に当たる | 通す |
 
-素通りにする(fail-open)もの: 宣言が無い・壊れている(読めない・`[[path]]` が空・glob の誤り)、2 つ以上の glob に当たる(宣言の欠陥)、
+素通りにする(fail-open)もの: 宣言がない・壊れている(読めない・`[[path]]` が空・glob の誤り)、2 つ以上の glob に当たる(宣言の欠陥)、
 `.gitignore` の対象(`target/` など)、`.git/` の中、git の外やリポジトリの外のパス。壊れた宣言で拒否すると宣言自身を直す Write まで
-止めうるので、壊れた宣言は拒否の根拠にしない。壊れたことは日次のずれ検出が拾う。
+止めてしまう可能性があるため、壊れた宣言は拒否の根拠にしない。壊れたことは日次のずれ検出が拾う。
 
-拒否されるのは `Write` だけ。Edit と Bash の書き込みは見ない(日次のずれ検出で補う)。skip の仕組みは無い: 層が誤りなら、宣言を直す
+拒否されるのは `Write` だけ。Edit と Bash の書き込みは見ない(日次のずれ検出で補う)。skip の仕組みはない: 層が誤りなら、宣言を直す
 (宣言ファイル `.config/record-layers.toml` への Write は L1 として通る)。
 
 拒否されたときの直し方:
 
 1. 作ろうとしている記録の層を決める(上の表)。
-2. L0〜L2 なら、`.config/record-layers.toml` に `[[path]]` を足し、他の glob と重ならないことを確かめて(`cargo test -p record-layer`)、Write し直す。
+2. L0〜L2 なら、`.config/record-layers.toml` に `[[path]]` を追加し、他の glob と重ならないことを確かめて(`cargo test -p record-layer`)、Write し直す。
 3. L3・L4 なら、Git の外に置く。
 
 `hms` で hook-router を入れ直すまでは、新しい規則は効かない(`hms .` で現在の worktree を当てて確かめる)。
@@ -86,8 +86,8 @@ cargo test -p record-layer
 - `crates/record-layer/src/lib.rs`・`hook.rs`・`drift.rs` の単体テスト: 閉語彙、`*` の境界、重なりと漏れ、Write の判定(一時ディレクトリの git リポジトリ、
   linked worktree、`.gitignore`、リポジトリの外のパス、壊れた宣言)、変化の速さの数え方としきい値。
 - `crates/record-layer/tests/dotfiles_declaration.rs`: dotfiles 自身の宣言が全ファイルをちょうど 1 つの glob で覆うこと。
-- `crates/hook-router/tests/cli.rs`: ルータ経由で、未宣言・L3 の Write が拒否され、宣言の無いリポジトリでは判定されないこと。
-- `crates/promotion-detect/tests/cli.rs`: 宣言の欠陥・実測のずれが候補になり、宣言の無いチェックアウトは読まれないこと。
+- `crates/hook-router/tests/cli.rs`: ルータ経由で、未宣言・L3 の Write が拒否され、宣言のないリポジトリでは判定されないこと。
+- `crates/promotion-detect/tests/cli.rs`: 宣言の欠陥・実測のずれが候補になり、宣言のないチェックアウトは読まれないこと。
 
 ## 範囲外
 

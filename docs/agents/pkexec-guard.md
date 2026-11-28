@@ -10,7 +10,7 @@ pinentry 経由の SUDO_ASKPASS で渡す」を再開する grill セッショ�
 Claude Code(および Codex CLI / Copilot CLI)の Bash ツール実行には制御端末が
 ない。`tty` は「not a tty」を返し、`/dev/tty` も開けない。そのため `sudo` を
 含むコマンドは「a terminal is required to read the password」で即座に失敗し、
-apt 層の適用(`scripts/install-packages.sh`)のような root 権限が要る単発の
+apt 層の適用(`scripts/install-packages.sh`)のような root 権限が必要になる単発の
 確認・操作は、人間が端末から起動するしかなかった。
 
 ## 採らなかった設計: SUDO_ASKPASS
@@ -103,15 +103,15 @@ PreToolUse(`Bash`、matcher のみで `if` は付けない — 後述)専用。
 「実装時に実在パスを確認し、実在しないものは載せない」方針(AGENTS.md の
 ADR-0034 節と同じ精神)による。
 
-**その後(2026-10-07、vega に導入後)も、足さないと裁定した。** 実パスは
+**その後(2026-10-07、vega に導入後)も、追加しないと裁定した。** 実パスは
 `/usr/bin/tailscale`(root:root 0755)と確認できたが、導入手順
 (`scripts/install-packages.sh`)が `tailscale up --operator=$USER` を 1 度だけ
 root で実行するため、以後の `tailscale set` や `tailscale status` は root
 なしで通る。実際に `hms` の `tailscale-prefs apply`(`crates/tailscale-prefs`)
-は sudo なしで `tailscale set` を成功させている。root が要る操作が日常に無い
-のに許可リストへ足すと、agent が root で tailscale(ネットワーク設定の変更や
+は sudo なしで `tailscale set` を成功させている。root が必要な操作が日常にない
+のに許可リストへ追加すると、agent が root で tailscale(ネットワーク設定の変更や
 ログイン先の差し替えを含む)を叩ける範囲だけが広がる。**root の tailscale が
-日常で要る場面が実際に出たら、そのときに再検討する。**
+日常的に必要な場面が実際に出たら、そのときに再検討する。**
 
 ### 検出粒度: 部分一致ではなく語単位
 
@@ -132,7 +132,7 @@ root で実行するため、以後の `tailscale set` や `tailscale status` �
   `pkexec` または `/usr/bin/pkexec` と**完全一致**するときだけ「pkexec の
   呼び出しに見える」と判定する。`test("pkexec")` のような引用符内の部分
   一致や、`crates/pkexec-guard/...` のようなパスの部分一致は対象にしない。
-- **解析できなかったコマンド**(複合コマン・展開等)は、語の完全一致が
+- **解析できなかったコマンド**(複合コマンド・展開等)は、語の完全一致が
   取れないため、独立した語としての `pkexec` の出現(前後が英数字・`_`・
   `-` でない)まで許容範囲を広げる——`cd /tmp && pkexec ...` のような
   compound を引き続き fail closed にするための安全網(軸: 検出のみ)。
@@ -162,11 +162,11 @@ root で実行するため、以後の `tailscale set` や `tailscale status` �
 - 解析できない文(展開・リダイレクト等)が語境界一致で `pkexec` を含む
   (**fuzzy mention**) → リダイレクトで偽装された呼び出しを排除できないため
   引き続き deny(軸: 検出のみ、安全側を維持)。
-- どの文にも exact/fuzzy mention が一切無い → 判定しない(pass)。上の
+- どの文にも exact/fuzzy mention が一切ない → 判定しない(pass)。上の
   引用符付き文字列の例はこれに当たる——引用符全体が1つの語として正しく
   解析でき、`pkexec` 単体とは完全一致しないため。
 
-単一コマンド(区切りが無い)の判定は一切変えていない——`split_segments`
+単一コマンド(区切りがない)の判定は一切変えていない——`split_segments`
 が1文しか返さない場合は旧来どおり `split` + `mentions_pkexec` の経路を
 そのまま通る。
 
@@ -179,7 +179,7 @@ fail closed になっていた。引用符付きの本文(`<<'EOF'`・`<<"EOF"`�
 `strip_quoted_heredoc_bodies` が判定の前に本文を取り除く。
 
 - 残す(従来どおり判定する)もの: 引用符なしの `<<EOF`(本文は展開される)、
-  `$(…)`・バッククォート、終端が無い・構文を追えない入力。
+  `$(…)`・バッククォート、終端がない・構文を追えない入力。
 - 受け手がシェル類(`bash`・`sh`・`eval`・`ssh` など)のときも本文を残す —
   本文がコードとして実行されるため。python 等のインタプリタに流し込む本文は
   データとして扱う(インタプリタが中で pkexec を起動する形は、語を組み立てる
@@ -210,7 +210,7 @@ fail closed になっていた。引用符付きの本文(`<<'EOF'`・`<<"EOF"`�
 
 - **許可リスト内バイナリ自身のオプションによる踏み台**(GTFOBins 型)は
   対象外。例えば `dpkg` に任意の `.deb` を渡せば任意コードが root で
-  実行されうる——この guard は「呼び出し形とパスの所有権」だけを検証し、
+  実行される可能性がある——この guard は「呼び出し形とパスの所有権」だけを検証し、
   渡す**中身**の安全性までは検証しない。最終防波堤は認証ダイアログでの
   人間の目視判断であり、機械的な検証だけでは閉じない。
 - **同一 uid からの Secret Service 読み取り**(#348/ADR-0003 Amendment 5)
@@ -225,7 +225,7 @@ fail closed になっていた。引用符付きの本文(`<<'EOF'`・`<<"EOF"`�
 実行したところ、tool 出力に目視できる新規の認証ダイアログが一切現れずに
 成功した(`pkcheck --action-id org.freedesktop.policykit.exec --process $$
 --allow-user-interaction` も即座に rc=0)。`sudo -n true` は別途パスワード
-を要求するため sudo 自体がパスワード無しというわけではなく、当初は
+を要求するため sudo 自体がパスワードなしというわけではなく、当初は
 polkit 側の cache/grant(`auth_admin_keep` 相当や、このホスト固有の
 polkit ルール)を疑ったが、`journalctl -b` を調べた結果、**キャッシュでは
 なく毎回の正規認証だった**ことを確認した:
@@ -242,7 +242,7 @@ org.freedesktop.policykit.exec for unix-process:... [...eval
   `pkexec` 呼び出しそれぞれについて、独立した `successfully authenticated`
   ログが出ていた——1 回目の認証を 2 回目が使い回した形跡はない。
 - PAM 側(`/usr/lib/pam.d/polkit-1` → `@include common-auth` →
-  `/etc/pam.d/common-auth` の `pam_unix.so nullok`)にも、パスワード無しで
+  `/etc/pam.d/common-auth` の `pam_unix.so nullok`)にも、パスワードなしで
   通す仕組み(生体認証モジュール等)は設定されていない。`nullok` は
   「アカウントのパスワードハッシュ自体が空なら許す」という意味で、この
   アカウントには該当しない。
@@ -251,13 +251,13 @@ org.freedesktop.policykit.exec for unix-process:... [...eval
   identity として扱う」という定義であり、認証そのものを省略する設定では
   ない。
 
-結論: **agent の Bash ツールには制御端末が無いため、polkit の認証
+結論: **agent の Bash ツールには制御端末がないため、polkit の認証
 ダイアログ(COSMIC では `cosmic-osd`)を agent 自身は一切見ることも
 操作することもできない**。しかし、その認証ダイアログは agent とは別の
 経路(GUI セッション)で実際に人間に提示され、人間がそこへ入力して初めて
 `pkexec` が成功している——journalctl のログはその入力が本物の PAM
 認証(パスワード等)を経て成立したことを裏付けている。「新規ダイアログ
-なしに成功した」ように見えたのは、agent 側にダイアログの可視性が無いこと
+なしに成功した」ように見えたのは、agent 側にダイアログの可視性がないこと
 による見かけ上の現象であり、認証そのものがスキップされたわけではない。
 
 この構造は、この guard が前提とする「認証ダイアログを唯一の人間の関所に
@@ -269,14 +269,14 @@ org.freedesktop.policykit.exec for unix-process:... [...eval
 
 - **`rulesets-write-guard`**: 同じ「`command_inspection::simple_shell::split` で語分割し、
   未知の入力は判定しない/deny-only」の型を踏襲する。ただし pkexec-guard は
-  「判定できない(複合コマン等)」を rulesets-write-guard と違い fail
+  「判定できない(複合コマンド等)」を rulesets-write-guard と違い fail
   **closed** にする——rulesets-write-guard は gh の書き込みを見逃しても
   `apply-rulesets.sh` 側の検証が最終防波堤になるが、pkexec-guard には
-  それに相当する後段の検証が無いため。
+  それに相当する後段の検証がないため。
 - **実装言語**: ADR-0024 の既定どおり Rust(bash 資産を source する必要が
-  無いため)。
+  ないため)。
 - **Codex/Copilot 展開**: `attribution-guard`/`pr-title-guard` と同じ
   「lost-update 対策で順序付けた 2 本の activation」の型を踏襲するが、
-  bash の `source` に相当する仕組みが Rust に無いため、per-agent adapter
+  bash の `source` に相当する仕組みが Rust にないため、per-agent adapter
   ファイルではなく `--agent <name>` CLI フラグで出力形式を切り替える単一
   バイナリにした(`crates/pkexec-guard/src/main.rs`)。

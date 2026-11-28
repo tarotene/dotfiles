@@ -6,7 +6,7 @@
 
 `bleep`(tarotene/bleep)のような自作ガードレールに、エージェントが同じ
 判定へ何度も弾かれ続けても、その事実を開発元(自分自身)にフィードバック
-する経路がこれまで無かった。Claude Code の transcript を実測すると、
+する経路がこれまでなかった。Claude Code の transcript を実測すると、
 同一セッションで 3 回以上同じ判定に弾かれるケースが複数あり、deny 理由文
 が「何がマッチしたか」を示さないため、エージェントは bypass 環境変数を
 試したり scanner を手で叩いてトークン総当たりしたりする「滑り」を起こして
@@ -31,7 +31,7 @@
   のレコードを読む。壊れた行・未知のスキーマの行は無視する(fail-open)。
 - fingerprint = `(tool, reason_id, match_class, term_hash)` でグループ化し、
   件数が閾値(`THRESHOLD = 3`)以上のものだけを昇格候補にする。**平文の
-  マッチ語では群化しない** — bleep が守ろうとしている値そのものだから。
+  マッチ語ではグループ化しない** — bleep が守ろうとしている値そのものだから。
 - 件数は、同じ fingerprint の判定を `ts`(秒精度)が `BURST_WINDOW_SECS = 15` 秒以内に
   連続したものを 1 つにまとめたときの「まとまり」の数で数える。1 回の応答で同じ形の呼び出しを
   並列に出して全部が同じ理由で拒否されたとき(2026-10-28 の実例: 10 秒以内の 5 本)を、
@@ -40,26 +40,26 @@
   実測で直す(判定レコードは応答を識別する id を持たないので、応答単位では数えられない)。
 - 候補ごとに、セッション×fingerprint の stamp 台帳
   (`~/.claude/verdict-escalate/state/<session_id>.stamped`、`agent_session::SessionLedger`)
-  に無ければ、`issue-inbox --add <inbox> <json>`(サブプロセス)を
+  になければ、`issue-inbox --add <inbox> <json>`(サブプロセス)を
   呼んで inbox に 1 行追記し、成功したら stamp する。**inbox への追記ロジック
   (flock・`jq -ce` での compact 化)は再実装しない** — 唯一の実装
   (`wrapup-stop-gate`)を呼ぶだけ。
 - 追記する行は `{"ts","title","detail","repo","go":"ask"}`。`repo` はレコードの
   `repo` フィールド(既定の起票先)、`go:"ask"` は「起票前に人間の明示的な GO
-  が要る」印。`detail` には fingerprint・件数・`session_id`・`key_id`・ローカルレッジャー
+  が必要」の印。`detail` には fingerprint・件数・`session_id`・`key_id`・ローカルレッジャー
   への grep 手順を書くが、**平文のマッチ語・コマンド本文は書かない**
   (`term_hash` は短い辞書語なら総当たり可能なので本文にも出さない)。
 - `key_id` は、レッジャーと同じディレクトリの鍵ファイル `hmac-key` の SHA-256 の先頭 8 桁(hex)。
   `term_hash` の鍵は機体ごとに違うので、語を確かめる `bleep explain` は、弾かれた機体(= 同じ
   `key_id` の鍵を持つ機体)で実行しないと一致しない。機体名を書かずに、どの機体で実行するかを
-  本文から分かるようにする(公開リポジトリに新しい実値を足さない。ADR-0034)。鍵が読めなければ
+  本文から分かるようにする(公開リポジトリに新しい実値を追加しない。ADR-0034)。鍵が読めなければ
   `key_id=unknown`。8 桁(32 bit)の指紋は鍵の復元には使えない。
 
 ## 先行例との差分
 
 - Sentry の Issue Grouping(fingerprint → stack → exception → message の順で
-  群化、`message` は最後の手段)と同じ考え方で、理由文でなく閉語彙タプルで
-  群化する。
+  グループ化、`message` は最後の手段)と同じ考え方で、理由文でなく閉語彙タプルで
+  グループ化する。
 - Claude Code の SendFeedback(「A tool or command keeps failing」で下書きを
   作り、送信は人間の `/feedback` のみ)と同じ「ローカルに溜めて、送信は人間
   の GO 後」モデル。ここでは「送信」を「Issue 起票」に、「/feedback」を
@@ -79,12 +79,12 @@
   人間が最終判断する」という運用上の一線である。
 - bleep 以外のツールがこのレッジャーの書き手になるには、
   `docs/schemas/agent-verdict.schema.json` の契約に従って
-  `agent-verdicts/<tool>.jsonl` に書くだけでよい(登録リストは無い、
-  ADR-0025 の「存在すら書かない」原則と同じ理由でツール一覧を repo に持たない)。
+  `agent-verdicts/<tool>.jsonl` に書くだけでよい(登録リストはない、
+  ADR-0025 の「存在すら書かない」原則と同じ理由でツール一覧をリポジトリに持たない)。
 
 ## 縮退
 
-- `WRAPUP_VERDICT_ESCALATE_BIN`(または既定解決先)にバイナリが無い →
+- `WRAPUP_VERDICT_ESCALATE_BIN`(または既定解決先)にバイナリがない →
   `wrapup-stop-gate` 側が何もせずスキップ。
 - レッジャー dir が読めない・stamp 台帳が作れない・`wrapup-stop-gate`
   が見つからない → `verdict_escalate::run()` は何もせず `0` を返す。
@@ -99,4 +99,4 @@
 - `cargo test -p verdict-escalate --test schema`(`docs/schemas/agent-verdict.schema.json`
   が `record::VerdictRecord` からの生成物と一致していること)。
 - `nix develop --command cargo test -p wrapup-stop-gate`(Stop 本体が
-  inbox 読み取り前に呼ぶ配線・`--check-dup` の repo 引数)。
+  inbox 読み取り前に呼ぶ配線・`--check-dup` のリポジトリ引数)。

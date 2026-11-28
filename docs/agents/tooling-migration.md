@@ -52,7 +52,7 @@ ADR-457 の 2026-10-27 Amendment と `agent-permissions retire` に従う。
 
 hook 登録は既存の managed-hooks 所有記録で reconcile し、前回の登録のうち新宣言から消えたものだけを外す。
 利用者独自の登録は残す。凍結済みの退役一覧と旧照合文字列は維持する。
-所有記録がまだ無いホストへの適用は、既存の初回移行と同じ境界で扱う。
+所有記録がまだないホストへの適用は、既存の初回移行と同じ境界で扱う。
 
 ## 旧入口の削除条件
 
@@ -64,7 +64,7 @@ hook 登録は既存の managed-hooks 所有記録で reconcile し、前回の�
 4. 互換入口なしで検証が通る。
 
 ホスト確認では `hms` のあとに各製品の hook 登録と `~/.local/state/dotfiles/managed-hooks-*.json` を読み戻す。
-コマンドに新名称があり、旧名称の登録が無く、独自登録が残っていることを確認する。
+コマンドに新名称があり、旧名称の登録がなく、独自登録が残っていることを確認する。
 この PR の build は実機適用の代わりにしない。
 
 参照検索と再検証の入口:
@@ -79,7 +79,7 @@ nix flake check --all-systems --no-build
 
 旧スキル名 `daily-desk` は、通知役の `daily-desk-reminder` の前半と一致するので、上の検索には入れず、`rg -nP 'daily-desk(?!-reminder)' home config crates docs` で別に探す。
 検索結果のうち、この移行一覧、互換入口、旧名の照合値、保存先の契約、履歴・引用は削除対象の呼び出しに数えない。
-互換入口を除いた候補ツリーで、上の検証と各ホストの activation build を行う。
+互換入口を除いた候補ツリーで、上の検証と各ホストの activation build を実行する。
 確認結果はホストの記録・既存 Issue・PR から読み、手書きの恒久台帳を増やさない。
 
 ## 改名しなかった対象
@@ -108,7 +108,7 @@ Rust 対象はソース先頭の責務説明と利用側、skill は frontmatter
 | `due-remind` | ホスト運用の隣接 CLI。担当する操作・対象を名前で表している。 |
 | `esa-mcp-launcher` | ホスト運用の隣接 CLI。担当する操作・対象を名前で表している。 |
 | `external-send-guard` | 外部への直接送信から下書き手順を守る。 |
-| `feedback-target-guard` | 実在対象の無い feedback 投稿を防ぐ。 |
+| `feedback-target-guard` | 実在対象のない feedback 投稿を防ぐ。 |
 | `gate-failopen-advisory` | gate の fail-open を通知する。 |
 | `gh-edit-allow` | 検証した GitHub 編集を許可する。 |
 | `git-audit-worktrees` | ホスト運用の隣接 CLI。担当する操作・対象を名前で表している。 |
@@ -130,7 +130,7 @@ Rust 対象はソース先頭の責務説明と利用側、skill は frontmatter
 | `issue-index` | Issue の索引を注入する。 |
 | `kiriban` | ホスト運用の隣接 CLI。担当する操作・対象を名前で表している。 |
 | `main-checkout-guard` | 本物の checkout を変更から守る。 |
-| `new-tool-guard` | 既存手段の検討なしの道具追加を防ぐ。 |
+| `new-tool-guard` | 既存手段の検討なしのツール追加を防ぐ。 |
 | `pipeline-map` | 自動発火する機構の地図を生成・検査する。 |
 | `pkexec-guard` | 表示可能範囲を超える管理者コマンドを防ぐ。 |
 | `plan-fresh-gate` | 計画の鮮度条件が揃うまで進行を止める。 |
@@ -142,7 +142,7 @@ Rust 対象はソース先頭の責務説明と利用側、skill は frontmatter
 | `pr-title-check` | PR タイトルの適合性を判定する。公開パスと依存ゼロを保持。 |
 | `pr-title-guard` | 契約に反する PR タイトルを防ぐ。 |
 | `promotion-detect` | 手順を決定論化する候補を検出する。 |
-| `repo-create-guard` | 作成手順を通らない repo 作成を防ぐ。 |
+| `repo-create-guard` | 作成手順を通らないリポジトリ作成を防ぐ。 |
 | `routines-write-guard` | 宣言外 routine の書き込みを防ぐ。 |
 | `rulesets-write-guard` | 宣言外 ruleset の書き込みを防ぐ。 |
 | `stack-base-guard` | PR チェーンに反する base 指定を防ぐ。 |
@@ -208,11 +208,11 @@ Rust 対象はソース先頭の責務説明と利用側、skill は frontmatter
 - Reference-Only: #979 — 全ホストの所有記録確認後の退役一覧撤去。凍結一覧と撤去条件を維持する。
 - Reference-Only: #1028 — trial 待機通知の重複。責務分割だけで解決扱いにしない。
 
-各 Issue の原文を GitHub CLI で確認した（取得 2026-10-26）。
+各 Issue の原文を GitHub CLI で確認した(取得 2026-10-26)。
 
 ## 公開情報検査に伴う説明文の言い換え
 
 移動した既存ファイルの一般語が公開情報検査の語彙と衝突したため、既存の運用規約
-（public-publish-guard.md の「一般語の一致で push が止まったとき」）に従って説明文を言い換えた。
+(public-publish-guard.md の「一般語の一致で push が止まったとき」)に従って説明文を言い換えた。
 診断ログと inbox 手順書の stdout にも表現の変更がある。判定、引数、終了コード、状態形式は変えない。
 ガードの設定・照合条件・許可リストは変更していない。

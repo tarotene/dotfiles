@@ -1,47 +1,35 @@
-# deploy-worker — private リポジトリの静的サイトを Workers に置き、配信の手順を共通の action で呼ぶ
+# deploy-worker — private リポジトリの静的サイトを Workers に配置し、配信手順を共通の action にまとめる
 
 実装: `.github/actions/deploy-worker/action.yml`(composite action)
 決定: `docs/adr/1553-deploy-worker-action.md`
 走る場所: サイトのリポジトリの GitHub Actions(`uses: tarotene/dotfiles/.github/actions/deploy-worker@main`)
 
-入力と保存の機能を持つ app(Worker + D1)は [`personal-web-app.md`](personal-web-app.md)(決定は `docs/adr/1660-personal-web-app-standard.md`)。
-その app が使う入力 `d1-database`(配信前にマイグレーションを適用する)・`vars`(`wrangler deploy --var` で値を渡す)・
-`access-login-check`(配信のあとに、ログインなしで 302 のログイン転送になることを確かめる)は、この action が持つ。
-配信後に、リポジトリの About の Website 欄を読み戻し、空なら警告する(静的サイトも同じ。設定は人が
-`gh repo edit OWNER/REPO --homepage URL` で行う)。新しい Worker の最初の配信が `10007` で落ちたときは、action が
-`wrangler triggers deploy` を間隔を空けて再試行する(下の「失敗したとき」)。
+入力と保存の機能を持つアプリ(Worker + D1)は [`personal-web-app.md`](personal-web-app.md)(決定は `docs/adr/1660-personal-web-app-standard.md`)を参照。
+そのアプリが使う入力 `d1-database`(配信前にマイグレーションを適用する)・`vars`(`wrangler deploy --var` で値を渡す)・`access-login-check`(配信後にログインなしで 302 のログイン転送になることを確かめる)は、この action が持つ。
+配信後にリポジトリの About の Website 欄を読み戻し、空なら警告する(静的サイトも同じ。設定は人が `gh repo edit OWNER/REPO --homepage URL` で行う)。新しい Worker の最初の配信が `10007` で失敗したときは、action が `wrangler triggers deploy` を間隔を空けて再試行する(下の「失敗したとき」)。
 
 ## どちらに置くか
 
 | サイトのリポジトリ | 置き場 | 理由 |
 |---|---|---|
-| public | `GitHub Pages`(`repo-governance` の `astro-site` の雛形) | 誰でも見られてよい。Workers に寄せても得るものが無い |
-| private で、閲覧を絞りたい | `Cloudflare Workers`(この文書) | `GitHub Pages` は、private 公開を組織の `GitHub Enterprise Cloud` に限っている(ADR の Context) |
-| private で、画面から入力して保存する(本人だけ) | `Cloudflare Workers` + `D1`([`personal-web-app.md`](personal-web-app.md)) | 入力を受ける口と保存先が要る。閲覧の門はこの文書と同じ `Cloudflare Access` |
-| private で、誰でも見られてよい | どちらでもよい | 公開にするなら、Workers では「門を外す」宣言が 1 つ要るので、`GitHub Pages` が軽い |
+| public | `GitHub Pages`(`repo-governance` の `astro-site` の雛形) | 誰でも見られてよい。Workers に寄せても得るものがない |
+| private で閲覧を絞りたい | `Cloudflare Workers`(この文書) | `GitHub Pages` は private 公開を組織の `GitHub Enterprise Cloud` に限っている(ADR の Context) |
+| private で画面から入力して保存する(本人のみ) | `Cloudflare Workers` + `D1`([`personal-web-app.md`](personal-web-app.md)) | 入力を受け付ける口と保存先が必要。閲覧の制限はこの文書と同じ `Cloudflare Access` |
+| private で誰でも見られてよい | どちらでもよい | 公開にするなら Workers ではアクセス制限を外す宣言が 1 つ必要になるため、`GitHub Pages` が手軽 |
 
-Workers に置いたサイトの閲覧は、`Cloudflare Access` が GitHub のログインで絞る。既定は「アカウントの全 Worker を
-本人だけに閉じる」で、新しい Worker は配信した瞬間から非公開である。門・ログイン・共同開発者の許可・deploy 用の token と
-secret は、アカウントの `Cloudflare` を宣言するインフラのリポジトリ(`OpenTofu`、非公開)が持つ。サイトのリポジトリは
-`wrangler.jsonc` と workflow だけを持つ。
+Workers に置いたサイトの閲覧は、`Cloudflare Access` が GitHub のログインで絞る。既定は「アカウントの全 Worker を本人だけに閉じる」であり、新しい Worker は配信した瞬間から非公開になる。アクセス制限・ログイン・共同開発者の許可・deploy 用の token と secret は、アカウントの `Cloudflare` を宣言するインフラのリポジトリ(`OpenTofu`、非公開)が持つ。サイトのリポジトリは `wrangler.jsonc` と workflow だけを持つ。
 
 ## 新しい private サイトの手順
 
-1. インフラのリポジトリで、サイトの一覧(`bootstrap/sites.tf` の `site_repos`)に「Worker 名 = リポジトリ名」を 1 行足し、
-   人が `bootstrap/` を適用する。サイトのリポジトリに、deploy 用の token と、アカウント ID の secret が入る。D1 を持つ
-   app は `d1 = true`(D1 と、その書き込み権限の宣言)、JWT をサイトで検証する app は `app = true`(Access の値が
-   Actions 変数として入る)の印を付ける([`personal-web-app.md`](personal-web-app.md))。静的サイトは、どちらも `false`。
-2. サイトのリポジトリに、下の `wrangler.jsonc` と workflow を置く。`name` は 1 で書いた Worker 名と同じにする
-   (門の宣言が、この名前で Worker を引く)。
-3. `main` へ入れる。最初の配信で、Worker が作られる。それまで Worker は存在しないので、最初の PR の
-   `Preview` は必ず失敗する(下の「失敗したとき」)。`Preview` は参考用(`continue-on-error`)で、`CI passed` は通る。
-4. 閲覧の確認: ログインなしで `https://<Worker 名>.<アカウントの workers.dev のサブドメイン>.workers.dev/` を開くと、
-   ログイン画面へ転送される。GitHub でログインして、本文が出る。
-5. 共同開発者に見せるときは、インフラのリポジトリで、その Worker の許可にメールか Org のチームを足す(PR 1 本)。
+1. インフラのリポジトリでサイト一覧(`bootstrap/sites.tf` の `site_repos`)に「Worker 名 = リポジトリ名」を 1 行追加し、人が `bootstrap/` を適用する。サイトのリポジトリに deploy 用の token とアカウント ID の secret が入る。D1 を持つアプリは `d1 = true`(D1 とその書き込み権限の宣言)、JWT をサイトで検証するアプリは `app = true`(Access の値が Actions 変数として入る)の印を付ける([`personal-web-app.md`](personal-web-app.md))。静的サイトはどちらも `false` にする。
+2. サイトのリポジトリに下の `wrangler.jsonc` と workflow を配置する。`name` は 1 で書いた Worker 名と同じにする(アクセス制限の宣言がこの名前で Worker を参照する)。
+3. `main` へ入れる。最初の配信で Worker が作成される。それまで Worker は存在しないため、最初の PR の `Preview` は必ず失敗する(下の「失敗したとき」)。`Preview` は参考用(`continue-on-error`)のため、`CI passed` は通る。
+4. 閲覧の確認: ログインなしで `https://<Worker 名>.<アカウントの workers.dev のサブドメイン>.workers.dev/` を開くとログイン画面へ転送される。GitHub でログインして本文が表示されることを確認する。
+5. 共同開発者に見せるときは、インフラのリポジトリでその Worker の許可にメールか Org のチームを追加する(PR 1 本)。
 
 ## `wrangler.jsonc`(静的アセットだけ)
 
-`compatibility_date` は UTC の日付で書く。JST の「今日」を書くと、UTC では未来日になり、`wrangler` が拒否する。
+`compatibility_date` は UTC の日付で書く。JST の「今日」を書くと UTC では未来日になり、`wrangler` が拒否する。
 
 ```jsonc
 {
@@ -60,7 +48,7 @@ secret は、アカウントの `Cloudflare` を宣言するインフラのリ�
 
 ## workflow の雛形
 
-サイトの `ci.yml` に足す 3 つの job である。build は secret を持たず、deploy と preview だけが持つ。
+サイトの `ci.yml` に追加する 3 つの job である。build は secret を持たず、deploy と preview だけが持つ。
 `wrangler` はサイトの lockfile で固定し、token を持つ job では依存のスクリプトを走らせない。
 `ci-passed` の `needs` に、`deploy` と `preview` を足す。`uses: tarotene/dotfiles/...@main` は、`repo-governance` が
 播く `.github/zizmor.yml`(`tarotene/*` だけを ref の固定まで緩める)が無いと、`zizmor` が `unpinned-uses` で落とす。
@@ -140,13 +128,13 @@ jobs:
 
 ## 失敗したとき
 
-| 症状 | 見るところ |
+| 症状 | 確認箇所 |
 |---|---|
-| deploy が警告だけで成功し、配信されない | `api-token` が空。インフラのリポジトリの `bootstrap/sites.tf` に、このサイトが載っていて適用済みかを見る |
-| `wrangler` が認証で落ちる | token の期限切れ。インフラのリポジトリで `bootstrap/` を適用し直す(token と secret が更新される) |
-| 配信できたが、ログインなしで本文が見える | 門の宣言が外れている。インフラのリポジトリで、全 Worker を守る宣言と、その Worker の公開(門を外す)宣言の有無を見る |
-| プレビューの URL が PR に載らない | `preview` の job に `pull-requests: write` があるか。`dependabot` の PR は secret が無く、飛ばされる |
-| 新しいサイトの最初の PR で `Preview` が「You cannot upload a new version of a Worker that does not yet exist」で落ちる | 想定どおり。Worker がまだ無いので、`wrangler` は version を上げられない。`main` への最初の配信で Worker ができれば、以後の PR では動く(実測: 2026-11-12、認証は通っていた) |
-| 新しいサイトの最初の配信が、アップロードのあとに `10007`(This Worker does not exist on your account)で落ちる | action が `wrangler triggers deploy` を最大 6 回(約 10 分)再試行する。続くなら、Worker が作られているか(ダッシュボードの Workers の一覧)を見て、`wrangler triggers deploy` を手で 1 回実行する。原因は cloudflare/workers-sdk#17069 の報告(Worker を作った直後の数分、エンドポイントが 404 を返す)で、確かめた事実ではない(実測: 2026-11-20、本人の `wrangler triggers deploy` が数分後に通った) |
-| `access-login-check` で、配信の job が「302 で転送されません」と落ちる | 門が開いている。インフラのリポジトリの、全 Worker を守る宣言と、その Worker の公開(門を外す)宣言の有無を見る。公開の Worker には、この入力を渡さない |
-| `vars` の「値が空です」で、アップロードの前に落ちる | そのサイトのリポジトリに、Actions 変数が届いていない。インフラのリポジトリの `bootstrap/` を適用し、サイト一覧の `app` の印を確かめる |
+| deploy が警告だけで成功し、配信されない | `api-token` が空。インフラのリポジトリの `bootstrap/sites.tf` に、このサイトが載っていて適用済みかを確認する |
+| `wrangler` が認証で失敗する | token の期限切れ。インフラのリポジトリで `bootstrap/` を適用し直す(token と secret が更新される) |
+| 配信できたが、ログインなしで本文が見える | アクセス制限の宣言が外れている。インフラのリポジトリで全 Worker を守る宣言と、その Worker の公開設定の有無を見る |
+| プレビューの URL が PR に載らない | `preview` の job に `pull-requests: write` があるか確認する。`dependabot` の PR は secret がないためスキップされる |
+| 新しいサイトの最初の PR で `Preview` が「You cannot upload a new version of a Worker that does not yet exist」で失敗する | 想定どおり。Worker がまだないため `wrangler` は version を上げられない。`main` への最初の配信で Worker が作成されれば、以後の PR では動く(実測: 2026-11-12、認証は通っていた) |
+| 新しいサイトの最初の配信が、アップロード後に `10007`(This Worker does not exist on your account)で失敗する | action が `wrangler triggers deploy` を最大 6 回(約 10 分)再試行する。続くなら Worker が作られているか(ダッシュボードの Workers 一覧)を確認し、`wrangler triggers deploy` を手で 1 回実行する。原因は cloudflare/workers-sdk#17069 の報告(Worker 作成直後の数分間、エンドポイントが 404 を返す)とみられるが、確かめた事実ではない(実測: 2026-11-20、本人の `wrangler triggers deploy` が数分後に通った) |
+| `access-login-check` で配信 job が「302 で転送されません」と失敗する | アクセス制限が開いている。インフラのリポジトリの全 Worker を守る宣言と、その Worker の公開設定の有無を見る。公開 Worker にはこの入力を渡さない |
+| `vars` の「値が空です」でアップロード前に失敗する | そのサイトのリポジトリに Actions 変数が届いていない。インフラのリポジトリの `bootstrap/` を適用し、サイト一覧の `app` の印を確認する |

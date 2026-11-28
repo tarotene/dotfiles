@@ -17,7 +17,7 @@ cron routine を作れてしまう — `/schedule` でのその場限りの作�
 PreToolUse(matcher: `RemoteTrigger`)専用。`RemoteTrigger` は Bash ツール
 ではないため、`rulesets-write-guard` が使う「コマンド文字列先頭の
 `BYPASS=` env var 代入を読む」方式は成立しない — 1 回のツール呼び出しに
-コマンド文字列という概念が無い。代わりに、正規の経路
+コマンド文字列という概念がない。代わりに、正規の経路
 (`config/agents/skills/claude-routines/scripts/routines-plan.sh` の
 `build-body`/`classify` が出す body)が必ず満たす構造そのものを通過条件に
 する:
@@ -29,10 +29,10 @@ PreToolUse(matcher: `RemoteTrigger`)専用。`RemoteTrigger` は Bash ツール
   (routine-name は小文字英数字とハイフンのみ)でなければ deny。
 - `body.job_config.ccr.events[0].data.message.content` の最終行が
   `routine-spec: <64桁の小文字16進数>` でなければ deny。
-- **bypass は無い**。`RemoteTrigger` 呼び出し全体を対象にコマンド文字列
+- **bypass はない**。`RemoteTrigger` 呼び出し全体を対象にコマンド文字列
   由来の判定はできないため、意図的な手動書き込みは Web UI 経由で行う想定
   (`docs/claude/claude-routines.md` の「実測」節、meta connector にも
-  ローカルの `RemoteTrigger` ツールにも delete は無い/限定的、という制約と
+  ローカルの `RemoteTrigger` ツールにも delete はない/限定的、という制約と
   同じ理由で、この guard も「間違って踏んだときに止める」ことを目的にし、
   意図的な迂回の完全阻止は狙わない)。
 
@@ -49,4 +49,4 @@ decision-colocation の Codex/Copilot adapter 不要判断〔ADR-396 D8〕と同
   「コマンド文字列の字句解析」から「body の構造検査」に置き換えた。
 - **実装言語**: ADR-0024 は新規 hook を既定で Rust とする。この hook は
   JSON の構造検査だけで完結し、既存の巨大 bash 資産を source する必要が
-  無いため、既定どおり Rust で書いた。
+  ないため、既定どおり Rust で書いた。

@@ -42,12 +42,12 @@ PR の head branch でなければならない。
 求めて誤って拒否する(2026-11-11)。次の 3 つがすべて成り立つときだけ、手元の `HEAD` に置き換える
 (`crates/stack-base-guard/src/lib.rs` の `effective_head_oid`): 対象のリポジトリが手元のプロジェクトのリポジトリ
 (`-R` で別のリポジトリを指すときは、同名のブランチがあっても置き換えない)、対象 PR の head ブランチが現在の
-ブランチ、`HEAD` が push 済み(上流の追跡 ref、無ければ `origin/<ブランチ>` と等しい。載せ替えただけで未 push の
+ブランチ、`HEAD` が push 済み(上流の追跡 ref、なければ `origin/<ブランチ>` と等しい。載せ替えただけで未 push の
 状態は、GitHub 上の PR の実体と食い違うので置き換えない)。
 
 HEAD は PreToolUse の時点、つまり Bash コマンドを**実行する前**に読む。
 `git commit ... && gh pr create ...` を 1 回の呼び出しで流すと、commit
-前の HEAD で判定されるため、意図と違う判定になりうる。commit と
+前の HEAD で判定されるため、意図と違う判定になる可能性がある。commit と
 `gh pr create` は別の呼び出しにする(`stacked-pr` スキル §3、#657)。
 
 この検査は**セッション状態を一切持たない** — `gh pr list` で取得した
@@ -85,11 +85,11 @@ HEAD と**同じ先頭**を持つ open PR は、距離 0 の祖先として数�
 ブランチ名だけを記録すると、別リポジトリの記録が対象リポジトリの open PR と
 名前で一致し、「直前の段」を取り違える(2026-10-18 に実際に起きた)。git の
 ブランチ名に `:` は使えないので、`:` で `owner/repo` と branch を曖昧さなく
-区切れる。区切りの無い行は、この記録形式より前に書かれたもの(リポジトリ不明)
+区切れる。区切りのない行は、この記録形式より前に書かれたもの(リポジトリ不明)
 として、どのリポジトリにも一致するとみなして読む。
 
 - 記録は**楽観的**(判定を通過した時点で追記する。PreToolUse は
-  `gh pr create` 自体の成否を知れないため)。読み出し時に、記録済みの
+  `gh pr create` 自体の成否を把握できないため)。読み出し時に、記録済みの
   各 branch が現在も open PR として実在するか `gh pr list` の結果と
   照合し、実在しない行は無視する(create が実際には失敗していた場合の
   自己修復)。
@@ -104,7 +104,7 @@ HEAD と**同じ先頭**を持つ open PR は、距離 0 の祖先として数�
 `gh pr merge` と `gh api -X PUT repos/<o>/<r>/pulls/<N>/merge-async` の対象 PR が、base を
 別の open PR のブランチにしていて(chain の最下段でない)、GitHub の stack にもリンクされて
 いなければ、実行前に deny する。そのまま入れると、PR は base のブランチにしか入らず、下の段は
-OPEN のまま残る(2026-10-30 と 2026-11-05 に、stacks の一覧に無い連鎖で実測。
+OPEN のまま残る(2026-10-30 と 2026-11-05 に、stacks の一覧にない連鎖で実測。
 `config/agents/skills/stacked-pr/SKILL.md`「スタックの PR をマージする」)。base が main の
 最下段と積みでない PR は通す(下から 1 本ずつ入れる経路)。
 
@@ -138,7 +138,7 @@ attribution-guard.sh を `source` して上書きしていた `is_target_at` に
 
 | コマンド | 発火条件 |
 |---|---|
-| `gh pr create` | 常に判定(base 省略時は `origin/HEAD` の symref、それも無ければ `gh repo view` で default branch を解決) |
+| `gh pr create` | 常に判定(base 省略時は `origin/HEAD` の symref、それもなければ `gh repo view` で default branch を解決) |
 | `gh pr edit [<target>] --base <v>` | `--base`/`-B`/`--base=` のいずれかが含まれるときのみ判定。含まなければ base に触れない edit なので対象外 |
 | `gh pr merge [<番号>\|<URL>\|<ブランチ>]` / `gh api -X PUT …/pulls/<N>/merge-async` | 層(iii)。対象 PR が非最下段で未リンクのときだけ deny(対象を省いた `gh pr merge` は現在のブランチの PR) |
 | `mcp__github*` の `create_pull*`/`update_pull*` | tool 名を書き込み系の語で絞ってから `.tool_input.base`/`.tool_input.body` を見る(MCP GitHub は現在未接続、命名は attribution-guard.sh と同じく #161 の未確認事項を引き継ぐ) |
@@ -189,7 +189,7 @@ gating と同じ縮退方針。
 | default branch が解決できない(`--base` 省略時) | 判定不能で通す |
 | PR の `headRefOid` がローカルに実在しない | その候補を祖先検査から除外(他の候補で判定を続ける) |
 | `gh pr edit` の対象 PR が解決できない | 判定不能で通す |
-| マージの対象 PR が open PR の一覧に無い、または `gh api repos/<nwo>/stacks` が失敗 | 判定不能で通す(層(iii)) |
+| マージの対象 PR が open PR の一覧にない、または `gh api repos/<nwo>/stacks` が失敗 | 判定不能で通す(層(iii)) |
 | 本文が読めない(コマンド置換等、層(ii)のみ) | 判定不能で通す |
 
 抜け道: `SKIP_STACK_BASE_GUARD=1`、または
@@ -207,16 +207,16 @@ judgement が要求する(`docs/agents/pr-gate.md` 参照)。両者は独立に
 
 ## 検査
 
-- `cargo test -p stack-base-guard` がネットワーク無しに検査する
+- `cargo test -p stack-base-guard` がネットワークなしに検査する
   (`crates/stack-base-guard/tests/selftest.rs`: 旧 bash 版 `--selftest` の
   Claude 18 ケース・Codex adapter 2 ケースに、MCP・skip・出力形・台帳互換の
-  ケースを足したもの)。gh スタブと、実コミットを持つ使い捨て git リポジトリ
+  ケースを追加したもの)。gh スタブと、実コミットを持つ使い捨て git リポジトリ
   (main ← stage1 ← stage2、main から直接切った unrelated ブランチ)を
   組み合わせる — 祖先検査は `git merge-base --is-ancestor` に実オブジェクト
   を要求するため、pr-gate の統合テスト(`crates/pr-gate/tests/`)と同じ
   「real_head」パターンを踏襲する。
 - `stack-base-guard --check '<コマンド文字列>' [<project-dir>]` で手動 e2e が
-  できる(セッション ID は環境変数 `SESSION_ID`、無ければ `unknown`)。
+  できる(セッション ID は環境変数 `SESSION_ID`、なければ `unknown`)。
 
 ## 登録形
 
